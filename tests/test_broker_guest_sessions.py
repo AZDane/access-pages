@@ -1348,6 +1348,28 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 {"grant_id": self.grant_a, "session": session},
             )[0], 404)
         ha_broker.HA_CLIENT.assert_not_called()
-        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1):
-            with self.assertRaises((ConnectionResetError, http.client.RemoteDisconnected)):
+        peer_rejected = threading.Event()
+        peer_errors = []
+        original_get_request = self.server.get_request
+
+        def observe_peer_check():
+            try:
+                return original_get_request()
+            except PermissionError as error:
+                peer_errors.append(error)
+                peer_rejected.set()
+                raise
+
+        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1), \
+             patch.object(self.server, "get_request", wraps=observe_peer_check) as peer_check, \
+             patch.object(self.server, "finish_request", wraps=self.server.finish_request) as dispatch:
+            with self.assertRaises((BrokenPipeError, ConnectionResetError,
+                                    http.client.RemoteDisconnected)):
                 self.status(self.cap_a, "page-a", self.grant_a, session)
+            self.assertTrue(peer_rejected.wait(2))
+            peer_check.assert_called_once_with()
+            self.assertEqual(len(peer_errors), 1)
+            self.assertEqual(str(peer_errors[0].__cause__),
+                             "Guest broker peer is not Guest Service")
+            dispatch.assert_not_called()
+            ha_broker.HA_CLIENT.assert_not_called()

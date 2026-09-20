@@ -254,7 +254,7 @@ class OnboardingTests(unittest.TestCase):
                     {"error": "Could not store the LayerV API key"},
                 )
                 self.assertNotIn(key.encode(), body)
-                self.assertTrue(server.completed.is_set())
+                self.assertTrue(server.completed.wait(timeout=2))
         finally:
             server.shutdown()
             thread.join(timeout=2)
