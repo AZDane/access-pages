@@ -173,6 +173,35 @@ class BrokerGuestSessionTests(unittest.TestCase):
         finally:
             connection.close()
 
+    def assert_wrong_peer_uid_rejected(self, request):
+        """Prove the peer check closed the socket before HTTP dispatch."""
+        peer_rejected = threading.Event()
+        peer_errors = []
+        original_get_request = self.server.get_request
+        ha_calls_before = list(ha_broker.HA_CLIENT.mock_calls)
+
+        def observe_peer_check():
+            try:
+                return original_get_request()
+            except PermissionError as error:
+                peer_errors.append(error)
+                peer_rejected.set()
+                raise
+
+        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1), \
+             patch.object(self.server, "get_request", wraps=observe_peer_check) as peer_check, \
+             patch.object(self.server, "finish_request", wraps=self.server.finish_request) as dispatch:
+            with self.assertRaises((BrokenPipeError, ConnectionResetError,
+                                    http.client.RemoteDisconnected)):
+                request()
+            self.assertTrue(peer_rejected.wait(2))
+            peer_check.assert_called_once_with()
+            self.assertEqual(len(peer_errors), 1)
+            self.assertEqual(str(peer_errors[0].__cause__),
+                             "Guest broker peer is not Guest Service")
+            dispatch.assert_not_called()
+            self.assertEqual(ha_broker.HA_CLIENT.mock_calls, ha_calls_before)
+
     def raw_request(self, route, headers, body):
         connection = socket.socket(socket.AF_UNIX)
         try:
@@ -516,10 +545,8 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 self.assertEqual(direct["actions"][0]["outcome"], "success")
 
                 wrong = RealHTTPConnection("127.0.0.1", admin.server_port)
-                wrong.request("POST", "/api/internal/guest-event", body=json.dumps({
-                    "page_id": "page-b", "grant_id": self.grant_c,
-                    "event": "initial_access",
-                }), headers={"X-HA-Broker-Token": "wrong"})
+                wrong.request("POST", "/api/internal/guest-event",
+                              headers={"X-HA-Broker-Token": "wrong"})
                 self.assertEqual(wrong.getresponse().status, 401)
                 wrong.close()
                 self.assertEqual(activity.page_guests("page-b")[0]["action_count"], 1)
@@ -777,10 +804,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.action(
             session, capability="missing-capability-123456",
         )[0], 401)
-        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1):
-            with self.assertRaises((BrokenPipeError, ConnectionResetError,
-                                    http.client.RemoteDisconnected)):
-                self.action(session)
+        self.assert_wrong_peer_uid_rejected(lambda: self.action(session))
         ha_broker.HA_CLIENT.call_service.assert_not_called()
 
     def test_action_parameters_follow_live_capability_and_allowlist(self):
@@ -1017,10 +1041,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.read(
             other, grant_id=self.grant_c,
         )[0], 401)
-        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1):
-            with self.assertRaises((ConnectionResetError,
-                                    http.client.RemoteDisconnected)):
-                self.read(session)
+        self.assert_wrong_peer_uid_rejected(lambda: self.read(session))
         ha_broker.HA_CLIENT.get_states.assert_not_called()
 
     def test_revocation_expiry_and_policy_removal_denies_next_read(self):
@@ -1155,10 +1176,12 @@ class BrokerGuestSessionTests(unittest.TestCase):
             "/guest/v1/session-status", self.cap_a, "page-a",
             {"grant_id": self.grant_a, "session": session, "verified": True},
         )[0], 400)
-        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1):
-            with self.assertRaises((ConnectionResetError,
-                                    http.client.RemoteDisconnected)):
-                self.challenge(session)
+        self.assert_wrong_peer_uid_rejected(lambda: self.challenge(session))
+        with self.sessions._connect() as db:
+            self.assertEqual(db.execute(
+                "SELECT COUNT(*) FROM guest_verifications"
+            ).fetchone()[0], 0)
+        self.assertEqual(self.sent_codes, [])
 
     def test_expired_challenge_and_reused_grant_id_fail_closed(self):
         session = self.exchange(
@@ -1348,28 +1371,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 {"grant_id": self.grant_a, "session": session},
             )[0], 404)
         ha_broker.HA_CLIENT.assert_not_called()
-        peer_rejected = threading.Event()
-        peer_errors = []
-        original_get_request = self.server.get_request
-
-        def observe_peer_check():
-            try:
-                return original_get_request()
-            except PermissionError as error:
-                peer_errors.append(error)
-                peer_rejected.set()
-                raise
-
-        with patch("ha_broker.GUEST_PEER_UID", os.getuid() + 1), \
-             patch.object(self.server, "get_request", wraps=observe_peer_check) as peer_check, \
-             patch.object(self.server, "finish_request", wraps=self.server.finish_request) as dispatch:
-            with self.assertRaises((BrokenPipeError, ConnectionResetError,
-                                    http.client.RemoteDisconnected)):
-                self.status(self.cap_a, "page-a", self.grant_a, session)
-            self.assertTrue(peer_rejected.wait(2))
-            peer_check.assert_called_once_with()
-            self.assertEqual(len(peer_errors), 1)
-            self.assertEqual(str(peer_errors[0].__cause__),
-                             "Guest broker peer is not Guest Service")
-            dispatch.assert_not_called()
-            ha_broker.HA_CLIENT.assert_not_called()
+        self.assert_wrong_peer_uid_rejected(
+            lambda: self.status(self.cap_a, "page-a", self.grant_a, session)
+        )
+        ha_broker.HA_CLIENT.assert_not_called()

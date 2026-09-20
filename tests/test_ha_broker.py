@@ -168,19 +168,39 @@ class HomeAssistantBrokerPolicyTests(unittest.TestCase):
                     thread = threading.Thread(target=server.serve_forever)
                     thread.start()
                     try:
-                        connection = socket.socket(socket.AF_UNIX)
-                        connection.connect(path)
-                        connection.sendall(
-                            b"POST /guest/v1/page-identity HTTP/1.1\r\n"
-                            b"Host: broker\r\n"
-                            b"X-Page-Capability: synthetic-page-capability-123456\r\n"
-                            b"Content-Length: 0\r\n\r\n"
-                        )
-                        try:
-                            self.assertEqual(connection.recv(1024), b"")
-                        except ConnectionResetError:
-                            pass
-                        connection.close()
+                        peer_rejected = threading.Event()
+                        peer_errors = []
+                        original_get_request = server.get_request
+
+                        def observe_peer_check():
+                            try:
+                                return original_get_request()
+                            except PermissionError as error:
+                                peer_errors.append(error)
+                                peer_rejected.set()
+                                raise
+
+                        with patch.object(server, "get_request", wraps=observe_peer_check) as peer_check, \
+                             patch.object(server, "finish_request", wraps=server.finish_request) as dispatch, \
+                             patch("ha_broker.HA_CLIENT") as client:
+                            with socket.socket(socket.AF_UNIX) as connection:
+                                connection.connect(path)
+                                with self.assertRaises((BrokenPipeError, ConnectionResetError,
+                                                        http.client.RemoteDisconnected)):
+                                    connection.sendall(
+                                        b"POST /guest/v1/page-identity HTTP/1.1\r\n"
+                                        b"Host: broker\r\n"
+                                        b"X-Page-Capability: synthetic-page-capability-123456\r\n"
+                                        b"Content-Length: 0\r\n\r\n"
+                                    )
+                                    http.client.HTTPResponse(connection).begin()
+                            self.assertTrue(peer_rejected.wait(2))
+                            peer_check.assert_called_once_with()
+                            self.assertEqual(len(peer_errors), 1)
+                            self.assertEqual(str(peer_errors[0].__cause__),
+                                             "Guest broker peer is not Guest Service")
+                            dispatch.assert_not_called()
+                            client.assert_not_called()
                     finally:
                         server.shutdown()
                         thread.join()

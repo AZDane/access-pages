@@ -90,7 +90,7 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
         ):
             for headers in ({}, {"X-Broker-Token": "wrong"}):
                 self.assert_unauthorized(
-                    request(port, "POST", "/v1/states", headers=headers),
+                    request(port, "POST", "/v1/states", headers=headers, payload=None),
                     secret,
                 )
         client.assert_not_called()
@@ -105,7 +105,8 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
         ):
             for headers in ({}, {"X-Broker-Token": "wrong"}):
                 self.assert_unauthorized(
-                    request(port, "POST", "/v1/camera-image", headers=headers),
+                    request(port, "POST", "/v1/camera-image", headers=headers,
+                            payload=None),
                     secret,
                 )
         client.assert_not_called()
@@ -125,6 +126,7 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
                     "POST",
                     "/v1/discovery",
                     headers={"X-Broker-Token": guest_secret},
+                    payload=None,
                 ),
                 guest_secret,
             )
@@ -203,7 +205,7 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
             )
             for method, path, headers in cases:
                 self.assert_unauthorized(
-                    request(port, method, path, headers=headers),
+                    request(port, method, path, headers=headers, payload=None),
                     secret,
                 )
         client.assert_not_called()
@@ -228,7 +230,7 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
             )
             for method, path, headers in cases:
                 self.assert_unauthorized(
-                    request(port, method, path, headers=headers),
+                    request(port, method, path, headers=headers, payload=None),
                     secret,
                 )
         publish.assert_not_called()

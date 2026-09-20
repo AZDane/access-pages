@@ -703,12 +703,12 @@ for port, route, method, headers in (
     (8082, '/v1/states', 'POST', {'X-Broker-Role':'admin', 'X-Broker-Token':'page-capability-a-1234567890'}),
 ):
     c = http.client.HTTPConnection('127.0.0.1', port)
-    c.request(method, route, body='{}' if method == 'POST' else None, headers=headers)
+    c.request(method, route, headers=headers)
     r = c.getresponse(); assert r.status in (401, 403, 404), (port, route, r.status)
     r.read(); c.close()
 s = socket.socket(socket.AF_UNIX)
 s.connect('/run/access-pages/ha-guest/http.sock')
-s.sendall(b'POST /v1/discovery HTTP/1.1\r\nHost: broker\r\nX-Broker-Role: admin\r\nX-Broker-Token: admin-broker-token\r\nContent-Length: 2\r\n\r\n{}')
+s.sendall(b'POST /v1/discovery HTTP/1.1\r\nHost: broker\r\nX-Broker-Role: admin\r\nX-Broker-Token: admin-broker-token\r\nContent-Length: 0\r\n\r\n')
 r = http.client.HTTPResponse(s); r.begin(); assert r.status == 404, r.status
 r.read(); s.close()
 """
