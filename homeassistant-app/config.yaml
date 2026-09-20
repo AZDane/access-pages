@@ -1,0 +1,35 @@
+name: Access Pages
+version: "0.1.123"
+slug: access_pages
+description: Share selected Home Assistant controls through secure, revocable, expiring guest links
+url: https://github.com/AZDane/access-pages
+image: ghcr.io/azdane/access-pages-app
+arch:
+  - amd64
+  - aarch64
+startup: application
+boot: auto
+init: false
+apparmor: true
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:shield-account
+panel_title: Access Pages
+homeassistant_api: true
+hassio_role: default
+options:
+  connector_id: ""
+  include_domains: ""
+  include_areas: ""
+  exclude_domains: "alarm_control_panel"
+  exclude_entities: ""
+  qurl_max_lifetime_days: 3
+  resource_isolation: guest
+schema:
+  connector_id: "str?"
+  include_domains: "str?"
+  include_areas: "str?"
+  exclude_domains: "str?"
+  exclude_entities: "str?"
+  qurl_max_lifetime_days: "int(1,30)"
+  resource_isolation: "list(guest|page)"

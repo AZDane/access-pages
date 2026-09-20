@@ -1,0 +1,22 @@
+configuration:
+  connector_id:
+    name: Connector ID
+    description: Optional stable connector name. Leave empty to generate one, and do not change it after registration.
+  include_domains:
+    name: Included domains
+    description: Optional comma-separated Home Assistant domains to show in the entity picker.
+  include_areas:
+    name: Included areas
+    description: Optional comma-separated Home Assistant area IDs to show in the entity picker.
+  exclude_domains:
+    name: Excluded domains
+    description: Comma-separated domains hidden from the picker. Exclusions override inclusions.
+  exclude_entities:
+    name: Excluded entities
+    description: Optional comma-separated entity IDs hidden from the picker. Exclusions override inclusions.
+  qurl_max_lifetime_days:
+    name: Maximum qURL lifetime
+    description: Plan limit in days. Use 3 for LayerV Free or up to 30 when allowed by your plan.
+  resource_isolation:
+    name: LayerV resource isolation
+    description: Guest (default) gives each guest a separate resource. Page shares one resource among guests on the same Access Page.

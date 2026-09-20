@@ -1,0 +1,11 @@
+misconfigurations:
+  - id: AVD-DS-0002
+    paths:
+      - Dockerfile.ha-app
+    statement: >-
+      Home Assistant mounts the App-owned persistent /data volume at runtime.
+      The official App Dockerfile model runs under Supervisor protection and
+      uses AppArmor for confinement. Changing UID would make existing
+      root-owned installations unable to read their connector identity,
+      protected API key, grants, and page data.
+    expired_at: 2027-01-01

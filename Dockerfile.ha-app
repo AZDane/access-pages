@@ -1,0 +1,88 @@
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS qurl
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && case "${TARGETARCH}" in \
+        amd64) QURL_CHECKSUM=99b2583b47fc2553dc3c736921bfd78cb31a01de8873e5f7f0c6d348f82688ae ;; \
+        arm64) QURL_CHECKSUM=94f8cc6cb1bb58047fe97e69ce89e02606e55929f442b9c2a1d03dcf814be9e1 ;; \
+        *) exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v2.6.0/qurl_2.6.0_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
+    && printf '%s  /tmp/qurl.tar.gz\n' "${QURL_CHECKSUM}" | sha256sum -c - \
+    && mkdir /out \
+    && tar -xzf /tmp/qurl.tar.gz -C /out qurl \
+    && chmod 0755 /out/qurl
+
+FROM --platform=$BUILDPLATFORM golang:1.26.8-bookworm@sha256:9fdc884aacc3bec89b20ffc69f4bb369c78210e3e4f600387b5128b12c199f81 AS guest-endpoint
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/guest-endpoint ./cmd/guest-endpoint
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/access-pages-guest-endpoint ./cmd/guest-endpoint
+
+FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
+
+ARG BUILD_ARCH
+ARG BUILD_VERSION=0.1.123
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    GATEWAY_VERSION=${BUILD_VERSION}
+
+LABEL \
+    io.hass.arch="${BUILD_ARCH}" \
+    io.hass.type="app" \
+    io.hass.version="${BUILD_VERSION}" \
+    org.opencontainers.image.source="https://github.com/AZDane/access-pages" \
+    org.opencontainers.image.version="${BUILD_VERSION}"
+
+WORKDIR /app
+
+COPY server.py actions.py admin.py access.py upstream_cleanup.py guest_resources.py guest_service.py internal.py config.py ha.py ha_broker.py pages.py layerv.py layerv_broker.py policy.py policy_store.py audit.py activity.py rate_limit.py email_delivery.py verification.py ./
+COPY static ./static
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
+COPY third_party_licenses ./third_party_licenses
+COPY homeassistant-app/app_runner.py /usr/local/bin/app_runner.py
+COPY homeassistant-app/ingress_proxy.py /usr/local/bin/ingress_proxy.py
+COPY homeassistant-app/onboarding.py /usr/local/bin/onboarding.py
+COPY --from=qurl /out/qurl /usr/local/bin/qurl
+COPY --from=guest-endpoint /out/access-pages-guest-endpoint /usr/local/bin/access-pages-guest-endpoint
+
+RUN mkdir -p /data/pages /data/secrets /data/connector-state \
+        /data/connector-config /data/logs /data/policy-pages \
+        /data/guest-runtime /data/admin-runtime /data/access-pages-broker \
+    && groupadd --gid 2000 gateway-pages \
+    && groupadd --gid 2001 policy-readers \
+    && groupadd --gid 2003 access-pages-secrets \
+    && groupadd --gid 2004 guest-transport \
+    && useradd --uid 2100 --user-group --create-home --shell /usr/sbin/nologin app-admin \
+    && useradd --uid 2101 --user-group --create-home --shell /usr/sbin/nologin app-guest \
+    && useradd --uid 2102 --user-group --create-home --shell /usr/sbin/nologin ha-broker \
+    && useradd --uid 2103 --user-group --create-home --shell /usr/sbin/nologin access-pages-broker \
+    && useradd --uid 2104 --user-group --create-home --shell /usr/sbin/nologin policy-store \
+    && useradd --uid 2105 --user-group --create-home --shell /usr/sbin/nologin connector \
+    && useradd --uid 2106 --user-group --create-home --shell /usr/sbin/nologin ingress \
+    && useradd --uid 2107 --user-group --create-home --shell /usr/sbin/nologin onboarding \
+    && chown app-admin:gateway-pages /data/pages \
+    && chmod 2750 /data/pages \
+    && chown app-admin:app-admin /data/admin-runtime \
+    && chmod 0700 /data/admin-runtime \
+    && chown policy-store:policy-readers /data/policy-pages \
+    && chmod 2750 /data/policy-pages \
+    && chown app-admin:app-admin /data/guest-runtime \
+    && chmod 0700 /data/guest-runtime \
+    && chown root:access-pages-secrets /data/secrets \
+    && chmod 0750 /data/secrets \
+    && chown connector:connector /data/connector-state /data/connector-config \
+    && mkdir -p /data/logs/layer-v-connector \
+    && chown connector:connector /data/logs/layer-v-connector \
+    && chmod 0700 /data/connector-state /data/connector-config /data/logs/layer-v-connector \
+    && ln -s /data/logs/layer-v-connector /var/log/layerv
+
+EXPOSE 8080 8099
+
+STOPSIGNAL SIGTERM
+
+CMD ["python", "/usr/local/bin/app_runner.py"]

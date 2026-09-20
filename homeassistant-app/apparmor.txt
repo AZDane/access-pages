@@ -1,0 +1,102 @@
+#include <tunables/global>
+
+# Enforced least-privilege profile refined through Home Assistant acceptance
+# testing. Access outside this allowlist is denied and recorded by AppArmor.
+profile access_pages flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+
+  # Packaged Python runtime, Gateway sources and fixed child executables.
+  /usr/local/bin/python rix,
+  /usr/local/bin/python3 rix,
+  /usr/local/bin/python3.12 rix,
+  /usr/local/bin/qurl rix,
+  /usr/local/bin/access-pages-guest-endpoint rix,
+  /usr/local/bin/{app_runner,ingress_proxy,onboarding}.py r,
+  /usr/local/lib/** mr,
+  /app/{,**} r,
+
+  # Runtime identity, TLS and resolver configuration.
+  /etc/hosts r,
+  /etc/hostname r,
+  /etc/machine-id r,
+  /etc/nsswitch.conf r,
+  /etc/passwd r,
+  /etc/group r,
+  /etc/resolv.conf r,
+  /etc/ssl/certs/{,**} r,
+  /var/lib/dbus/machine-id r,
+
+  # Home Assistant-owned configuration and Gateway persistence.
+  # qURL CLI 2.6.0 opens the filesystem root read-only, then walks /data and
+  # its native state directory using O_DIRECTORY/O_NOFOLLOW and openat.
+  # This permits opening only the root directory, not reading its files.
+  / r,
+  # Directory write is required only to create the explicitly allowlisted
+  # top-level stores during an upgrade of an existing /data volume. It does
+  # not grant access to arbitrary descendants.
+  /data/ rw,
+  /data/options.json r,
+  /data/app-config.json rwk,
+  /data/.app-config.json.tmp rwk,
+  /data/installation-id rwk,
+  /data/.installation-id.tmp rwk,
+  /data/reset-connection.request rwk,
+  /data/.reset-connection.request.tmp rwk,
+  /data/admin-runtime/{,**} rwk,
+  /data/guest-activity.sqlite3{,-journal,-shm,-wal} rwk,
+  /data/pages/{,**} rwk,
+  /data/policy-pages/{,**} rwk,
+  /data/guest-runtime/{,**} rwk,
+  /data/guest-pages/{,**} rwk,
+  /data/ha-broker-runtime/{,**} rwk,
+  /data/page-capabilities.json rwk,
+  /data/.page-capabilities.json.tmp rwk,
+  /data/access-pages-broker/{,**} rwk,
+  /data/secrets/{,**} rwk,
+  /data/connector-config/{,**} rwk,
+  /data/connector-state/{,**} rwk,
+  /data/page-connectors/{,**} rwk,
+  # The Connector's /var/log/layerv path links to this persistent log tree.
+  /data/logs/{,**} rwk,
+
+  # The inactive guest service owns only its private runtime socket.
+  /run/access-pages/ rw,
+  /run/access-pages/guest/ rw,
+  /run/access-pages/guest/http.sock rw,
+  /run/access-pages/ha-guest/ rw,
+  /run/access-pages/ha-guest/http.sock rw,
+
+  # Python, SQLite and the Connector may create bounded temporary files.
+  /tmp/{,**} rwk,
+  /dev/null rw,
+  /dev/urandom r,
+
+  # HTTP(S), DNS, loopback listeners and Connector transport. Network-family
+  # use outside these ordinary TCP/UDP sockets will appear in the audit log.
+  network inet stream,
+  network inet6 stream,
+  network inet dgram,
+  network inet6 dgram,
+  # Broker-owned native daemon IPC uses an owner-only Unix socket under /data.
+  network unix stream,
+
+  # The root supervisor drops each fixed child into a dedicated unprivileged
+  # UID/GID. Once dropped, ordinary DAC prevents those children from using
+  # these capabilities or reading sibling process credentials.
+  capability setuid,
+  capability setgid,
+  capability chown,
+  capability fowner,
+  # Keep setgid on the private guest and broker socket directories after chown.
+  capability fsetid,
+  capability dac_override,
+  # The root runner supervises fixed children after they drop to dedicated
+  # UIDs. Linux requires CAP_KILL to stop those different-UID children.
+  capability kill,
+
+  # app_runner supervises fixed child processes in the same App container.
+  signal (send, receive) set=(hup, int, kill, term, usr1, usr2, chld, cont),
+
+  # No blanket `file`, `network` or `capability` grants.
+}

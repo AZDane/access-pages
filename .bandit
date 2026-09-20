@@ -1,0 +1,5 @@
+[bandit]
+exclude = ./tests
+# The gateway and its two internal App servers must listen on the container
+# interface so Home Assistant and the qURL connector can reach them.
+skips = B104

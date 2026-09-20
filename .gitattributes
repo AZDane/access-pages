@@ -1,0 +1,2 @@
+# Preserve upstream license and source bytes, including their original whitespace.
+third_party_licenses/** whitespace=-blank-at-eof,-trailing-space
