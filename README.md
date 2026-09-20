@@ -9,6 +9,20 @@ information, and controls they need. They do not need a Home Assistant
 account, password, or VPN access, and no inbound router port needs to be
 opened.
 
+## What it looks like
+
+Access Pages lets you create purpose-specific pages for different guests,
+then share only the controls that guest needs.
+
+<p align="center">
+  <img src="docs/images/admin.png"
+       alt="Access Pages administration showing purpose-specific Home Assistant access pages"
+       width="48%">
+  <img src="docs/images/guest.png"
+       alt="Access Pages guest view showing limited vacation-rental controls"
+       width="32%">
+</p>
+
 ## The challenge
 
 Giving temporary guests access to Home Assistant creates a difficult set
