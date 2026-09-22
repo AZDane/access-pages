@@ -8,6 +8,9 @@
   state read fails. Keep verification independent for each device.
 - Add bounded, privacy-safe request-stage diagnostics across the Guest Gateway,
   guest service, broker, and HA client, separating broker wait from HA latency.
+  Summarize ordinary successful state polls once; retain detailed slow/error
+  evidence. Keep saved identifiers opaque and include the diagnostic dependency
+  in both supported images.
 - Reject queued guest actions after a non-renewable eight-second lifetime from
   Gateway receipt, with another check immediately before HA dispatch. Preserve
   all session, verification, policy, revocation, and authorization-expiry checks.

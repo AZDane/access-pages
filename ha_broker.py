@@ -548,6 +548,12 @@ class GuestHandler(BaseHTTPRequestHandler):
         self._response_status = int(code)
         super().send_response(code, message)
 
+    def end_headers(self):
+        stages = diagnostics.stage_header()
+        if stages:
+            self.send_header(diagnostics.STAGES, stages)
+        super().end_headers()
+
     def _send_page(self, page_id):
         body = json.dumps({"page_id": page_id}).encode("ascii")
         self.send_response(HTTPStatus.OK)
@@ -651,6 +657,7 @@ class GuestHandler(BaseHTTPRequestHandler):
                                  "unavailable" if status and status >= 500 else
                                  "denied" if status and status >= 400 else "success"
                              ))
+            diagnostics.finish()
             diagnostics.CURRENT.reset(token)
 
     def _scoped_POST(self):

@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -15,6 +17,36 @@ import (
 const actionLifetime = 8 * time.Second
 const requestIDHeader = "X-Access-Pages-Request-ID"
 const startedHeader = "X-Access-Pages-Started-Ns"
+const stagesHeader = "X-Access-Pages-Diagnostic-Stages"
+
+type stateTraceKey struct{}
+type stateTrace struct {
+	stages      []int64
+	interesting bool
+}
+
+func captureDiagnosticStages(response *http.Response) error {
+	values := response.Header.Values(stagesHeader)
+	response.Header.Del(stagesHeader) // Internal timing is never a browser-facing header.
+	trace, ok := response.Request.Context().Value(stateTraceKey{}).(*stateTrace)
+	if !ok || len(values) != 1 || len(values[0]) > 80 {
+		return nil
+	}
+	parts := strings.Split(values[0], ",")
+	if len(parts) != 7 || (parts[6] != "0" && parts[6] != "1") {
+		return nil
+	}
+	stages := make([]int64, 6)
+	for i := range stages {
+		value, err := strconv.ParseInt(parts[i], 10, 64)
+		if err != nil || value < -1 || value > 600_000_000 {
+			return nil // Telemetry cannot reject an otherwise valid response.
+		}
+		stages[i] = value
+	}
+	trace.stages, trace.interesting = stages, parts[6] == "1"
+	return nil
+}
 
 // CLOCK_BOOTTIME is shared with Python on this host and includes suspend.
 func bootNanos() (int64, error) {
@@ -46,6 +78,7 @@ type diagnostic struct {
 	Outcome     string  `json:"outcome"`
 	Bytes       int64   `json:"bytes,omitempty"`
 	Dropped     uint64  `json:"dropped_events"`
+	StagesUS    []int64 `json:"stages_us,omitempty"`
 }
 
 var diagnosticQueue = make(chan diagnostic, 256)
@@ -65,7 +98,9 @@ func init() {
 
 func emitDiagnostic(record diagnostic) {
 	record.Component, record.Instance, record.PID = "gateway", diagnosticInstance, os.Getpid()
-	record.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	if record.Timestamp == "" {
+		record.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
+	}
 	record.Dropped = droppedDiagnostics.Load()
 	select {
 	case diagnosticQueue <- record:

@@ -93,11 +93,18 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientContext := r.Context()
 	requestID := opaqueID()
 	operation := guestOperation(r.Method, r.URL.Path, r.URL.Query().Has("bootstrap"))
+	trace := &stateTrace{}
+	r = r.WithContext(context.WithValue(r.Context(), stateTraceKey{}, trace))
 	observed := &observedResponse{ResponseWriter: w}
 	w = observed
 	w.Header().Set(requestIDHeader, requestID)
 	if operation != "asset" && r.URL.Path != "/health" {
-		emitDiagnostic(diagnostic{Event: "guest_request_received", RequestID: requestID, Operation: operation, Outcome: "started"})
+		receipt := diagnostic{Event: "guest_request_received", RequestID: requestID, Operation: operation,
+			Outcome: "started", Timestamp: time.Now().UTC().Format(time.RFC3339Nano)}
+		dropped := droppedDiagnostics.Load()
+		if operation != "state" {
+			emitDiagnostic(receipt)
+		}
 		defer func() {
 			outcome := "success"
 			failure := recover()
@@ -118,10 +125,14 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if observed.status >= 100 {
 				statusClass = strconv.Itoa(observed.status/100) + "xx"
 			}
+			if operation == "state" && (outcome != "success" || ended-started >= int64(250*time.Millisecond) ||
+				trace.interesting || dropped != droppedDiagnostics.Load()) {
+				emitDiagnostic(receipt)
+			}
 			emitDiagnostic(diagnostic{Event: "gateway_response_completed", RequestID: requestID,
 				Operation: operation, ElapsedMS: float64(ended-started) / 1e6,
 				Status: observed.status, StatusClass: statusClass,
-				Outcome: outcome, Bytes: observed.bytes})
+				Outcome: outcome, Bytes: observed.bytes, StagesUS: trace.stages})
 			if failure != nil {
 				panic(failure)
 			}
@@ -204,7 +215,8 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func guestOperation(method, path string, bootstrap bool) string {
 	parts := strings.Split(path, "/")
-	if strings.Contains(path, "/static/") {
+	if method == http.MethodGet && ((len(parts) == 3 && parts[1] == "static") ||
+		(len(parts) == 6 && parts[1] == "g" && parts[4] == "static")) {
 		return "asset"
 	}
 	if len(parts) < 5 || parts[1] != "g" {
@@ -216,14 +228,18 @@ func guestOperation(method, path string, bootstrap bool) string {
 		}
 		return "document"
 	}
-	if len(parts) == 7 && parts[4] == "api" && parts[5] == "access" {
+	if method == http.MethodGet && len(parts) == 7 && parts[4] == "api" && parts[5] == "access" {
 		return "state"
 	}
 	if len(parts) == 9 && parts[4] == "api" && parts[5] == "access" {
-		if parts[7] == "verification" || parts[7] == "camera" {
-			return parts[7]
+		if method == http.MethodGet && parts[7] == "camera" {
+			return "camera"
 		}
 		if method == http.MethodPost {
+			// Payload validation in the guest service resolves these ambiguous routes.
+			if parts[7] == "verification" && (parts[8] == "send" || parts[8] == "verify") {
+				return "other"
+			}
 			return "action"
 		}
 	}
@@ -233,6 +249,7 @@ func guestOperation(method, path string, bootstrap bool) string {
 func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httputil.ReverseProxy {
 	upstream := &url.URL{Scheme: "http", Host: "guest-service"}
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	proxy.ModifyResponse = captureDiagnosticStages
 	originalDirector := proxy.Director
 	proxy.Director = func(request *http.Request) {
 		originalDirector(request)

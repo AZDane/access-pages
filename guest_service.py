@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import http.client
 import mimetypes
@@ -200,6 +201,12 @@ class GuestHandler(HealthHandler):
     def send_error(self, code, message=None, explain=None) -> None:
         self._json(code, {"error": "Guest request denied"})
 
+    def end_headers(self) -> None:
+        stages = diagnostics.stage_header()
+        if stages:
+            self.send_header(diagnostics.STAGES, stages)
+        super().end_headers()
+
     def _send(self, status: int, body: bytes, content_type: str,
               headers: dict[str, str] | None = None) -> None:
         try:
@@ -284,6 +291,7 @@ class GuestHandler(HealthHandler):
             diagnostics.emit("guest_service_received", "guest_service")
             self._guest_scoped(method)
         finally:
+            diagnostics.finish()
             diagnostics.CURRENT.reset(token)
 
     def _guest_scoped(self, method: str) -> None:
@@ -523,6 +531,18 @@ def _broker_page_identity(capability: str, claimed_page: str) -> tuple[int, str]
 
 
 def _broker_guest_auth(path: str, payload: dict) -> tuple[int, dict]:
+    timing = diagnostics.CURRENT.get()
+    operation = {"/broker-action": "action", "/broker-camera": "camera",
+                 "/broker-verification-challenge": "verification",
+                 "/broker-verification-verify": "verification"}.get(path)
+    if timing and operation:
+        # Refine ambiguous public routes only after existing payload validation.
+        diagnostics.CURRENT.set(replace(timing, operation=operation,
+                                        action_deadline=path == "/broker-action"))
+    if path == "/broker-action":
+        if timing is None:
+            raise ValueError("Missing action request lifetime")
+        diagnostics.action_remaining(20)
     try:
         return _broker_guest_auth_scoped(path, payload)
     except (OSError, http.client.HTTPException) as error:
@@ -621,6 +641,7 @@ def _broker_guest_auth_scoped(path: str, payload: dict) -> tuple[int, dict]:
                          duration_ns=diagnostics.clock_ns() - rpc_started)
         response = http.client.HTTPResponse(connection)
         response.begin()
+        diagnostics.receive_stages(response.getheader(diagnostics.STAGES))
         if response.status in (400, 401, 403, 404, 429, 502, 503):
             raw = response.read(1025)
             if len(raw) > 1024:

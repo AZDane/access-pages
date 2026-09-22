@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -320,5 +322,80 @@ func TestActionTimingStartsAtGatewayAndCannotBeForged(t *testing.T) {
 		if response.Code != 204 || !ids[response.Header().Get(requestIDHeader)] {
 			t.Fatal("response lost correlation")
 		}
+	}
+}
+
+func TestOpaqueRouteIdentifiersAndActualAssets(t *testing.T) {
+	for _, page := range []string{"static", "camera", "api", "health", "verification", "g", "access"} {
+		root := "/g/" + page + "/grant_mmmmmmmmmmmmmmmm/"
+		api := root + "api/access/" + page
+		for path, expected := range map[string]string{root: "document", api: "state", root + "static/access.js": "asset", "/static/access.js": "asset"} {
+			if !allowedGuestServicePath(page, path) || guestOperation("GET", path, false) != expected {
+				t.Fatalf("%s: unexpected classification", path)
+			}
+		}
+		for _, resource := range []string{"static", "camera", "state", "action", "api", "health", "verification"} {
+			if guestOperation("GET", api+"/camera/"+resource, false) != "camera" {
+				t.Fatal("camera route not recognized")
+			}
+			for _, action := range []string{"static", "camera", "state", "action", "turn_on"} {
+				if got := guestOperation("POST", api+"/"+resource+"/"+action, false); got != "action" {
+					t.Fatalf("%s/%s: %s", resource, action, got)
+				}
+			}
+		}
+		for _, action := range []string{"send", "verify"} {
+			path := api + "/verification/" + action
+			if !allowedGuestServicePath(page, path) || guestOperation("POST", path, false) != "other" {
+				t.Fatal("ambiguous route must await payload validation")
+			}
+		}
+	}
+}
+
+func TestDiagnosticStagesAreNumericPrivateAndNonAuthorizing(t *testing.T) {
+	for _, header := range []string{"1,2,3,4,5,6,0", "cookie=private", strings.Repeat("1,", 10000), "1,2,3,4,5,600000001,1"} {
+		trace := &stateTrace{}
+		request := httptest.NewRequest("GET", "/", nil)
+		request = request.WithContext(context.WithValue(request.Context(), stateTraceKey{}, trace))
+		response := &http.Response{Request: request, Header: make(http.Header)}
+		response.Header.Set(stagesHeader, header)
+		if captureDiagnosticStages(response) != nil {
+			t.Fatal("diagnostics changed request outcome")
+		}
+		if response.Header.Get(stagesHeader) != "" {
+			t.Fatal("internal stages leaked downstream")
+		}
+		if header == "1,2,3,4,5,6,0" {
+			if len(trace.stages) != 6 || trace.stages[5] != 6 {
+				t.Fatal("valid timing lost")
+			}
+		} else if trace.stages != nil {
+			t.Fatal("invalid diagnostic accepted")
+		}
+	}
+}
+
+type disconnectedWriter struct{ *httptest.ResponseRecorder }
+
+func (w disconnectedWriter) Write(_ []byte) (int, error) { return 0, syscall.EPIPE }
+
+func TestStateDownstreamDisconnectRetainsUpstreamStages(t *testing.T) {
+	proxy := newGuestServiceProxy("unused", 0, 0, 0)
+	var trace *stateTrace
+	proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		trace = r.Context().Value(stateTraceKey{}).(*stateTrace)
+		headers := make(http.Header)
+		headers.Set(stagesHeader, "10,20,30,40,50,10,0")
+		return &http.Response{Request: r, StatusCode: 200, Header: headers, Body: io.NopCloser(strings.NewReader("state"))}, nil
+	})
+	handler := &endpoint{pageID: "static", capability: "synthetic", proxy: proxy, slots: make(chan struct{}, maxActiveGuestRequests)}
+	writer := disconnectedWriter{httptest.NewRecorder()}
+	handler.ServeHTTP(writer, httptest.NewRequest("GET", "/g/static/grant_mmmmmmmmmmmmmmmm/api/access/static", nil))
+	if trace == nil || len(trace.stages) != 6 || trace.stages[4] != 50 {
+		t.Fatal("late downstream disconnect lost successful upstream evidence")
+	}
+	if writer.Header().Get(stagesHeader) != "" {
+		t.Fatal("private timing exposed")
 	}
 }

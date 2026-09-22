@@ -5,6 +5,12 @@ This is a review candidate, not a published release. The comparison baseline is
 the candidate. Merge, release, App Store synchronization, LayerV changes and the
 Online lessons audit are outside this candidate's authorization.
 
+The cleanup candidate supersedes `cca408d4e72ed5469aed939d5c70a835822d4ee8`.
+Its only additional changes correct opaque identifier classification, include
+the diagnostic dependency in the root image, and reduce normal polling logs
+while preserving slow/error stage evidence. Existing routing/policy validation
+and session persistence are unchanged; there are no new reserved identifiers.
+
 ## Source scope
 
 - **A:** Guest Service skips zero-length body writes, preserves 303/Location and
@@ -32,17 +38,18 @@ excluding tests, documentation, Docker packaging and version metadata:
 
 | Production file | Added | Removed |
 | --- | ---: | ---: |
-| `cmd/guest-endpoint/main.go` | 88 | 3 |
-| `cmd/guest-endpoint/timing_linux.go` (new) | 101 | 0 |
-| `guest_diagnostics.py` (new) | 223 | 0 |
-| `guest_service.py` | 68 | 9 |
+| `cmd/guest-endpoint/main.go` | 105 | 3 |
+| `cmd/guest-endpoint/timing_linux.go` (new) | 136 | 0 |
+| `guest_diagnostics.py` (new) | 293 | 0 |
+| `guest_service.py` | 89 | 9 |
 | `ha.py` | 13 | 2 |
-| `ha_broker.py` | 47 | 0 |
+| `ha_broker.py` | 54 | 0 |
 | `static/access.js` | 11 | 3 |
-| **Total** | **551** | **17** |
+| **Total** | **701** | **17** |
 
-Net production change: **+534 lines**. Packaging/version metadata adds three
-lines and removes three in `Dockerfile.ha-app` and `config.yaml`. The other
+Net production change: **+684 lines**. Relative to superseded `cca408d4`, the
+production cleanup is **+169/-19**, net **+150** lines. Packaging/version metadata
+adds four lines and removes three across both Dockerfiles and `config.yaml`. The other
 changed files are the changelog, this review/acceptance document, Go tests and
 Python/frontend regression tests. `static/admin.js`, `verification.py`,
 `layerv.py` and `layerv_broker.py` have no source delta.
@@ -62,7 +69,12 @@ The absolute action deadline is always `original_start + 8 seconds`. It is
 checked on Guest Service entry, at broker dequeue, after policy/session
 revalidation and again at the HA HTTP boundary. Broker connection/read and HA
 HTTP timeouts are capped by the remaining budget; a new RPC never renews it.
-The Gateway also stops its local action proxy request at eight seconds.
+The Gateway also stops unambiguous action proxy requests at eight seconds.
+`verification/send` and `verification/verify` are ambiguous until existing payload
+validation selects either verification or a saved action. Guest Service refines
+the operation from that actual RPC route, preserving the original Gateway clock.
+The broker's actual action route enables the deadline independently of diagnostic
+labels; unknown labels cannot reject a valid action or remove its deadline.
 Expired queued work cannot initiate an HA service POST. Recovery only polls
 state; another action requires another deliberate command.
 
@@ -87,6 +99,35 @@ bounded 256-record queue and a background output worker. Request handling never
 waits for log output; saturation drops records and increments `dropped_events`.
 There is no sampling. Asset and health noise is omitted. Logging windows can be
 incomplete because of drops, process exit/restart, or external log truncation.
+
+Ordinary successful state polls emit **one Gateway completion record**. Python
+holds at most 32 sanitized records per request, flushing detailed history for
+elapsed time >=250 ms, broker wait >=100 ms, failures/denials/disconnects, or a
+change in the process's drop counter. Actions, verification and session transitions
+retain detailed logging. No output I/O occurs on request threads.
+
+A fixed, bounded numeric internal response header carries five stage offsets and
+broker wait through the existing verified Unix peers. The Gateway consumes and
+removes it; malformed telemetry is ignored and cannot reject a response. The
+completion's `stages_us` array contains, in order: Guest Service receipt, RPC sent,
+broker handling start, HA request start, HA completion (microseconds since original
+Gateway receipt), and broker wait duration in microseconds. `-1` means unavailable.
+The last element is queue/connect/IPC time, **not HA latency**. This compact trace
+preserves upstream stage evidence even if a fast successful backend is followed
+by a slow or disconnected downstream Gateway write. Gateway receipt is represented
+by elapsed time zero; its separate receipt record is retained for interesting
+state requests with its original timestamp. Buffered records can arrive out of
+order: reconstruct using request ID and monotonic elapsed time, not log line order.
+
+Measured across 116 ordinary polls: **1 record, median 389 bytes** (387–395), versus
+14 records / 4,453 bytes before cleanup: **91.3% less**, about **0.445 MiB/hour**
+or **10.68 MiB/day** per continuously visible device at three-second polling.
+A deliberately slow request retained 14 records / 4,548 bytes; a 10-second HA
+timeout retained 13 / 4,165, including all required stage markers. A blocked output
+worker test accepted 10,000 nonblocking enqueue attempts in approximately 10 ms,
+dropped 9,999 with a one-slot test queue, and reported the cumulative drop count
+after recovery. Production queue capacity remains 256; detailed logs remain
+best-effort under output failure/backpressure.
 
 Common fields: `event`, `component`, `instance_id`, `process_id`, `request_id`,
 `operation`, UTC `timestamp`, monotonic `elapsed_ms`, `outcome`, `dropped_events`.
@@ -120,9 +161,11 @@ session hash or credential. Internal clock headers are not browser credentials.
 
 Interpretation requires a complete timeline, not an isolated missing line:
 
-- Browser request with no Gateway receipt in a complete, continuously observed
-  logging window: investigate the pre-Gateway path with LayerV. Log loss must
-  be excluded; this alone does not identify an access controller.
+- Browser request with no Gateway record in a complete, continuously observed
+  logging window: investigate the pre-Gateway path with LayerV. Ordinary polls
+  have a completion summary instead of a separate receipt line. Wait for pending
+  request handling to finish; exclude log loss and process termination before
+  inferring non-arrival. This alone does not identify an access controller.
 - Gateway receipt followed by late Guest Service receipt: local proxy/service
   delay. Use Connector-health duration and RPC markers for the following gap.
 - Long `broker_wait_ms`: local queue/IPC delay; HA spans identify the work
@@ -134,13 +177,17 @@ Interpretation requires a complete timeline, not an isolated missing line:
 
 ## Local candidate validation
 
-- All **361 Python tests** pass, including real Unix disconnect tests for 303,
+- All **366 Python tests** pass (the existing 361 plus five focused regressions), including real Unix disconnect tests for 303,
   normal state and error responses; deadline-at-dequeue/final-boundary tests;
   metadata validation, RPC lifetime preservation, redaction, bounded logging,
   per-device authorization and frontend verification recovery.
 - Gateway tests pass with the Go race detector; the Gateway compiles for ARM64.
   Ruff, Bandit and JavaScript syntax checks pass.
-- The local amd64 image builds. The existing packaged real-UID security probe
+- Both supported images build, import the required production modules in isolation,
+  and serve a real local health request with the app's broker configuration.
+  Their 21 shared Python modules match byte-for-byte; only the HA image additionally
+  needs `guest_service.py`. Import-dependency closure is checked, with no test-only
+  modules packaged. The existing packaged real-UID security probe
   passes, including permission/socket boundaries, verification, revocation,
   corrupt data, service restart and outage handling.
 - **20 Chrome runtime scenario groups** pass through the packaged Gateway,
@@ -148,8 +195,8 @@ Interpretation requires a complete timeline, not an isolated missing line:
   repeated pairs of fresh devices, legacy consumed reusable grants and original
   sessions, single-use links, expiry, verification isolation, revocation,
   delayed initial/polled state, automatic recovery and action timing.
-- A further six repeated device pairs run with delayed 303 headers. Across the
-  complete final run, **103 real 303 responses** pause 250 ms after header flush;
+- A further six repeated device pairs run with delayed 303 headers. In the redirect
+  acceptance run, real 303 responses pause 250 ms after header flush;
   redirects/cookies continue working with no BrokenPipe traceback or secondary
   503. Entirely withheld redirects are tested separately: reusable manual retry
   works and single-use consumption remains enforced.
@@ -157,15 +204,21 @@ Interpretation requires a complete timeline, not an isolated missing line:
   behind about 11.8 seconds of broker work produces **zero new HA service
   POSTs**. Revocation and authorization expiry while queued also produce zero.
   Recovery never replays actions; a fresh deliberate command succeeds.
-- All **3,848 diagnostic records / 370 request IDs** pass strict field/schema
+- All **2,338 diagnostic records / 369 request IDs** pass strict field/schema
   and private-sentinel checks, with no dropped events. Full cross-process stages
   are correlated for state and action requests. Controlled broker wait reaches
-  11.804 seconds while a separate HA span reaches 10.010 seconds, demonstrating
+  11.810 seconds while a separate HA span reaches 10.008 seconds, demonstrating
   that those measurements are distinct.
 - A buffering proxy deliberately holds an action before Gateway receipt and
-  hides browser cancellation. The Gateway receives it 11.534 seconds after the
+  hides browser cancellation. The Gateway receives it 11.529 seconds after the
   click, then dispatches within 0.007 seconds. This is a passing **limitation
   test**, not a claim of universal cancellation after browser timeout.
+- A packaged identifier matrix executes **72 authorized HA actions** across page
+  IDs `static`, `camera`, `api`, `health`; resource/action names `static`, `camera`,
+  `state`, `action`; and the ambiguous `verification/send` and `verification/verify`
+  saved actions. Actual camera and static routes pass. Unit coverage also searches
+  `verification`, `g`, `access`, `api`, and `health` identifier positions. Existing
+  route validation remains unchanged.
 
 These are local packaged-runtime results, not live LayerV acceptance and not
 proof of the historical incident's cause. Runtime fixtures, results, source

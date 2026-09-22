@@ -795,10 +795,15 @@ class BrokerGuestSessionTests(unittest.TestCase):
                            "parameters": {}, "proximity": None}).encode()
         headers = f"X-Page-Capability: {self.cap_a}\r\nX-Access-Pages-Page-ID: page-a\r\n"
         self.assertEqual(self.raw_request("/guest/v1/action", headers, body), 400)
-        downgraded = diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns(), "state")
+        downgraded = diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns() - 9_000_000_000, "state")
         self.assertEqual(self.raw_request("/guest/v1/action", headers +
-                                         downgraded.headers(diagnostics.clock_ns()), body), 400)
+                                         downgraded.headers(diagnostics.clock_ns()), body), 503)
         ha_broker.HA_CLIENT.call_service.assert_not_called()
+        # A diagnostic label cannot reject a valid authorized action either.
+        unknown = diagnostics.RequestTiming("b" * 32, diagnostics.clock_ns(), "other")
+        self.assertEqual(self.raw_request("/guest/v1/action", headers +
+                                         unknown.headers(diagnostics.clock_ns()), body), 200)
+        ha_broker.HA_CLIENT.call_service.assert_called_once()
 
     def test_allowed_action_dispatches_only_policy_service_without_proximity(self):
         session = self.exchange(
