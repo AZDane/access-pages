@@ -1,5 +1,5 @@
 name: Access Pages
-version: "0.1.123"
+version: "0.1.124"
 slug: access_pages
 description: Share selected Home Assistant controls through secure, revocable, expiring guest links
 url: https://github.com/AZDane/access-pages
