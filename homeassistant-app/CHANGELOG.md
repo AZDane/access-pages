@@ -7,6 +7,8 @@
   consumption, grant expiry, revocation, and separate email verification on each
   device.
 - Allow a valid reusable invitation to replace a stale browser session cookie.
+- Replace the obsolete ten-minute Connector warm-up message with a simple page
+  save confirmation.
 - Clarify that page endpoints and the shared Connector stay running, and document
   the resource allocation tradeoff between guest and page isolation when minting
   invitations.
