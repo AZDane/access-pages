@@ -22,6 +22,7 @@ os.environ.setdefault("HA_BASE_URL", "http://ha.invalid")
 os.environ.setdefault("HA_TOKEN", "synthetic-ha-token")
 os.environ.setdefault("ADMIN_TOKEN", "synthetic-owner-token")
 
+import guest_diagnostics as diagnostics
 import ha_broker
 import server
 from activity import GuestActivityStore
@@ -150,11 +151,13 @@ class BrokerGuestSessionTests(unittest.TestCase):
             patcher.stop()
         self.temporary.cleanup()
 
-    def request(self, route, capability, page_id, body):
+    def request(self, route, capability, page_id, body, *, started_ns=None):
         connection = socket.socket(socket.AF_UNIX)
         try:
             connection.connect(str(self.socket_path))
             payload = json.dumps(body).encode()
+            timing = diagnostics.RequestTiming("a" * 32, started_ns or diagnostics.clock_ns(),
+                                               "action" if route.endswith("/action") else "other")
             request = (
                 f"POST {route} HTTP/1.1\r\n"
                 "Host: broker\r\n"
@@ -162,6 +165,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 "X-Broker-Token: synthetic-admin-broker-token\r\n"
                 f"X-Page-Capability: {capability}\r\n"
                 f"X-Access-Pages-Page-ID: {page_id}\r\n"
+                f"{timing.headers(diagnostics.clock_ns())}"
                 f"Content-Length: {len(payload)}\r\n\r\n"
             ).encode() + payload
             connection.sendall(request)
@@ -280,7 +284,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
             }).encode()
             headers = (f"X-Page-Capability: {self.cap_a}\r\n"
                        "X-Access-Pages-Page-ID: page-a\r\n"
-                       f"X-Forwarded-For: 203.0.113.{index + 1}\r\n")
+                       f"X-Forwarded-For: 203.0.113.{index + 1}\r\n"
+                       + diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns(),
+                                                   "action").headers(diagnostics.clock_ns()))
             self.assertEqual(self.raw_request("/guest/v1/action", headers, body),
                              200 if index < 12 else 429)
         self.assertEqual(ha_broker.HA_CLIENT.call_service.call_count, 12)
@@ -754,6 +760,45 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.request("/guest/v1/page-view", self.cap_a, "page-a", {
             "grant_id": self.grant_a, "session": session,
         })[0], 503)
+
+    def test_action_lifetime_checked_at_dequeue_and_after_preparation(self):
+        session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        body = {"grant_id": self.grant_a, "session": session, "resource_id": "garden",
+                "action_id": "turn_on", "parameters": {}, "proximity": None}
+        now = diagnostics.clock_ns()
+        with patch("ha_broker._guest_action", wraps=ha_broker._guest_action) as dispatch:
+            status, _ = self.request("/guest/v1/action", self.cap_a, "page-a", body,
+                                     started_ns=now - 8_100_000_000)
+            self.assertEqual(status, 503)
+            dispatch.assert_not_called()
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
+
+        original = ha_broker._service_data
+        current = [now]
+        def delayed_preparation(*args):
+            result = original(*args)
+            current[0] += 8_000_000_000
+            return result
+        with (patch("guest_diagnostics.clock_ns", side_effect=lambda: current[0]),
+              patch("ha_broker._service_data", side_effect=delayed_preparation)):
+            self.assertEqual(self.request("/guest/v1/action", self.cap_a, "page-a", body,
+                                          started_ns=now)[0], 503)
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
+        # A new, explicit command has its own lifetime and can still succeed.
+        self.assertEqual(self.action(session)[0], 200)
+        ha_broker.HA_CLIENT.call_service.assert_called_once()
+
+    def test_action_requires_trusted_lifetime_and_cannot_downgrade_operation(self):
+        session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        body = json.dumps({"grant_id": self.grant_a, "session": session,
+                           "resource_id": "garden", "action_id": "turn_on",
+                           "parameters": {}, "proximity": None}).encode()
+        headers = f"X-Page-Capability: {self.cap_a}\r\nX-Access-Pages-Page-ID: page-a\r\n"
+        self.assertEqual(self.raw_request("/guest/v1/action", headers, body), 400)
+        downgraded = diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns(), "state")
+        self.assertEqual(self.raw_request("/guest/v1/action", headers +
+                                         downgraded.headers(diagnostics.clock_ns()), body), 400)
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
 
     def test_allowed_action_dispatches_only_policy_service_without_proximity(self):
         session = self.exchange(

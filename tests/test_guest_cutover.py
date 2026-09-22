@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import guest_diagnostics as diagnostics
 import guest_service
 
 
@@ -62,6 +63,8 @@ class GuestCutoverTests(unittest.TestCase):
         headers = {
             "X-Access-Pages-Page-ID": page_id,
             "X-Page-Capability": capability,
+            diagnostics.REQUEST_ID: "a" * 32,
+            diagnostics.STARTED_NS: str(diagnostics.clock_ns()),
         }
         if cookie:
             headers["Cookie"] = "access_pages_guest=" + cookie

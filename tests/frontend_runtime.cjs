@@ -314,11 +314,48 @@ async function testVerificationPause() {
   assert.deepEqual(fixture.clock.delays(), []);
 }
 
+async function testVerificationRecovery() {
+  for (const stateStatus of [200, 401]) {
+    let reads = 0;
+    const fixture = harness("access", {
+      async verification() { return jsonResponse(200, {status: "session_ready"}); },
+      async fetchPage() {
+        if (++reads === 1) throw new Error("Connection timed out.");
+        return jsonResponse(stateStatus, {resources: [], title: "Fixture", error: "Access ended"});
+      },
+    });
+    vm.runInContext("currentPageId = 'fixture'; verificationPending = true; render = () => {};", fixture.context);
+    fixture.elements.get("verification-dialog").open = true;
+    fixture.elements.get("verification-code").value = "123456";
+    await fixture.elements.get("verification-form").listeners.get("submit")({preventDefault() {}});
+    assert.equal(fixture.elements.get("verification-dialog").open, false);
+    assert.match(fixture.elements.get("status").textContent, /Connection timed out.*Controls are unavailable/);
+    assert.equal(vm.runInContext("connectionUnavailable", fixture.context), true);
+    assert.deepEqual(fixture.clock.delays(), [6000]);
+    await fixture.clock.advance(6000);
+    assert.equal(reads, 2);
+    assert.equal(vm.runInContext("accessEnded", fixture.context), stateStatus === 401);
+    assert.deepEqual(fixture.clock.delays(), stateStatus === 401 ? [] : [3000]);
+  }
+  const denied = harness("access", {
+    async verification() { return jsonResponse(401, {error: "Invalid code"}); },
+    async fetchPage() { throw new Error("Must remain gated"); },
+  });
+  vm.runInContext("currentPageId = 'fixture'; verificationPending = true;", denied.context);
+  denied.elements.get("verification-dialog").open = true;
+  denied.elements.get("verification-code").value = "123456";
+  await denied.elements.get("verification-form").listeners.get("submit")({preventDefault() {}});
+  assert.equal(denied.elements.get("verification-dialog").open, true);
+  assert.equal(vm.runInContext("verificationPending", denied.context), true);
+  assert.deepEqual(denied.clock.delays(), []);
+}
+
 (async () => {
   await testAdminReset();
   await testGuestVisibility();
   await testRevocationOnReturn();
   await testUnavailableOnReturn();
   await testVerificationPause();
+  await testVerificationRecovery();
   console.log("Frontend runtime reset and visibility tests passed");
 })().catch((error) => { console.error(error); process.exitCode = 1; });

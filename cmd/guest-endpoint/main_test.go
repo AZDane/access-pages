@@ -282,3 +282,43 @@ func TestGuestActiveRequestCeilingRecovers(t *testing.T) {
 		t.Fatalf("capacity did not return: %d", result.Code)
 	}
 }
+
+func TestActionTimingStartsAtGatewayAndCannotBeForged(t *testing.T) {
+	upstream, _ := url.Parse("http://guest-service")
+	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	ids := make(map[string]bool)
+	proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		id := r.Header.Get(requestIDHeader)
+		if len(id) != 32 || ids[id] || id == strings.Repeat("a", 32) {
+			t.Fatal("request ID was reused or trusted from client")
+		}
+		ids[id] = true
+		start, err := strconv.ParseInt(r.Header.Get(startedHeader), 10, 64)
+		now, _ := bootNanos()
+		if err != nil || start <= 0 || now-start < 0 || now-start > int64(time.Second) {
+			t.Fatal("request lifetime did not originate at this Gateway")
+		}
+		deadline, ok := r.Context().Deadline()
+		if !ok || time.Until(deadline) > actionLifetime || time.Until(deadline) < 7*time.Second {
+			t.Fatal("action has no eight-second Gateway budget")
+		}
+		if r.Header.Get("X-Access-Pages-Operation") != "" || r.Header.Get("X-Access-Pages-Rpc-Started-Ns") != "" {
+			t.Fatal("client forged internal timing context")
+		}
+		return &http.Response{StatusCode: 204, Header: make(http.Header), Body: http.NoBody}, nil
+	})
+	handler := &endpoint{pageID: "airbnb", capability: "page-secret", proxy: proxy,
+		slots: make(chan struct{}, maxActiveGuestRequests)}
+	for range 2 {
+		r := httptest.NewRequest(http.MethodPost, "/g/airbnb/grant_mmmmmmmmmmmmmmmm/api/access/airbnb/light/turn_on", strings.NewReader("{}"))
+		r.Header.Set(requestIDHeader, strings.Repeat("a", 32))
+		r.Header.Set(startedHeader, "9999999999999999999")
+		r.Header.Set("X-Access-Pages-Rpc-Started-Ns", "9999999999999999999")
+		r.Header.Set("X-Access-Pages-Operation", "state")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, r)
+		if response.Code != 204 || !ids[response.Header().Get(requestIDHeader)] {
+			t.Fatal("response lost correlation")
+		}
+	}
+}

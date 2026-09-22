@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.125
+
+- Skip empty redirect-body writes and end response handling when a peer
+  disconnects, preserving the session cookie and 303 redirect headers.
+- Resume status polling when email verification succeeds but the following
+  state read fails. Keep verification independent for each device.
+- Add bounded, privacy-safe request-stage diagnostics across the Guest Gateway,
+  guest service, broker, and HA client, separating broker wait from HA latency.
+- Reject queued guest actions after a non-renewable eight-second lifetime from
+  Gateway receipt, with another check immediately before HA dispatch. Preserve
+  all session, verification, policy, revocation, and authorization-expiry checks.
+  Already-dispatched actions cannot be recalled and are never replayed.
+- The historical 0.1.124 first-use timeout remains unexplained. These changes do
+  not establish or fix its cause, and do not change LayerV behavior.
+
 ## 0.1.124
 
 - Allow reusable guest invitations to open on multiple devices with independent

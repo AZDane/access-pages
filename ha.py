@@ -5,6 +5,7 @@ from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+import guest_diagnostics as diagnostics
 
 
 CURATED_ACTIONS = {
@@ -412,7 +413,14 @@ class HomeAssistantClient:
 
         try:
             # The base URL is administrator-controlled Home Assistant config.
-            with urlopen(request, timeout=self.timeout) as response:  # nosec B310
+            operation = ("state_read" if path == "/api/states" else
+                         "service_call" if method == "POST" and path.startswith("/api/services/")
+                         else "other")
+            diagnostics.action_remaining(self.timeout)
+            with diagnostics.ha_request(operation) as trace, urlopen(  # nosec B310
+                request, timeout=diagnostics.action_remaining(self.timeout),
+            ) as response:
+                trace["status"] = response.status
                 body = response.read()
                 if not body:
                     return {}
@@ -475,7 +483,10 @@ class HomeAssistantClient:
             },
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:  # nosec B310
+            with diagnostics.ha_request("camera_read") as trace, urlopen(  # nosec B310
+                request, timeout=diagnostics.action_remaining(self.timeout),
+            ) as response:
+                trace["status"] = response.status
                 content_type = response.headers.get_content_type().lower()
                 if content_type not in CAMERA_IMAGE_TYPES:
                     raise HomeAssistantError(

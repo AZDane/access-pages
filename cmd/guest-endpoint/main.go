@@ -89,6 +89,44 @@ func allowedGuestServicePath(pageID, path string) bool {
 }
 
 func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	started, clockError := bootNanos()
+	clientContext := r.Context()
+	requestID := opaqueID()
+	operation := guestOperation(r.Method, r.URL.Path, r.URL.Query().Has("bootstrap"))
+	observed := &observedResponse{ResponseWriter: w}
+	w = observed
+	w.Header().Set(requestIDHeader, requestID)
+	if operation != "asset" && r.URL.Path != "/health" {
+		emitDiagnostic(diagnostic{Event: "guest_request_received", RequestID: requestID, Operation: operation, Outcome: "started"})
+		defer func() {
+			outcome := "success"
+			failure := recover()
+			if observed.status >= 400 {
+				outcome = "denied"
+			}
+			if observed.status >= 500 {
+				outcome = "unavailable"
+			}
+			if observed.failed || clientContext.Err() != nil || failure != nil {
+				outcome = "disconnected"
+			}
+			ended, _ := bootNanos()
+			if operation == "action" && ended-started >= int64(actionLifetime) {
+				outcome = "timeout"
+			}
+			statusClass := ""
+			if observed.status >= 100 {
+				statusClass = strconv.Itoa(observed.status/100) + "xx"
+			}
+			emitDiagnostic(diagnostic{Event: "gateway_response_completed", RequestID: requestID,
+				Operation: operation, ElapsedMS: float64(ended-started) / 1e6,
+				Status: observed.status, StatusClass: statusClass,
+				Outcome: outcome, Bytes: observed.bytes})
+			if failure != nil {
+				panic(failure)
+			}
+		}()
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -96,6 +134,10 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if clockError != nil {
+		http.Error(w, "guest service unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	// Host is separate from Header in net/http but counted by the old gateway.
@@ -145,7 +187,47 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Header.Set("X-Access-Pages-Page-ID", e.pageID)
 	r.Header.Set("X-Page-Capability", e.capability)
+	r.Header.Set(requestIDHeader, requestID)
+	r.Header.Set(startedHeader, strconv.FormatInt(started, 10))
+	if operation == "action" {
+		now, err := bootNanos()
+		if err != nil || now-started >= int64(actionLifetime) {
+			http.Error(w, "guest request timed out", http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), actionLifetime-time.Duration(now-started))
+		defer cancel()
+		r = r.WithContext(ctx)
+	}
 	e.proxy.ServeHTTP(w, r)
+}
+
+func guestOperation(method, path string, bootstrap bool) string {
+	parts := strings.Split(path, "/")
+	if strings.Contains(path, "/static/") {
+		return "asset"
+	}
+	if len(parts) < 5 || parts[1] != "g" {
+		return "other"
+	}
+	if len(parts) == 5 && parts[4] == "" {
+		if bootstrap {
+			return "bootstrap"
+		}
+		return "document"
+	}
+	if len(parts) == 7 && parts[4] == "api" && parts[5] == "access" {
+		return "state"
+	}
+	if len(parts) == 9 && parts[4] == "api" && parts[5] == "access" {
+		if parts[7] == "verification" || parts[7] == "camera" {
+			return parts[7]
+		}
+		if method == http.MethodPost {
+			return "action"
+		}
+	}
+	return "other"
 }
 
 func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httputil.ReverseProxy {
@@ -197,9 +279,12 @@ func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httput
 			return conn, nil
 		},
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
-		log.Printf("guest service unavailable")
-		http.Error(w, "guest service unavailable", http.StatusBadGateway)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, _ error) {
+		status := http.StatusBadGateway
+		if errors.Is(r.Context().Err(), context.DeadlineExceeded) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, "guest service unavailable", status)
 	}
 	return proxy
 }
