@@ -14,9 +14,11 @@ credentials, and relevant sanitized logs in the private report.
 
 ## Security model
 
-Invitations use scoped, one-time bootstrap consumption and grant-bound Secure,
-HttpOnly sessions. Protected operations check the current grant, and final HA
-dispatch checks expiry.
+Invitations establish scoped, grant-bound Secure, HttpOnly sessions. Single-use
+invitations consume their bootstrap once; renewable invitations can establish
+independent sessions on multiple browsers until the grant expires or is revoked.
+Email verification, when required, is bound to each session. Protected operations
+check the current grant, and final HA dispatch checks expiry.
 Local revocation precedes durable upstream cleanup. Default per-guest isolation
 deletes the guest's LayerV resource, which also revokes its qURL; optional
 per-page isolation deletes only the individual qURL and cannot promise

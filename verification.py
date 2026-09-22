@@ -93,11 +93,13 @@ class VerificationStore:
                 """)
             self._initialized = True
 
-    def consume_bootstrap(self, page_id, grant_id, secret, expected_hash, grant_expires):
-        """Exchange an invitation once; verification remains a separate gate.
+    def consume_bootstrap(self, page_id, grant_id, secret, expected_hash,
+                          grant_expires, *, one_time_use=True):
+        """Exchange an invitation for a session, enforcing its reuse policy.
 
         The caller must load the current active grant, and must recheck that
         grant on every request. Neither a route nor this cookie is a grant.
+        Verification remains a separate gate for each session.
         """
         actual = sha256(secret.encode()).hexdigest()
         if not secret or not hmac.compare_digest(actual, expected_hash):
@@ -106,19 +108,21 @@ class VerificationStore:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             now = _timestamp(_now())
-            # Admission can be renewed with the same qURL. This cookie identifies
-            # its original browser until grant expiry; OTP authorization retains
-            # its separate twelve-hour limit below.
+            # Each cookie identifies one browser until grant expiry; OTP
+            # authorization retains its separate twelve-hour limit below.
             expires = _timestamp(grant_expires)
             if expires <= now:
                 raise ValueError("The invitation is invalid or already consumed")
-            try:
-                db.execute(
-                    "INSERT INTO consumed_bootstraps VALUES(?,?,?)",
-                    (actual, page_id, grant_id),
-                )
-            except sqlite3.IntegrityError as error:
-                raise ValueError("The invitation is invalid or already consumed") from error
+            if one_time_use:
+                try:
+                    db.execute(
+                        "INSERT INTO consumed_bootstraps VALUES(?,?,?)",
+                        (actual, page_id, grant_id),
+                    )
+                except sqlite3.IntegrityError as error:
+                    raise ValueError("The invitation is invalid or already consumed") from error
+            # Older versions consumed reusable invitations too. Ignore those
+            # markers for reusable grants so existing links work after upgrade.
             token = secrets.token_urlsafe(32)
             db.execute(
                 "INSERT INTO guest_sessions VALUES(?,?,?,?)",

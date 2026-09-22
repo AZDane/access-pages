@@ -864,6 +864,7 @@ def _exchange_guest_bootstrap(page_id, grant_id, bootstrap):
         session, stored_expiry = GUEST_SESSION_STORE.consume_bootstrap(
             page_id, grant_id, bootstrap, grant["token_hash"],
             datetime.fromtimestamp(expiry, tz=timezone.utc),
+            one_time_use=grant["one_time_use"],
         )
     except ValueError:
         return None

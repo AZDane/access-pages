@@ -186,8 +186,10 @@ grants, LayerV-native single-use invitations.
 ### Renewable invitations
 
 Renewable invitations use the same qURL when LayerV admission needs to
-be renewed. The Gateway bootstrap used to establish the original guest
-session is consumed only once.
+be renewed and can be opened on another device or browser while the grant
+is active. Each browser receives its own guest session. If email verification
+is required, each browser must verify separately. All sessions end when the
+grant expires or is revoked.
 
 ### Single-use invitations
 
@@ -297,6 +299,15 @@ guest has its own resource and qURL.
 
 `page` uses one LayerV resource/CRID per Access Page while retaining
 individual guest qURLs and Gateway grants.
+
+The App keeps local page endpoints running and reuses its shared Connector;
+it does not stop them when guests are inactive. In `guest` mode, minting each
+invitation still requires publishing a new LayerV resource and waiting for
+its route to be ready. In `page` mode, later invitations reuse the page's
+resource, avoiding that allocation step. This trades per-guest upstream
+resource isolation for less setup work; individual grants and local revocation
+remain enforced in both modes. Deleting a qURL in `page` mode cannot guarantee
+termination of an already established upstream connection.
 
 The setting applies to new invitations. Existing grants retain the mode
 recorded when they were created.

@@ -308,8 +308,11 @@ class GuestHandler(HealthHandler):
                 if status >= 500:
                     self._json(status, {"error": "Guest access temporarily unavailable"})
                     return
-                self._json(401, {"error": "Invitation unavailable"})
-                return
+                if status != 401:
+                    self._json(status, {"error": "Invitation unavailable"})
+                    return
+                # A stale browser cookie must not block a reusable invitation.
+                # The broker validates the secret and enforces single-use grants.
             status, result = _broker_guest_auth("/broker-bootstrap", {
                 "capability": capability, "page_id": page_id,
                 "grant_id": grant_id, "bootstrap": query["bootstrap"][0],

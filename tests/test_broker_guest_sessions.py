@@ -1252,6 +1252,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
         })
 
     def test_one_time_individual_sessions_are_bound_to_current_page_and_grant(self):
+        page = self.pages.load("page-a")
+        page["access_grants"][0]["one_time_use"] = True
+        self.pages.replace("page-a", page)
         code, first = self.exchange(
             self.cap_a, "page-a", self.grant_a, self.secret_a
         )
@@ -1281,6 +1284,72 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.status(
             self.cap_a, "page-a", self.grant_b, first["session"]
         )[0], 401)
+
+    def test_reusable_invitation_creates_independent_device_sessions(self):
+        sessions = []
+        for _ in range(2):
+            status, result = self.exchange(
+                self.cap_a, "page-a", self.grant_a, self.secret_a,
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["status"], "session_ready")
+            self.assertEqual(result["expires_at"], int(self.expiry.timestamp()))
+            sessions.append(result["session"])
+        self.assertNotEqual(*sessions)
+        for session in sessions:
+            self.assertEqual(self.status(
+                self.cap_a, "page-a", self.grant_a, session,
+            )[0], 200)
+            self.assertEqual(self.status(
+                self.cap_a, "page-a", self.grant_b, session,
+            )[0], 401)
+        self.pages.remove_access_grant("page-a", self.grant_a)
+        for session in sessions:
+            self.assertEqual(self.status(
+                self.cap_a, "page-a", self.grant_a, session,
+            )[0], 401)
+        self.assertEqual(self.exchange(
+            self.cap_a, "page-a", self.grant_a, self.secret_a,
+        )[0], 401)
+
+    def test_previously_consumed_reusable_invitation_works_after_upgrade(self):
+        original, _ = self.sessions.consume_bootstrap(
+            "page-a", self.grant_a, self.secret_a,
+            sha256(self.secret_a.encode()).hexdigest(), self.expiry,
+        )
+        with patch("ha_broker.GUEST_SESSION_STORE", VerificationStore(self.sessions.path)):
+            status, result = self.exchange(
+                self.cap_a, "page-a", self.grant_a, self.secret_a,
+            )
+            self.assertEqual(status, 200)
+            self.assertNotEqual(original, result["session"])
+            for session in (original, result["session"]):
+                self.assertEqual(self.status(
+                    self.cap_a, "page-a", self.grant_a, session,
+                )[0], 200)
+
+    def test_reusable_invitation_requires_verification_on_each_device(self):
+        sessions = []
+        for _ in range(2):
+            status, result = self.exchange(
+                self.cap_a, "page-a", self.grant_v, self.secret_v,
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["status"], "verification_required")
+            sessions.append(result["session"])
+        first, second = sessions
+        with patch("verification.secrets.randbelow", side_effect=[123456, 654321]):
+            self.assertEqual(self.challenge(first)[0], 200)
+            first_code = self.sent_codes[-1][2]
+            self.assertEqual(self.challenge(second)[0], 200)
+            second_code = self.sent_codes[-1][2]
+        self.assertEqual(self.verify(first, first_code)[1]["status"], "session_ready")
+        self.assertEqual(self.status(
+            self.cap_a, "page-a", self.grant_v, second,
+        )[1]["status"], "verification_required")
+        self.assertEqual(self.read(second, grant_id=self.grant_v)[0], 403)
+        self.assertEqual(self.verify(second, first_code)[0], 401)
+        self.assertEqual(self.verify(second, second_code)[1]["status"], "session_ready")
 
     def test_bootstrap_page_and_grant_claims_cannot_broaden_authority(self):
         self.assertEqual(self.exchange(
