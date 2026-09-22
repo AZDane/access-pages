@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.124
 
 - Allow reusable guest invitations to open on multiple devices with independent
   sessions, including links already opened before upgrading. Preserve single-use
