@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Allow reusable guest invitations to open on multiple devices with independent
+  sessions, including links already opened before upgrading. Preserve single-use
+  consumption, grant expiry, revocation, and separate email verification on each
+  device.
+- Allow a valid reusable invitation to replace a stale browser session cookie.
+- Clarify that page endpoints and the shared Connector stay running, and document
+  the resource allocation tradeoff between guest and page isolation when minting
+  invitations.
+
 ## 0.1.123
 
 - Remove experimental hidden-page maintenance polling after testing showed
