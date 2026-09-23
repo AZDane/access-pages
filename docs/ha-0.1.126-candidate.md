@@ -8,8 +8,9 @@ Normal development does not depend on resolving that incident.
 
 Branch: `codex/ha-0.1.126-minimum-observability`.
 Pull request: https://github.com/AZDane/access-pages/pull/14 (draft).
-Runtime source commit: `a1152b918ee0cc740b581bccd06ee4ddb7e046ee`.
-Later evidence and whitespace-only commits do not change runtime behavior.
+Runtime source commit: `c74f5f467ab65ff80a1d7b388508d4c2c4a79546`.
+The focused-cleanup validation below supersedes earlier runtime measurements.
+Later evidence-only commits do not change runtime behavior.
 
 The feature branch was created from fetched protected main
 `0ef568e7ac9d03e8408938b71c67bf86a48920ec`. The unrelated Online lessons branch
@@ -20,13 +21,13 @@ unit tests, documentation, workflow configuration, and packaging metadata.
 
 | Baseline | Added | Removed | Net |
 |---|---:|---:|---:|
-| 0.1.125 main `0ef568e` | 578 | 416 | +162 |
-| 0.1.124 `d4ff4eb` | 868 | 22 | +846 |
+| 0.1.125 main `0ef568e` | 570 | 423 | +147 |
+| 0.1.124 `d4ff4eb` | 854 | 23 | +831 |
 
 Image/App configuration adds +7/-3 versus 0.1.125 and +8/-3 versus
 0.1.124 across the two Dockerfiles, `config.yaml`, and `apparmor.txt`. Including
-those production packaging files gives **+585/-419 (net +166)** versus 0.1.125
-and **+876/-25 (net +851)** versus 0.1.124. CI adds one native ARM64 job; it does
+those production packaging files gives **+577/-426 (net +151)** versus 0.1.125
+and **+862/-26 (net +836)** versus 0.1.124. CI adds one native ARM64 job; it does
 not weaken the four existing required checks.
 
 This is a structural simplification, **not a line-count reduction**. The hard
@@ -191,7 +192,7 @@ Do not infer a statistically established CPU/RSS improvement from these small,
 shared-host samples. They show no material latency regression in this fixture.
 
 
-The final source (`a1152b9`) also ran a two-minute equivalent workload through
+The pre-cleanup source (`a1152b9`) also ran a two-minute equivalent workload through
 **the real Admin HTTP handler and activity store**, rather than the quiet stub.
 Admin runs inside the disposable test-host process for this comparison; the
 separate packaged security probe verifies its production UID/permissions.
@@ -275,7 +276,8 @@ logs retain their existing behavior.
 
 ## 19. Validation
 
-- Full Python regression/security suite: 372 tests passed in final runtime CI,
+- Full Python regression/security suite: 374 tests passed after focused cleanup;
+  the earlier runtime passed 372 in CI,
   including blocked-time accounting and real Admin callback access-log silence.
 - Go race suite passed, including real Unix disconnects, healthy silence, a real
   five-second slow response, forged timing, ambiguous route IDs, throttles,
@@ -327,7 +329,8 @@ After approval of a specific candidate and its deployment route:
    single-use denial, and explicit actions without replay.
 3. With one, then two visible devices, run ten-minute healthy polling windows.
    Count polls and existing HA/Connector activity where available; verify zero
-   healthy `ap_diag` records and record CPU/RSS, latency, and HA log growth.
+   healthy `ap_diag` records, zero request diagnostic bytes, and zero routine
+   Admin callback access-log lines; record CPU/RSS, latency, and HA log growth.
 4. Enable 30 minutes through native Configuration. Verify boundary observations
    and the Logs tab / Download logs output, recording the installed HA versions,
    line selection, restart visibility, and any supported UI clearing behavior.
@@ -341,3 +344,75 @@ After approval of a specific candidate and its deployment route:
 
 Normal Access Pages work can resume after acceptance. Resolving the historical
 incident is not a prerequisite for every later product change.
+
+## Focused cleanup and repeated acceptance
+
+The owner authorized exactly four removals after review of candidate `4d838ce`.
+Runtime commit `c74f5f4` implements them without architecture changes:
+
+| Cleanup | Added | Removed | Net removed |
+|---|---:|---:|---:|
+| Unused RPC-start scalar/header and its clock read | 8 | 14 | 6 |
+| Unused Gateway response-byte counter | 0 | 2 | 2 |
+| Duplicate Guest Service exception handler | 0 | 3 | 3 |
+| Broker intermediate outcome variable | 2 | 6 | 4 |
+| Total production changes from prior candidate | 10 | 25 | 15 |
+
+No real runtime consumer or safety dependency required retaining these items.
+RPC-header test fixtures needed the parameterless header method; the obsolete
+RPC-field validation case was removed. Original-start validation, forged-header
+stripping, action authority and nonrenewable freshness tests remain. Two focused
+tests cover unchanged generic error responses and broker disconnect evidence
+with unconditional context restoration, including an observer exception.
+
+Repeated measurement data is in [the cleanup measurement artifact](ha-0.1.126-cleanup-measurements.json).
+The fresh amd64 image is
+`sha256:e4c422e66286d3859bd0acc074d82acb01e1a8e9d40496c615ecff126cc5c37e`.
+Each matched 120-second Chrome run used real production guest UIDs, the real
+Admin callback handler, and synthetic HA/Connector services:
+
+| Metric | 0.1.125 | Cleaned normal | Cleaned detailed, then expired |
+|---|---:|---:|---:|
+| Browser polls / HA reads / probes / callbacks | 40 each | 40 each | 40 each |
+| Persistent request diagnostic records | 40 | 0 | 127 |
+| All diagnostic records, including loss reports | 40 | 0 | 128 |
+| Diagnostic bytes, including loss reports | 15,547 | 0 | 22,362 |
+| Routine Admin callback access-log lines | 40 | 0 | 0 |
+| CPU seconds, three guest processes | 0.21 | 0.19 | 0.22 |
+| Final RSS bytes, three guest processes | 78,368,768 | 81,002,496 | 79,351,808 |
+| Poll P95 latency, milliseconds | 7.614 | 7.547 | 7.816 |
+
+These short concurrent local runs are acceptance observations, not evidence of
+a statistically established performance improvement. Normal request diagnostic
+bytes and routine callback access-log bytes were both exactly zero.
+
+Detailed output included every required boundary category, 16 complete Gateway
+timing vectors, and 26 IDs correlating Gateway, service and broker observations.
+The test-only 110-second deadline was established before child startup. After
+the conservative upper bound of fixture readiness plus 110 seconds, 14 HA reads
+completed with zero further request diagnostic records. Native duration choices
+and the consumed-activation latch were unchanged.
+
+The repeated 65-second failure workload issued 1,298 failed requests and emitted
+two summaries totaling 370 bytes (largest 186 bytes). The second carried loss
+count 1,199; a later idle report carried 1,298. Loss includes suppressed report
+attempts as well as request summaries. Rate/queue/expiry regression tests passed.
+
+Closed-pipe and full-undrained-pipe packaged checks each completed five healthy
+polls/HA reads/probes/callbacks in 15 seconds with detailed diagnostics enabled.
+Maximum poll latency was 7.059 ms closed / 6.381 ms blocked. Children remained
+alive. The blocked test fills the pipe after Gateway readiness: filling it
+before startup blocks the existing synchronous listening-message log, also
+present in 0.1.125. That lifecycle limitation was observed, left unchanged as
+outside the authorized cleanup, and is not covered by the request-path claim.
+
+All 374 Python tests, Go race tests, Ruff/Bandit, JavaScript syntax checks, amd64
+packaged security/permission probes and 11 packaged browser scenario groups
+passed. Expired queued actions produced zero HA posts; below-deadline work
+dispatched once; uncertain actions were not replayed. Required security/container
+checks and native ARM64 build/runtime validation run on PR #14's final head.
+
+Equivalent workloads added no browser/Gateway, HA, probe or callback requests.
+Fixtures made no live LayerV requests; live LayerV counts and HA-Nova behavior
+remain for the proposed acceptance above. No merge, publication or App Store
+synchronization is part of this cleanup.
