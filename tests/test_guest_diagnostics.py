@@ -226,3 +226,14 @@ class MinimalObservabilityTests(unittest.TestCase):
         sink._write({'bad': 'x' * 513})
         self.assertEqual(len(lines), 1)
         self.assertGreaterEqual(sink.lost, 10000)
+
+    def test_blocked_write_time_does_not_refill_the_output_budget(self):
+        lines = []
+        def write(line):
+            lines.append(line)
+            self.now[0] += 120_000_000_000  # Writer returns after a long blockage.
+        sink = self.d.DiagnosticSink(write=write)
+        sink._write({'at': 'loss'})
+        sink._write({'at': 'loss'})
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(sink.lost, 1)

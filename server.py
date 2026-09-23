@@ -344,6 +344,12 @@ class Handler(BaseHTTPRequestHandler):
                         f"{domain}.{service or action_id}"
                     )
 
+    def log_request(self, code="-", size="-"):
+        # Every healthy guest poll already reports initial access to this route.
+        # Keep product activity/security processing; its RPC caller observes errors.
+        if urlparse(self.path).path != "/api/internal/guest-event":
+            super().log_request(code, size)
+
     def log_message(self, format, *args):
         # Avoid writing query-string bearer tokens into normal request logs.
         safe_path = urlparse(self.path).path
