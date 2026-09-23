@@ -101,7 +101,7 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set(requestIDHeader, requestID)
 	if operation != "asset" && r.URL.Path != "/health" {
 		if detailedAt(started) {
-			diagnostics.emit(diagnostic{RequestID: requestID, Operation: operation, At: "received", detail: true})
+			diagnostics.emit(diagnostic{RequestID: requestID, Operation: operation, At: "received", Stages: trace.stages, detail: true})
 		}
 		defer func() {
 			failure := recover()
@@ -115,7 +115,10 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				outcome = "slow"
 			}
 			if trace.stages[11] == 3 {
-				outcome = "deadline"
+				outcome = "uncertain"
+				if trace.stages[10] == 1 {
+					outcome = "deadline"
+				}
 			}
 			if observed.failed || clientContext.Err() != nil || failure != nil {
 				outcome = "disconnect"

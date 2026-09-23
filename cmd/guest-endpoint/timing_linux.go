@@ -175,6 +175,7 @@ func (s *diagnosticSink) run() {
 		} else {
 			reported = record.Lost
 		}
+		s.output.last, _ = bootNanos() // Blocked time earns no output burst.
 	}
 }
 

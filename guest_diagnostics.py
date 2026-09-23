@@ -102,6 +102,8 @@ class DiagnosticSink:
             self.reported = lost
         except (OSError, ValueError):
             self.lose()
+        finally:
+            self.output.last = request.clock_ns()  # Blocked time earns no output burst.
 
     def _run(self):
         while True:

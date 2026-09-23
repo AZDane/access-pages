@@ -496,3 +496,28 @@ func TestClosedStderrDoesNotTerminateGateway(t *testing.T) {
 		t.Fatal("closed logging output terminated process:", err)
 	}
 }
+
+func TestDeadlineSummaryRequiresPositiveNoDispatchEvidence(t *testing.T) {
+	original := diagnostics
+	defer func() { diagnostics = original }()
+	for _, dispatch := range []int{0, 1, 2} {
+		diagnostics = &diagnosticSink{queue: make(chan diagnostic, 16)}
+		proxy := newGuestServiceProxy("unused", 0, 0, 0)
+		proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			headers := make(http.Header)
+			headers.Set(stagesHeader, "0,1,2,-1,-1,3,4,0,0,1,"+strconv.Itoa(dispatch)+",3")
+			return &http.Response{Request: r, StatusCode: 503, Header: headers, Body: http.NoBody}, nil
+		})
+		handler := &endpoint{pageID: "guest", capability: "synthetic", proxy: proxy, slots: make(chan struct{}, 64)}
+		// This path can be a saved action after backend payload validation.
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/g/guest/grant_mmmmmmmmmmmmmmmm/api/access/guest/verification/send", strings.NewReader("{}")))
+		record := <-diagnostics.queue
+		expected := "uncertain"
+		if dispatch == 1 {
+			expected = "deadline"
+		}
+		if record.Outcome != expected {
+			t.Fatalf("dispatch=%d outcome=%s", dispatch, record.Outcome)
+		}
+	}
+}
