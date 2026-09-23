@@ -9,7 +9,7 @@ Normal development does not depend on resolving that incident.
 Branch: `codex/ha-0.1.126-minimum-observability`.
 Pull request: https://github.com/AZDane/access-pages/pull/14 (draft).
 Runtime source commit: `a1152b918ee0cc740b581bccd06ee4ddb7e046ee`.
-Later evidence/test-only commits do not change the packaged runtime.
+Later evidence and whitespace-only commits do not change runtime behavior.
 
 The feature branch was created from fetched protected main
 `0ef568e7ac9d03e8408938b71c67bf86a48920ec`. The unrelated Online lessons branch
@@ -20,13 +20,13 @@ unit tests, documentation, workflow configuration, and packaging metadata.
 
 | Baseline | Added | Removed | Net |
 |---|---:|---:|---:|
-| 0.1.125 main `0ef568e` | 580 | 416 | +164 |
-| 0.1.124 `d4ff4eb` | 870 | 22 | +848 |
+| 0.1.125 main `0ef568e` | 578 | 416 | +162 |
+| 0.1.124 `d4ff4eb` | 868 | 22 | +846 |
 
 Image/App configuration adds +7/-3 versus 0.1.125 and +8/-3 versus
 0.1.124 across the two Dockerfiles, `config.yaml`, and `apparmor.txt`. Including
-those production packaging files gives **+587/-419 (net +168)** versus 0.1.125
-and **+878/-25 (net +853)** versus 0.1.124. CI adds one native ARM64 job; it does
+those production packaging files gives **+585/-419 (net +166)** versus 0.1.125
+and **+876/-25 (net +851)** versus 0.1.124. CI adds one native ARM64 job; it does
 not weaken the four existing required checks.
 
 This is a structural simplification, **not a line-count reduction**. The hard

@@ -95,5 +95,3 @@ def guest_operation(method, path, bootstrap=False):
                     return "other"
                 return "action"
     return "other"
-
-
