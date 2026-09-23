@@ -27,7 +27,7 @@ class GuestTimingTests(unittest.TestCase):
     def test_diagnostic_operation_cannot_remove_or_add_action_authority(self):
         timing = request.RequestTiming('a' * 32, 1_000_000_000, 'other')
         headers = Message()
-        for line in timing.headers(2_000_000_000).strip().split('\r\n'):
+        for line in timing.headers().strip().split('\r\n'):
             name, value = line.split(': ', 1)
             headers[name] = value
         for category in ('state', 'asset', 'camera', 'unknown-private-name'):
@@ -48,7 +48,7 @@ class GuestTimingTests(unittest.TestCase):
     def test_lifetime_is_unchanged_by_rpc_and_ignores_wall_clock(self):
         timing = request.RequestTiming('a' * 32, 1_000_000_000, 'action', action_deadline=True)
         headers = Message()
-        for line in timing.headers(3_000_000_000).strip().split('\r\n'):
+        for line in timing.headers().strip().split('\r\n'):
             name, value = line.split(': ', 1)
             headers[name] = value
         with patch('guest_request.clock_ns', return_value=4_000_000_000):
@@ -62,8 +62,7 @@ class GuestTimingTests(unittest.TestCase):
     def test_missing_duplicate_future_or_malformed_metadata_rejected(self):
         for values in ({}, {request.REQUEST_ID: 'cookie=secret'},
                        {request.STARTED_NS: '9999999999999999999'},
-                       {request.STARTED_NS: '-1'},
-                       {request.RPC_STARTED_NS: '1'}):
+                       {request.STARTED_NS: '-1'}):
             headers = Message()
             if values:
                 headers[request.REQUEST_ID] = 'a' * 32
@@ -99,6 +98,36 @@ class GuestTimingTests(unittest.TestCase):
             with self.assertRaises(request.ActionDeadlineExceeded):
                 client.call_service('switch', 'turn_on', 'switch.private')
             post.assert_not_called()
+
+    def test_broker_disconnect_records_evidence_and_always_resets_context(self):
+        import ha_broker
+        outer = request.RequestTiming('a' * 32, request.clock_ns(), 'state')
+        token = request.CURRENT.set(outer)
+        self.addCleanup(request.CURRENT.reset, token)
+        handler = object.__new__(ha_broker.GuestHandler)
+        handler.path = '/guest/v1/page'
+        handler.headers = Message()
+        for line in outer.headers().strip().split('\r\n'):
+            name, value = line.split(': ', 1)
+            handler.headers[name] = value
+        for error in (BrokenPipeError, ConnectionResetError):
+            for logging_fails in (False, True):
+                with self.subTest(error=error, logging_fails=logging_fails):
+                    def record(*args, **kwargs):
+                        self.assertIsNot(request.CURRENT.get(), outer)
+                        self.assertEqual(request.CURRENT.get().stages[11], 4)
+                        if logging_fails:
+                            raise RuntimeError('synthetic observer failure')
+                    with (patch.object(handler, '_scoped_POST', side_effect=error),
+                          patch.object(ha_broker.diagnostics, 'record', side_effect=record) as observe):
+                        if logging_fails:
+                            with self.assertRaises(RuntimeError):
+                                handler.do_POST()
+                        else:
+                            handler.do_POST()
+                        observe.assert_called_once_with('broker', status=None)
+                    self.assertTrue(handler.close_connection)
+                    self.assertIs(request.CURRENT.get(), outer)
 
 
 

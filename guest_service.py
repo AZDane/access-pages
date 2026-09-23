@@ -309,9 +309,6 @@ class GuestHandler(HealthHandler):
             self._json(503, {"error": "Guest access temporarily unavailable"})
         except (ValueError, TypeError, json.JSONDecodeError):
             self._json(400, {"error": "Invalid guest request"})
-        except (OSError, RuntimeError):
-            diagnostics.failure(1)
-            self._json(503, {"error": "Guest access temporarily unavailable"})
         except Exception:
             diagnostics.failure(1)
             self._json(503, {"error": "Guest access temporarily unavailable"})
@@ -622,8 +619,7 @@ def _broker_guest_auth_scoped(path: str, payload: dict) -> tuple[int, dict]:
         )})
     body = json.dumps(scoped).encode("ascii")
     timing = lifetime.CURRENT.get()
-    rpc_started = lifetime.clock_ns()
-    timing_headers = timing.headers(rpc_started) if timing else ""
+    timing_headers = timing.headers() if timing else ""
     if timing:
         timing.stages[9] = min(diagnostics.LIMIT, timing.stages[9] + 1)
     diagnostics.boundary(1, "service")

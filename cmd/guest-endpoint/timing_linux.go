@@ -184,7 +184,6 @@ var diagnostics = newDiagnosticSink(os.Stderr)
 type observedResponse struct {
 	http.ResponseWriter
 	status int
-	bytes  int64
 	failed bool
 }
 
@@ -202,7 +201,6 @@ func (w *observedResponse) Write(body []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 	n, err := w.ResponseWriter.Write(body)
-	w.bytes += int64(n)
 	w.failed = w.failed || err != nil
 	return n, err
 }

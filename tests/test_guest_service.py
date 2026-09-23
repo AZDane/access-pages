@@ -30,6 +30,17 @@ class UnixHTTPConnection(http.client.HTTPConnection):
 
 
 class GuestServiceTests(unittest.TestCase):
+    def test_generic_failure_handler_preserves_os_and_runtime_error_response(self):
+        handler = object.__new__(guest_service.GuestHandler)
+        for error in (OSError, RuntimeError):
+            with (self.subTest(error=error),
+                  patch.object(handler, '_serve_guest', side_effect=error),
+                  patch.object(handler, '_json') as respond,
+                  patch.object(guest_service.diagnostics, 'failure') as failure):
+                handler._guest_scoped('GET')
+                failure.assert_called_once_with(1)
+                respond.assert_called_once_with(503, {'error': 'Guest access temporarily unavailable'})
+
     def test_action_client_sends_only_access_pages_identifiers(self):
         started = diagnostics.clock_ns() - 4_000_000_000
         token = diagnostics.CURRENT.set(diagnostics.RequestTiming("c" * 32, started, "action"))

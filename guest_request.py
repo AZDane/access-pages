@@ -7,7 +7,6 @@ import time
 ACTION_LIFETIME_NS = 8_000_000_000
 REQUEST_ID = "X-Access-Pages-Request-ID"
 STARTED_NS = "X-Access-Pages-Started-Ns"
-RPC_STARTED_NS = "X-Access-Pages-Rpc-Started-Ns"
 OPERATION = "X-Access-Pages-Operation"
 CURRENT = ContextVar("guest_request", default=None)
 OPERATIONS = frozenset({"bootstrap", "document", "asset", "state", "camera",
@@ -27,7 +26,6 @@ class RequestTiming:
     request_id: str
     started_ns: int
     operation: str
-    rpc_started_ns: int = 0
     stages: list = field(default_factory=lambda: [-1] * 7 + [0, 0, 0, 1, 0])
     action_deadline: bool = False
 
@@ -37,19 +35,18 @@ class RequestTiming:
             raise ActionDeadlineExceeded()
         return remaining
 
-    def headers(self, rpc_started_ns):
+    def headers(self):
         return (f"{REQUEST_ID}: {self.request_id}\r\n"
                 f"{STARTED_NS}: {self.started_ns}\r\n"
-                f"{OPERATION}: {self.operation}\r\n"
-                f"{RPC_STARTED_NS}: {rpc_started_ns}\r\n")
+                f"{OPERATION}: {self.operation}\r\n")
 
 
 def timing_from_headers(headers, operation, *, required=False, internal_rpc=False):
     action_deadline = operation == "action"
-    values = [headers.get_all(name, []) for name in (REQUEST_ID, STARTED_NS, RPC_STARTED_NS)]
+    values = [headers.get_all(name, []) for name in (REQUEST_ID, STARTED_NS)]
     if not any(values) and not required:
         return None
-    if len(values[0]) != 1 or len(values[1]) != 1 or len(values[2]) > 1:
+    if len(values[0]) != 1 or len(values[1]) != 1:
         raise ValueError("Invalid request timing")
     if internal_rpc:
         operations = headers.get_all(OPERATION, [])
@@ -57,17 +54,15 @@ def timing_from_headers(headers, operation, *, required=False, internal_rpc=Fals
         if operation != "action":
             operation = operations[0] if len(operations) == 1 and operations[0] in OPERATIONS else "other"
     request_id, started = values[0][0], values[1][0]
-    rpc = values[2][0] if values[2] else "0"
     if (not re.fullmatch(r"[a-f0-9]{32}", request_id)
             or not re.fullmatch(r"[0-9]{1,19}", started)
-            or not re.fullmatch(r"[0-9]{1,19}", rpc)
             or operation not in OPERATIONS):
         raise ValueError("Invalid request timing")
-    started, rpc = int(started), int(rpc)
+    started = int(started)
     now = clock_ns()
-    if not 0 < started <= now or (rpc and not started <= rpc <= now):
+    if not 0 < started <= now:
         raise ValueError("Invalid request timing")
-    return RequestTiming(request_id, started, operation, rpc, action_deadline=action_deadline)
+    return RequestTiming(request_id, started, operation, action_deadline=action_deadline)
 
 
 def action_remaining(default):

@@ -632,7 +632,6 @@ class GuestHandler(BaseHTTPRequestHandler):
             return
         token = lifetime.CURRENT.set(timing)
         self._response_status = None
-        outcome = None
         try:
             diagnostics.boundary(2, "broker")
             try:
@@ -640,21 +639,18 @@ class GuestHandler(BaseHTTPRequestHandler):
                 lifetime.action_remaining(20)
                 self._scoped_POST()
             except lifetime.ActionDeadlineExceeded:
-                outcome = "deadline_exceeded"
                 diagnostics.failure(3)
                 self._send_denial(HTTPStatus.SERVICE_UNAVAILABLE, "action_deadline")
         except (BrokenPipeError, ConnectionResetError):
-            outcome = "disconnected"
             self.close_connection = True
+            diagnostics.failure(4)
+            diagnostics.record("broker", status=self._response_status)
         except Exception:
             # A partial response cannot safely be replaced; retain local evidence.
             self.close_connection = True
             diagnostics.failure(1)
             diagnostics.record("broker", status=500)
         finally:
-            if outcome == "disconnected":
-                diagnostics.failure(4)
-                diagnostics.record("broker", status=self._response_status)
             lifetime.CURRENT.reset(token)
 
     def _scoped_POST(self):
