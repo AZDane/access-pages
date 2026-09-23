@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.127
+
+- Owner-only HA-Nova acceptance prerelease; not approved for external beta.
+  Preserve 0.1.126 as the reference for the live diagnostic-policy finding.
+- Prefer one final Gateway timing summary per completed request in temporary
+  diagnostic mode. Retain successful pre-RPC and pre-HA observations only for a
+  consistent one-in-16 request sample, reserving capacity for abnormal evidence.
+- Keep immediate failure, disconnect, deadline and uncertainty evidence. Normal
+  healthy polling remains silent; timing, action freshness, expiration, restart
+  protection and network behavior are unchanged.
+- Accepted diagnostic limitation: an unsampled request that hangs indefinitely
+  without a detected failure may leave no useful early-boundary evidence.
+- Separate inherited issue: stderr already full before startup can block the
+  Gateway's synchronous startup message. This release does not fix that issue
+  or establish the cause of the historical timeout.
+- External-beta promotion and the stable development baseline decision await
+  the owner's live acceptance results and a separate assessment.
+
 ## 0.1.126
 
 - Keep healthy guest polling silent. Replace buffered event histories and helper
