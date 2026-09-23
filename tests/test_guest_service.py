@@ -10,7 +10,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-import guest_diagnostics as diagnostics
+import guest_request as diagnostics
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "guest_service.py"

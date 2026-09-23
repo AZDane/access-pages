@@ -350,7 +350,33 @@ async function testVerificationRecovery() {
   assert.deepEqual(denied.clock.delays(), []);
 }
 
+async function assertBodyTimeoutKeepsRequestId() {
+  const clock = new Clock();
+  let calls = 0;
+  const context = vm.createContext({
+    AbortController, URLSearchParams, Response,
+    setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    window: {fetch: async (_url, options) => {
+      calls++;
+      return {headers: new Headers({"X-Access-Pages-Request-ID": "a".repeat(32)}),
+        arrayBuffer: () => new Promise((_resolve, reject) => options.signal.addEventListener("abort", () => reject(new Error("aborted"))))};
+    }},
+  });
+  const source = fs.readFileSync(path.join(root, "static/access-api.js"), "utf8").replaceAll("export ", "");
+  vm.runInContext(source, context);
+  const pending = vm.runInContext('boundedRequest("synthetic")', context);
+  const caught = pending.catch(error => error);
+  await settle();
+  await clock.advance(10000);
+  const error = await caught;
+  assert.equal(error.name, "Error");
+  assert.equal(error.requestId, "a".repeat(32));
+  assert.match(error.message, /timed out/);
+  assert.equal(calls, 1, "A timed out action must never be replayed");
+}
+
 (async () => {
+  await assertBodyTimeoutKeepsRequestId();
   await testAdminReset();
   await testGuestVisibility();
   await testRevocationOnReturn();

@@ -3,6 +3,7 @@ export class AccessConnectionError extends Error {}
 async function boundedRequest(url, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
+  let requestId = null;
   try {
     const response = await window.fetch(url, {
       ...options,
@@ -10,6 +11,8 @@ async function boundedRequest(url, options = {}) {
       redirect: "error",
       signal: controller.signal,
     });
+    const returnedId = response.headers.get("X-Access-Pages-Request-ID");
+    if (/^[a-f0-9]{32}$/.test(returnedId || "")) requestId = returnedId;
     // Keep the deadline active through the body, not just response headers.
     const body = await response.arrayBuffer();
     return new Response(body.byteLength ? body : null, {
@@ -18,9 +21,11 @@ async function boundedRequest(url, options = {}) {
       headers: response.headers,
     });
   } catch {
-    throw new AccessConnectionError(controller.signal.aborted
+    const error = new AccessConnectionError(controller.signal.aborted
       ? "Connection timed out. Check refreshed state before retrying a control."
       : "Connection unavailable. Waiting to reconnect.");
+    error.requestId = requestId;
+    throw error;
   } finally {
     clearTimeout(timer);
   }

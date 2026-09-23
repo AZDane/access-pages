@@ -6,6 +6,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 import guest_diagnostics as diagnostics
+import guest_request as lifetime
 
 
 CURATED_ACTIONS = {
@@ -413,14 +414,10 @@ class HomeAssistantClient:
 
         try:
             # The base URL is administrator-controlled Home Assistant config.
-            operation = ("state_read" if path == "/api/states" else
-                         "service_call" if method == "POST" and path.startswith("/api/services/")
-                         else "other")
-            diagnostics.action_remaining(self.timeout)
-            with diagnostics.ha_request(operation) as trace, urlopen(  # nosec B310
-                request, timeout=diagnostics.action_remaining(self.timeout),
+            timeout = lifetime.action_remaining(self.timeout)
+            with diagnostics.ha_request(method == "POST" and path.startswith("/api/services/")), urlopen(  # nosec B310
+                request, timeout=timeout,
             ) as response:
-                trace["status"] = response.status
                 body = response.read()
                 if not body:
                     return {}
@@ -483,10 +480,9 @@ class HomeAssistantClient:
             },
         )
         try:
-            with diagnostics.ha_request("camera_read") as trace, urlopen(  # nosec B310
-                request, timeout=diagnostics.action_remaining(self.timeout),
+            with diagnostics.ha_request(), urlopen(  # nosec B310
+                request, timeout=lifetime.action_remaining(self.timeout),
             ) as response:
-                trace["status"] = response.status
                 content_type = response.headers.get_content_type().lower()
                 if content_type not in CAMERA_IMAGE_TYPES:
                     raise HomeAssistantError(

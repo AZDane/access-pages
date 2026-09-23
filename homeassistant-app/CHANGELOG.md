@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.126
+
+- Keep healthy guest polling silent. Replace buffered event histories and helper
+  tracing with compact correlated boundary timings and throttled abnormal
+  summaries through Home Assistant App logs. No diagnostic files or extra
+  network requests are created.
+- Add one-shot diagnostic logging for 30 minutes, one hour, or four hours through
+  App configuration. It expires automatically and does not reactivate on restart.
+- Keep eight-second action freshness independent of logging, retain disconnect
+  and verification recovery fixes, and preserve a received request ID if browser
+  response-body processing subsequently fails. Unconfirmed actions are never
+  replayed.
+- The historical timeout remains unresolved; another occurrence may require a
+  temporary diagnostic capture and reproduction.
+
 ## 0.1.125
 
 - Skip empty redirect-body writes and end response handling when a peer

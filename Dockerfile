@@ -12,6 +12,7 @@ COPY internal.py .
 COPY config.py .
 COPY ha.py .
 COPY guest_diagnostics.py .
+COPY guest_request.py .
 COPY ha_broker.py .
 COPY pages.py .
 COPY layerv.py .

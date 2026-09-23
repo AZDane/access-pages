@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-import guest_diagnostics as diagnostics
+import guest_request as diagnostics
 import guest_service
 
 

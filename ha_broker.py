@@ -17,6 +17,7 @@ import threading
 import time
 from pathlib import Path
 import guest_diagnostics as diagnostics
+import guest_request as lifetime
 
 from ha import (
     CAMERA_IMAGE_TYPES,
@@ -109,7 +110,6 @@ PUBLIC_DENIALS = {
 }
 
 
-@diagnostics.timed_work("ha_broker", "guest_event")
 def _emit_guest_event(page_id, grant_id, event, **validated):
     """Best-effort report from the policy broker to the admin authority."""
     body = json.dumps({"page_id": page_id, "grant_id": grant_id,
@@ -124,9 +124,9 @@ def _emit_guest_event(page_id, grant_id, event, **validated):
         response = connection.getresponse()
         response.read(1024)
         if response.status != HTTPStatus.OK:
-            print(f"guest event rejected: {event} ({response.status})", flush=True)
-    except (HTTPException, OSError) as error:
-        print(f"guest event delivery failed: {event}: {type(error).__name__}", flush=True)
+            diagnostics.failure(7)
+    except (HTTPException, OSError):
+        diagnostics.failure(7)
     finally:
         connection.close()
 
@@ -140,7 +140,6 @@ def _page(page_id):
         raise BrokerPolicyError("Page policy is invalid") from error
 
 
-@diagnostics.timed_work("ha_broker", "policy_preparation")
 def _resource_action(page, resource_id, action_id):
     resource = next(
         (item for item in page["resources"] if item["id"] == resource_id),
@@ -189,7 +188,6 @@ def _matches_step(value, minimum, maximum, step):
     return math.isclose(quotient, round(quotient), abs_tol=1e-7)
 
 
-@diagnostics.timed_work("ha_broker", "policy_preparation")
 def _service_data(resource, action, supplied):
     if not isinstance(supplied, dict):
         raise BrokerPolicyError("Parameters must be an object")
@@ -549,6 +547,7 @@ class GuestHandler(BaseHTTPRequestHandler):
         super().send_response(code, message)
 
     def end_headers(self):
+        diagnostics.boundary(5, "broker")
         stages = diagnostics.stage_header()
         if stages:
             self.send_header(diagnostics.STAGES, stages)
@@ -625,40 +624,38 @@ class GuestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         operation = "action" if self.path == "/guest/v1/action" else "other"
         try:
-            timing = diagnostics.timing_from_headers(
+            timing = lifetime.timing_from_headers(
                 self.headers, operation, required=operation == "action", internal_rpc=True,
             )
         except ValueError:
             self._send_denial(HTTPStatus.BAD_REQUEST, "invalid_request")
             return
-        token = diagnostics.CURRENT.set(timing)
+        token = lifetime.CURRENT.set(timing)
         self._response_status = None
         outcome = None
         try:
-            diagnostics.emit("broker_request_started", "ha_broker", broker_wait_ns=(
-                diagnostics.clock_ns() - timing.rpc_started_ns
-                if timing and timing.rpc_started_ns else None
-            ))
+            diagnostics.boundary(2, "broker")
             try:
                 # The Unix listener is serial: work may already have waited here.
-                diagnostics.action_remaining(20)
+                lifetime.action_remaining(20)
                 self._scoped_POST()
-            except diagnostics.ActionDeadlineExceeded:
+            except lifetime.ActionDeadlineExceeded:
                 outcome = "deadline_exceeded"
-                diagnostics.emit("action_not_dispatched", "ha_broker", outcome=outcome)
+                diagnostics.failure(3)
                 self._send_denial(HTTPStatus.SERVICE_UNAVAILABLE, "action_deadline")
         except (BrokenPipeError, ConnectionResetError):
             outcome = "disconnected"
             self.close_connection = True
+        except Exception:
+            # A partial response cannot safely be replaced; retain local evidence.
+            self.close_connection = True
+            diagnostics.failure(1)
+            diagnostics.record("broker", status=500)
         finally:
-            status = self._response_status
-            diagnostics.emit("broker_response_written", "ha_broker", status=status,
-                             outcome=outcome or (
-                                 "unavailable" if status and status >= 500 else
-                                 "denied" if status and status >= 400 else "success"
-                             ))
-            diagnostics.finish()
-            diagnostics.CURRENT.reset(token)
+            if outcome == "disconnected":
+                diagnostics.failure(4)
+                diagnostics.record("broker", status=self._response_status)
+            lifetime.CURRENT.reset(token)
 
     def _scoped_POST(self):
         if self.path not in {
@@ -811,7 +808,8 @@ class GuestHandler(BaseHTTPRequestHandler):
             )
             return
         except HomeAssistantError:
-            self._send_denial(HTTPStatus.BAD_GATEWAY, "ha_unavailable")
+            self._send_denial(HTTPStatus.BAD_GATEWAY,
+                              "action_uncertain" if self.path == "/guest/v1/action" else "ha_unavailable")
             return
         except (OSError, sqlite3.Error):
             self._send_denial(HTTPStatus.SERVICE_UNAVAILABLE, "temporarily_unavailable")
@@ -932,7 +930,6 @@ def _exchange_guest_bootstrap(page_id, grant_id, bootstrap):
     return result
 
 
-@diagnostics.timed_work("ha_broker", "session_validation")
 def _guest_session_status(page_id, grant_id, session):
     info = GUEST_SESSION_STORE.guest_session_info(session, page_id)
     if not info or info[0] != grant_id:
@@ -1193,7 +1190,7 @@ def _guest_action(page_id, grant_id, session, resource_id, action_id,
         "parameters": service_data,
     }
     try:
-        diagnostics.action_remaining(20)
+        lifetime.action_remaining(20)
         HA_CLIENT.call_service(
             resource["domain"], action["service"], resource["entity_id"],
             service_data, grant_deadline=deadline,

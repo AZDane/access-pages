@@ -22,7 +22,7 @@ os.environ.setdefault("HA_BASE_URL", "http://ha.invalid")
 os.environ.setdefault("HA_TOKEN", "synthetic-ha-token")
 os.environ.setdefault("ADMIN_TOKEN", "synthetic-owner-token")
 
-import guest_diagnostics as diagnostics
+import guest_request as diagnostics
 import ha_broker
 import server
 from activity import GuestActivityStore
@@ -779,7 +779,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
             result = original(*args)
             current[0] += 8_000_000_000
             return result
-        with (patch("guest_diagnostics.clock_ns", side_effect=lambda: current[0]),
+        with (patch("guest_request.clock_ns", side_effect=lambda: current[0]),
               patch("ha_broker._service_data", side_effect=delayed_preparation)):
             self.assertEqual(self.request("/guest/v1/action", self.cap_a, "page-a", body,
                                           started_ns=now)[0], 503)
