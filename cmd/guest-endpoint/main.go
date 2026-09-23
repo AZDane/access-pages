@@ -100,9 +100,6 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w = observed
 	w.Header().Set(requestIDHeader, requestID)
 	if operation != "asset" && r.URL.Path != "/health" {
-		if detailedAt(started) {
-			diagnostics.emit(diagnostic{RequestID: requestID, Operation: operation, At: "received", Stages: trace.stages, detail: true})
-		}
 		defer func() {
 			failure := recover()
 			ended, _ := bootNanos()

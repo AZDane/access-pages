@@ -438,6 +438,16 @@ the App. The default is `off`. Timing observations include successful requests
 while this temporary mode is active. It observes existing traffic; it does not
 add polls, probes, HA calls, uploads, or LayerV requests.
 
+Completed requests normally produce one final Gateway summary with the fixed
+timing vector. To retain some evidence for requests that never finish, one in
+16 random request IDs also selects observations immediately before broker RPC
+and HA invocation. Both components use the same selection; there is no request
+history or overdue scanner. Other successful intermediate boundaries are kept
+only in the timing vector. Detected abnormalities can emit immediate local
+records even when their request was not selected. Sampled observations reserve
+half the Python sink's burst allowance and queue capacity for abnormal/loss
+records; Gateway summaries have no competing routine intermediate records.
+
 The duration starts when the App starts and cannot be extended by traffic.
 An App restart stops the capture: leaving the same selection configured does
 **not** start another capture, even if you change its duration. To start another,
@@ -465,7 +475,12 @@ reset on process restart. The App owns emission; Home Assistant owns retention.
 
 When output is blocked or the allowance is exhausted, evidence is dropped.
 `lost` reports the cumulative suppressed/dropped count in that process (capped
-at 2,147,483,647); a quiet process with unreported loss attempts a bounded loss
-summary once per minute. Healthy polling alone never causes a loss summary.
+at 2,147,483,647). It combines intentional admission/output throttling, queue or
+output failure, oversized records, and expiration of queued detailed records;
+it does not identify which cause occurred. Unselected pre-blocking observations
+are not emission attempts and do not increment it. A quiet process with
+unreported loss attempts a bounded loss summary once per minute. Normal-mode
+healthy polling alone never causes a loss summary. Detailed-mode traffic can
+still exceed the allowance with multiple guests, bursts, or blocked output.
 Missing records therefore do not prove a request never reached a component.
 Some problems will require enabling this mode and reproducing them again.

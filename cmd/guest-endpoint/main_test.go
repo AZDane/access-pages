@@ -446,6 +446,34 @@ func TestDiagnosticRateBudget(t *testing.T) {
 	}
 }
 
+func TestDetailedPollingSpendsOnlyOneTokenOnCompleteVector(t *testing.T) {
+	original, originalUntil := diagnostics, detailUntil
+	defer func() { diagnostics, detailUntil = original, originalUntil }()
+	now, _ := bootNanos()
+	detailUntil = now + int64(time.Hour)
+	diagnostics = &diagnosticSink{queue: make(chan diagnostic, 16)}
+	proxy := newGuestServiceProxy("unused", 0, 0, 0)
+	proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		headers := make(http.Header)
+		headers.Set(stagesHeader, "1,2,3,4,5,6,7,1,1,1,1,0")
+		return &http.Response{Request: r, StatusCode: 200, Header: headers, Body: http.NoBody}, nil
+	})
+	handler := &endpoint{pageID: "guest", capability: "synthetic", proxy: proxy, slots: make(chan struct{}, 64)}
+	for range 100 {
+		now, _ = bootNanos()
+		// Only one token remains: an early receipt must not steal the final's slot.
+		diagnostics.admission = diagnosticBudget{tokens: 1, last: now, mode: true, initialized: true}
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/g/guest/grant_mmmmmmmmmmmmmmmm/api/access/guest", nil))
+		if len(diagnostics.queue) != 1 || diagnostics.lost.Load() != 0 {
+			t.Fatal("ordinary completed request did not retain exactly one summary")
+		}
+		record := <-diagnostics.queue
+		if record.At != "end" || record.Status != 200 || record.Outcome != "ok" || record.Stages[6] != 7 || len(record.RequestID) != 32 {
+			t.Fatalf("incomplete final summary: %+v", record)
+		}
+	}
+}
+
 type blockedDiagnosticWriter struct {
 	entered chan bool
 	release chan bool

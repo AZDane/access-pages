@@ -211,6 +211,8 @@ class GuestHandler(HealthHandler):
     def _send(self, status: int, body: bytes, content_type: str,
               headers: dict[str, str] | None = None) -> None:
         try:
+            if status >= 500 and diagnostics.detailed():
+                diagnostics.record("service", status=status)
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
@@ -542,7 +544,7 @@ def _broker_guest_auth(path: str, payload: dict) -> tuple[int, dict]:
     try:
         return _broker_guest_auth_scoped(path, payload)
     except (OSError, http.client.HTTPException):
-        diagnostics.failure(6)
+        diagnostics.failure(6, "service")
         raise
 
 

@@ -27,13 +27,13 @@ def detailed():
 
 
 class Budget:
-    """Token bucket: normal burst 1 / 60 seconds; detailed burst 12 / 2 seconds."""
+    """Burst 1/12; refill one token per 60/2 seconds in normal/detailed mode."""
     def __init__(self):
         self.tokens = 0.0
         self.last = None
         self.mode = None
 
-    def take(self, now, detail):
+    def take(self, now, detail, reserve=0):
         capacity, interval = (12, 2_000_000_000) if detail else (1, 60_000_000_000)
         if self.mode != detail:
             self.tokens = float(capacity)
@@ -41,7 +41,7 @@ class Budget:
         elif self.last is not None:
             self.tokens = min(capacity, self.tokens + max(0, now - self.last) / interval)
         self.last = now
-        if self.tokens < 1:
+        if self.tokens < 1 + reserve:
             return False
         self.tokens -= 1
         return True
@@ -74,7 +74,10 @@ class DiagnosticSink:
             if self.worker is False:
                 self.lose()
                 return
-            if not self.admission.take(request.clock_ns(), detailed()):
+            # Sampled pre-blocking observations leave half the burst and queue
+            # available for abnormalities. They never compete with Gateway finals.
+            if (not self.admission.take(request.clock_ns(), detailed(), 6 if detail else 0)
+                    or (detail and self.queue.qsize() >= 8)):
                 self.lose()
                 return
             try:
@@ -88,7 +91,7 @@ class DiagnosticSink:
         if detail and not detailed():
             self.lose()
             return
-        if not self.output.take(request.clock_ns(), detailed()):
+        if not self.output.take(request.clock_ns(), detailed(), 6 if detail else 0):
             self.lose()
             return
         lost = self.lost
@@ -132,19 +135,25 @@ def boundary(index, component):
         return
     if index != 1 or timing.stages[index] < 0:
         timing.stages[index] = offset(timing)
-    if detailed():
+    if detailed() and index in (1, 3):
         record(component, str(index), detail=True)
 
 
-def failure(code):
+def failure(code, component=None):
     timing = request.CURRENT.get()
     if timing:
         timing.stages[11] = code
+        if component and detailed():
+            record(component)
 
 
 def record(component, at="end", status=0, *, detail=False):
     timing = request.CURRENT.get()
     if timing is None or timing.operation == "asset":
+        return
+    # The same opaque random ID selects both pre-RPC and pre-HA observations.
+    # Unselected requests are not emission attempts and do not increment lost.
+    if detail and not timing.request_id.endswith("0"):
         return
     if component not in {"service", "broker", "ha"} or at not in {*map(str, range(7)), "end"}:
         return
@@ -208,3 +217,5 @@ def ha_request(service=False):
         if timing:
             timing.stages[8] = min(LIMIT, timing.stages[8] + max(0, (request.clock_ns() - started) // 1_000_000))
         boundary(4, "ha")
+        if timing and timing.stages[11] and detailed():
+            record("ha")
