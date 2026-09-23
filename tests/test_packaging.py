@@ -54,6 +54,7 @@ class PackagingTests(unittest.TestCase):
             "config.py",
             "ha.py",
             "guest_diagnostics.py",
+            "guest_request.py",
             "ha_broker.py",
             "layerv_broker.py",
             "policy.py",

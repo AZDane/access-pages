@@ -1,118 +1,189 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
-	"unsafe"
 )
 
-const actionLifetime = 8 * time.Second
-const requestIDHeader = "X-Access-Pages-Request-ID"
-const startedHeader = "X-Access-Pages-Started-Ns"
-const stagesHeader = "X-Access-Pages-Diagnostic-Stages"
+// A closed App log pipe must report EPIPE to the worker, not kill the Gateway.
+func init() { signal.Ignore(syscall.SIGPIPE) }
 
-type stateTraceKey struct{}
-type stateTrace struct {
-	stages      []int64
-	interesting bool
+const stagesHeader = "X-Access-Pages-Diagnostic-Stages"
+const diagnosticLimit = 600_000
+const lossLimit = 2_147_483_647
+
+type requestTraceKey struct{}
+type requestTrace struct{ stages [12]int64 }
+
+func newRequestTrace() *requestTrace {
+	t := &requestTrace{}
+	for i := range 7 {
+		t.stages[i] = -1
+	}
+	t.stages[10] = 0 // Dispatch unknown until a trusted backend reports otherwise.
+	return t
 }
 
 func captureDiagnosticStages(response *http.Response) error {
 	values := response.Header.Values(stagesHeader)
-	response.Header.Del(stagesHeader) // Internal timing is never a browser-facing header.
-	trace, ok := response.Request.Context().Value(stateTraceKey{}).(*stateTrace)
-	if !ok || len(values) != 1 || len(values[0]) > 80 {
+	response.Header.Del(stagesHeader)
+	trace, ok := response.Request.Context().Value(requestTraceKey{}).(*requestTrace)
+	if !ok || len(values) != 1 || len(values[0]) > 96 {
 		return nil
 	}
 	parts := strings.Split(values[0], ",")
-	if len(parts) != 7 || (parts[6] != "0" && parts[6] != "1") {
+	if len(parts) != 12 {
 		return nil
 	}
-	stages := make([]int64, 6)
+	var stages [12]int64
 	for i := range stages {
 		value, err := strconv.ParseInt(parts[i], 10, 64)
-		if err != nil || value < -1 || value > 600_000_000 {
-			return nil // Telemetry cannot reject an otherwise valid response.
+		if err != nil || value < -1 || value > diagnosticLimit || (i >= 7 && value < 0) {
+			return nil
 		}
 		stages[i] = value
 	}
-	trace.stages, trace.interesting = stages, parts[6] == "1"
-	return nil
-}
-
-// CLOCK_BOOTTIME is shared with Python on this host and includes suspend.
-func bootNanos() (int64, error) {
-	var ts syscall.Timespec
-	_, _, errno := syscall.Syscall(syscall.SYS_CLOCK_GETTIME, 7, uintptr(unsafe.Pointer(&ts)), 0)
-	if errno != 0 {
-		return 0, errno
+	if stages[10] > 3 || stages[11] > 7 {
+		return nil
 	}
-	return ts.Nano(), nil
-}
-
-func opaqueID() string {
-	var value [16]byte
-	_, _ = rand.Read(value[:]) // crypto/rand.Read cannot return an error on supported Go.
-	return hex.EncodeToString(value[:])
+	trace.stages = stages
+	return nil // Malformed observations never reject a valid response.
 }
 
 type diagnostic struct {
-	Event       string  `json:"event"`
-	Component   string  `json:"component"`
-	Instance    string  `json:"instance_id"`
-	PID         int     `json:"process_id"`
-	RequestID   string  `json:"request_id"`
-	Operation   string  `json:"operation"`
-	Timestamp   string  `json:"timestamp"`
-	ElapsedMS   float64 `json:"elapsed_ms"`
-	Status      int     `json:"status,omitempty"`
-	StatusClass string  `json:"status_class,omitempty"`
-	Outcome     string  `json:"outcome"`
-	Bytes       int64   `json:"bytes,omitempty"`
-	Dropped     uint64  `json:"dropped_events"`
-	StagesUS    []int64 `json:"stages_us,omitempty"`
+	Version   int       `json:"ap_diag"`
+	PID       int       `json:"pid"`
+	RequestID string    `json:"id,omitempty"`
+	Part      string    `json:"part"`
+	At        string    `json:"at"`
+	Operation string    `json:"op,omitempty"`
+	ElapsedMS int64     `json:"ms"`
+	Status    int       `json:"status,omitempty"`
+	Outcome   string    `json:"outcome,omitempty"`
+	Stages    [12]int64 `json:"v"`
+	Lost      uint64    `json:"lost"`
+	detail    bool
 }
 
-var diagnosticQueue = make(chan diagnostic, 256)
-var droppedDiagnostics atomic.Uint64
-var diagnosticInstance = opaqueID()
+var detailUntil = func() int64 {
+	until, _ := strconv.ParseInt(os.Getenv("ACCESS_PAGES_DIAGNOSTICS_UNTIL_NS"), 10, 64)
+	now, _ := bootNanos()
+	return min(until, now+int64(4*time.Hour))
+}()
 
-func init() {
-	go func() {
-		encoder := json.NewEncoder(os.Stderr)
-		for record := range diagnosticQueue {
-			if encoder.Encode(record) != nil {
-				droppedDiagnostics.Add(1)
-			}
+func detailedAt(now int64) bool { return now > 0 && now < detailUntil }
+
+type diagnosticBudget struct {
+	tokens      float64
+	last        int64
+	mode        bool
+	initialized bool
+}
+
+func (b *diagnosticBudget) take(now int64, detail bool) bool {
+	capacity, interval := 1.0, float64(time.Minute)
+	if detail {
+		capacity, interval = 12, float64(2*time.Second)
+	}
+	if !b.initialized || b.mode != detail {
+		b.tokens = capacity
+		b.initialized = true
+	} else {
+		b.tokens = min(capacity, b.tokens+float64(max(0, now-b.last))/interval)
+	}
+	b.mode, b.last = detail, now
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
+}
+
+type diagnosticSink struct {
+	queue     chan diagnostic
+	lost      atomic.Uint64
+	lock      sync.Mutex
+	admission diagnosticBudget
+	output    diagnosticBudget
+	write     io.Writer
+}
+
+func newDiagnosticSink(write io.Writer) *diagnosticSink {
+	s := &diagnosticSink{queue: make(chan diagnostic, 16), write: write}
+	go s.run()
+	return s
+}
+func (s *diagnosticSink) lose() {
+	for {
+		old := s.lost.Load()
+		if old >= lossLimit || s.lost.CompareAndSwap(old, old+1) {
+			return
 		}
-	}()
+	}
+}
+func (s *diagnosticSink) emit(record diagnostic) {
+	now, _ := bootNanos()
+	s.lock.Lock()
+	defer s.lock.Unlock()
+	if !s.admission.take(now, detailedAt(now)) {
+		s.lose()
+		return
+	}
+	select {
+	case s.queue <- record:
+	default:
+		s.lose()
+	}
+}
+func (s *diagnosticSink) run() {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	var reported uint64
+	for {
+		var record diagnostic
+		select {
+		case record = <-s.queue:
+		case <-ticker.C:
+			if s.lost.Load() == reported {
+				continue
+			}
+			record.At = "loss"
+		}
+		now, _ := bootNanos()
+		if (record.detail && !detailedAt(now)) || !s.output.take(now, detailedAt(now)) {
+			s.lose()
+			continue
+		}
+		record.Version, record.PID, record.Part, record.Lost = 1, os.Getpid(), "gateway", s.lost.Load()
+		line, err := json.Marshal(record)
+		if err != nil || len(line)+1 > 512 {
+			s.lose()
+			continue
+		}
+		line = append(line, '\n')
+		if n, err := s.write.Write(line); err != nil || n != len(line) {
+			s.lose()
+		} else {
+			reported = record.Lost
+		}
+		s.output.last, _ = bootNanos() // Blocked time earns no output burst.
+	}
 }
 
-func emitDiagnostic(record diagnostic) {
-	record.Component, record.Instance, record.PID = "gateway", diagnosticInstance, os.Getpid()
-	if record.Timestamp == "" {
-		record.Timestamp = time.Now().UTC().Format(time.RFC3339Nano)
-	}
-	record.Dropped = droppedDiagnostics.Load()
-	select {
-	case diagnosticQueue <- record:
-	default:
-		droppedDiagnostics.Add(1)
-	}
-}
+var diagnostics = newDiagnosticSink(os.Stderr)
 
 type observedResponse struct {
 	http.ResponseWriter
 	status int
-	bytes  int64
 	failed bool
 }
 
@@ -130,7 +201,6 @@ func (w *observedResponse) Write(body []byte) (int, error) {
 		w.WriteHeader(http.StatusOK)
 	}
 	n, err := w.ResponseWriter.Write(body)
-	w.bytes += int64(n)
 	w.failed = w.failed || err != nil
 	return n, err
 }

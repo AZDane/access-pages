@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -354,10 +355,10 @@ func TestOpaqueRouteIdentifiersAndActualAssets(t *testing.T) {
 }
 
 func TestDiagnosticStagesAreNumericPrivateAndNonAuthorizing(t *testing.T) {
-	for _, header := range []string{"1,2,3,4,5,6,0", "cookie=private", strings.Repeat("1,", 10000), "1,2,3,4,5,600000001,1"} {
-		trace := &stateTrace{}
+	for _, header := range []string{"1,2,3,4,5,6,7,1,2,1,1,0", "cookie=private", strings.Repeat("1,", 10000), "1,2,3,4,5,600001,7,1,2,1,1,0"} {
+		trace := newRequestTrace()
 		request := httptest.NewRequest("GET", "/", nil)
-		request = request.WithContext(context.WithValue(request.Context(), stateTraceKey{}, trace))
+		request = request.WithContext(context.WithValue(request.Context(), requestTraceKey{}, trace))
 		response := &http.Response{Request: request, Header: make(http.Header)}
 		response.Header.Set(stagesHeader, header)
 		if captureDiagnosticStages(response) != nil {
@@ -366,11 +367,11 @@ func TestDiagnosticStagesAreNumericPrivateAndNonAuthorizing(t *testing.T) {
 		if response.Header.Get(stagesHeader) != "" {
 			t.Fatal("internal stages leaked downstream")
 		}
-		if header == "1,2,3,4,5,6,0" {
-			if len(trace.stages) != 6 || trace.stages[5] != 6 {
+		if header == "1,2,3,4,5,6,7,1,2,1,1,0" {
+			if len(trace.stages) != 12 || trace.stages[5] != 6 {
 				t.Fatal("valid timing lost")
 			}
-		} else if trace.stages != nil {
+		} else if trace.stages[0] != -1 {
 			t.Fatal("invalid diagnostic accepted")
 		}
 	}
@@ -382,20 +383,141 @@ func (w disconnectedWriter) Write(_ []byte) (int, error) { return 0, syscall.EPI
 
 func TestStateDownstreamDisconnectRetainsUpstreamStages(t *testing.T) {
 	proxy := newGuestServiceProxy("unused", 0, 0, 0)
-	var trace *stateTrace
+	var trace *requestTrace
 	proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		trace = r.Context().Value(stateTraceKey{}).(*stateTrace)
+		trace = r.Context().Value(requestTraceKey{}).(*requestTrace)
 		headers := make(http.Header)
-		headers.Set(stagesHeader, "10,20,30,40,50,10,0")
+		headers.Set(stagesHeader, "10,20,30,40,50,60,70,1,10,1,1,0")
 		return &http.Response{Request: r, StatusCode: 200, Header: headers, Body: io.NopCloser(strings.NewReader("state"))}, nil
 	})
 	handler := &endpoint{pageID: "static", capability: "synthetic", proxy: proxy, slots: make(chan struct{}, maxActiveGuestRequests)}
 	writer := disconnectedWriter{httptest.NewRecorder()}
 	handler.ServeHTTP(writer, httptest.NewRequest("GET", "/g/static/grant_mmmmmmmmmmmmmmmm/api/access/static", nil))
-	if trace == nil || len(trace.stages) != 6 || trace.stages[4] != 50 {
+	if trace == nil || len(trace.stages) != 12 || trace.stages[4] != 50 {
 		t.Fatal("late downstream disconnect lost successful upstream evidence")
 	}
 	if writer.Header().Get(stagesHeader) != "" {
 		t.Fatal("private timing exposed")
+	}
+}
+
+func TestHealthyPollingSilentAndSlowThreshold(t *testing.T) {
+	original := diagnostics
+	diagnostics = &diagnosticSink{queue: make(chan diagnostic, 16)}
+	defer func() { diagnostics = original }()
+	proxy := newGuestServiceProxy("unused", 0, 0, 0)
+	proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{Request: r, StatusCode: 200, Header: make(http.Header), Body: http.NoBody}, nil
+	})
+	handler := &endpoint{pageID: "guest", capability: "synthetic", proxy: proxy, slots: make(chan struct{}, 64)}
+	for range 1200 {
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/g/guest/grant_mmmmmmmmmmmmmmmm/api/access/guest", nil))
+	}
+	if len(diagnostics.queue) != 0 || diagnostics.lost.Load() != 0 {
+		t.Fatal("healthy polling emitted diagnostics")
+	}
+	proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		time.Sleep(5 * time.Second)
+		return &http.Response{Request: r, StatusCode: 200, Header: make(http.Header), Body: http.NoBody}, nil
+	})
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/g/guest/grant_mmmmmmmmmmmmmmmm/api/access/guest", nil))
+	record := <-diagnostics.queue
+	if record.Outcome != "slow" || record.ElapsedMS < 5000 || len(record.RequestID) != 32 {
+		t.Fatal("slow success not localized")
+	}
+}
+
+func TestDiagnosticRateBudget(t *testing.T) {
+	for _, detail := range []bool{false, true} {
+		var budget diagnosticBudget
+		count := 0
+		for i := int64(0); i < int64(time.Hour); i += int64(time.Millisecond) {
+			if budget.take(i, detail) {
+				count++
+			}
+		}
+		expected := 60
+		if detail {
+			expected = 1811
+		}
+		if count != expected {
+			t.Fatalf("detail=%v count=%d expected=%d", detail, count, expected)
+		}
+	}
+}
+
+type blockedDiagnosticWriter struct {
+	entered chan bool
+	release chan bool
+}
+
+func (w blockedDiagnosticWriter) Write(b []byte) (int, error) {
+	select {
+	case w.entered <- true:
+	default:
+	}
+	<-w.release
+	return len(b), nil
+}
+
+func TestBlockedDiagnosticOutputCannotDelayRequests(t *testing.T) {
+	writer := blockedDiagnosticWriter{make(chan bool, 1), make(chan bool)}
+	sink := newDiagnosticSink(writer)
+	defer close(writer.release)
+	sink.emit(diagnostic{At: "end"})
+	<-writer.entered
+	start := time.Now()
+	for range 10000 {
+		sink.emit(diagnostic{At: "end"})
+	}
+	if time.Since(start) > time.Second || sink.lost.Load() < 9980 || cap(sink.queue) != 16 {
+		t.Fatal("unbounded logging")
+	}
+}
+
+func TestClosedStderrDoesNotTerminateGateway(t *testing.T) {
+	if os.Getenv("AP_TEST_CLOSED_STDERR") == "1" {
+		// Go normally terminates on SIGPIPE when descriptor 2 has no reader.
+		if _, err := os.Stderr.Write([]byte("synthetic diagnostic\n")); err == nil {
+			os.Exit(2)
+		}
+		os.Exit(0)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader.Close()
+	defer writer.Close()
+	child := exec.Command(os.Args[0], "-test.run=^TestClosedStderrDoesNotTerminateGateway$")
+	child.Env = append(os.Environ(), "AP_TEST_CLOSED_STDERR=1")
+	child.Stderr = writer
+	if err := child.Run(); err != nil {
+		t.Fatal("closed logging output terminated process:", err)
+	}
+}
+
+func TestDeadlineSummaryRequiresPositiveNoDispatchEvidence(t *testing.T) {
+	original := diagnostics
+	defer func() { diagnostics = original }()
+	for _, dispatch := range []int{0, 1, 2} {
+		diagnostics = &diagnosticSink{queue: make(chan diagnostic, 16)}
+		proxy := newGuestServiceProxy("unused", 0, 0, 0)
+		proxy.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			headers := make(http.Header)
+			headers.Set(stagesHeader, "0,1,2,-1,-1,3,4,0,0,1,"+strconv.Itoa(dispatch)+",3")
+			return &http.Response{Request: r, StatusCode: 503, Header: headers, Body: http.NoBody}, nil
+		})
+		handler := &endpoint{pageID: "guest", capability: "synthetic", proxy: proxy, slots: make(chan struct{}, 64)}
+		// This path can be a saved action after backend payload validation.
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/g/guest/grant_mmmmmmmmmmmmmmmm/api/access/guest/verification/send", strings.NewReader("{}")))
+		record := <-diagnostics.queue
+		expected := "uncertain"
+		if dispatch == 1 {
+			expected = "deadline"
+		}
+		if record.Outcome != expected {
+			t.Fatalf("dispatch=%d outcome=%s", dispatch, record.Outcome)
+		}
 	}
 }

@@ -22,7 +22,7 @@ os.environ.setdefault("HA_BASE_URL", "http://ha.invalid")
 os.environ.setdefault("HA_TOKEN", "synthetic-ha-token")
 os.environ.setdefault("ADMIN_TOKEN", "synthetic-owner-token")
 
-import guest_diagnostics as diagnostics
+import guest_request as diagnostics
 import ha_broker
 import server
 from activity import GuestActivityStore
@@ -165,7 +165,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 "X-Broker-Token: synthetic-admin-broker-token\r\n"
                 f"X-Page-Capability: {capability}\r\n"
                 f"X-Access-Pages-Page-ID: {page_id}\r\n"
-                f"{timing.headers(diagnostics.clock_ns())}"
+                f"{timing.headers()}"
                 f"Content-Length: {len(payload)}\r\n\r\n"
             ).encode() + payload
             connection.sendall(request)
@@ -286,7 +286,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
                        "X-Access-Pages-Page-ID: page-a\r\n"
                        f"X-Forwarded-For: 203.0.113.{index + 1}\r\n"
                        + diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns(),
-                                                   "action").headers(diagnostics.clock_ns()))
+                                                   "action").headers())
             self.assertEqual(self.raw_request("/guest/v1/action", headers, body),
                              200 if index < 12 else 429)
         self.assertEqual(ha_broker.HA_CLIENT.call_service.call_count, 12)
@@ -779,7 +779,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
             result = original(*args)
             current[0] += 8_000_000_000
             return result
-        with (patch("guest_diagnostics.clock_ns", side_effect=lambda: current[0]),
+        with (patch("guest_request.clock_ns", side_effect=lambda: current[0]),
               patch("ha_broker._service_data", side_effect=delayed_preparation)):
             self.assertEqual(self.request("/guest/v1/action", self.cap_a, "page-a", body,
                                           started_ns=now)[0], 503)
@@ -797,12 +797,12 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.raw_request("/guest/v1/action", headers, body), 400)
         downgraded = diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns() - 9_000_000_000, "state")
         self.assertEqual(self.raw_request("/guest/v1/action", headers +
-                                         downgraded.headers(diagnostics.clock_ns()), body), 503)
+                                         downgraded.headers(), body), 503)
         ha_broker.HA_CLIENT.call_service.assert_not_called()
         # A diagnostic label cannot reject a valid authorized action either.
         unknown = diagnostics.RequestTiming("b" * 32, diagnostics.clock_ns(), "other")
         self.assertEqual(self.raw_request("/guest/v1/action", headers +
-                                         unknown.headers(diagnostics.clock_ns()), body), 200)
+                                         unknown.headers(), body), 200)
         ha_broker.HA_CLIENT.call_service.assert_called_once()
 
     def test_allowed_action_dispatches_only_policy_service_without_proximity(self):

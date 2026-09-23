@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -93,46 +94,43 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientContext := r.Context()
 	requestID := opaqueID()
 	operation := guestOperation(r.Method, r.URL.Path, r.URL.Query().Has("bootstrap"))
-	trace := &stateTrace{}
-	r = r.WithContext(context.WithValue(r.Context(), stateTraceKey{}, trace))
+	trace := newRequestTrace()
+	r = r.WithContext(context.WithValue(r.Context(), requestTraceKey{}, trace))
 	observed := &observedResponse{ResponseWriter: w}
 	w = observed
 	w.Header().Set(requestIDHeader, requestID)
 	if operation != "asset" && r.URL.Path != "/health" {
-		receipt := diagnostic{Event: "guest_request_received", RequestID: requestID, Operation: operation,
-			Outcome: "started", Timestamp: time.Now().UTC().Format(time.RFC3339Nano)}
-		dropped := droppedDiagnostics.Load()
-		if operation != "state" {
-			emitDiagnostic(receipt)
+		if detailedAt(started) {
+			diagnostics.emit(diagnostic{RequestID: requestID, Operation: operation, At: "received", Stages: trace.stages, detail: true})
 		}
 		defer func() {
-			outcome := "success"
 			failure := recover()
-			if observed.status >= 400 {
-				outcome = "denied"
+			ended, _ := bootNanos()
+			elapsed := max(0, (ended-started)/int64(time.Millisecond))
+			outcome := "ok"
+			if observed.status >= 500 || trace.stages[11] != 0 {
+				outcome = "error"
 			}
-			if observed.status >= 500 {
-				outcome = "unavailable"
+			if elapsed >= 5000 {
+				outcome = "slow"
+			}
+			if trace.stages[11] == 3 {
+				outcome = "uncertain"
+				if trace.stages[10] == 1 {
+					outcome = "deadline"
+				}
 			}
 			if observed.failed || clientContext.Err() != nil || failure != nil {
-				outcome = "disconnected"
+				outcome = "disconnect"
 			}
-			ended, _ := bootNanos()
-			if operation == "action" && ended-started >= int64(actionLifetime) {
-				outcome = "timeout"
+			if (operation == "action" || trace.stages[10] == 2) && outcome != "ok" && trace.stages[10] != 1 && trace.stages[10] != 3 {
+				outcome = "uncertain"
 			}
-			statusClass := ""
-			if observed.status >= 100 {
-				statusClass = strconv.Itoa(observed.status/100) + "xx"
+			if outcome != "ok" || detailedAt(ended) {
+				diagnostics.emit(diagnostic{At: "end", RequestID: requestID, Operation: operation,
+					ElapsedMS: min(diagnosticLimit, elapsed), Status: observed.status,
+					Outcome: outcome, Stages: trace.stages, detail: outcome == "ok"})
 			}
-			if operation == "state" && (outcome != "success" || ended-started >= int64(250*time.Millisecond) ||
-				trace.interesting || dropped != droppedDiagnostics.Load()) {
-				emitDiagnostic(receipt)
-			}
-			emitDiagnostic(diagnostic{Event: "gateway_response_completed", RequestID: requestID,
-				Operation: operation, ElapsedMS: float64(ended-started) / 1e6,
-				Status: observed.status, StatusClass: statusClass,
-				Outcome: outcome, Bytes: observed.bytes, StagesUS: trace.stages})
 			if failure != nil {
 				panic(failure)
 			}
@@ -249,6 +247,7 @@ func guestOperation(method, path string, bootstrap bool) string {
 func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httputil.ReverseProxy {
 	upstream := &url.URL{Scheme: "http", Host: "guest-service"}
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	proxy.ErrorLog = log.New(io.Discard, "", 0)
 	proxy.ModifyResponse = captureDiagnosticStages
 	originalDirector := proxy.Director
 	proxy.Director = func(request *http.Request) {

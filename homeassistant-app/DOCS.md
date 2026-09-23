@@ -424,3 +424,48 @@ official status without prior written permission from LayerV.
 
 See [BRAND_ASSETS.md](https://github.com/AZDane/access-pages/blob/main/BRAND_ASSETS.md)
 for the full notice. For brand-use questions, visit [LayerV](https://layerv.ai).
+
+## Temporary diagnostic logging
+
+Normal operation emits no diagnostic records for healthy, fast guest requests.
+Errors, observed disconnects, uncertain controls, rejected stale controls, and
+requests taking at least five seconds inside Access Pages can produce a compact
+summary. Ordinary startup and existing product activity logs are separate.
+
+For a recurring problem, open the App's **Configuration** and set
+`diagnostic_logging` to `30 minutes`, `1 hour`, or `4 hours`, then save and restart
+the App. The default is `off`. Timing observations include successful requests
+while this temporary mode is active. It observes existing traffic; it does not
+add polls, probes, HA calls, uploads, or LayerV requests.
+
+The duration starts when the App starts and cannot be extended by traffic.
+An App restart stops the capture: leaving the same selection configured does
+**not** start another capture, even if you change its duration. To start another,
+select `off`, save and restart, then select the desired duration, save and restart
+again. Selecting `off` and restarting also stops a capture early. A failed
+activation stays off. No invitation or session data is changed.
+
+Use the Access Pages App **Logs** tab and Home Assistant's **Download logs**
+control. The download contains the retained App output requested from Home
+Assistant, including ordinary lifecycle messages; it is not an Access Pages
+support archive. Choose enough lines to cover the incident. The displayed text
+filter does not necessarily filter the downloaded log. Log history and retention
+are managed by Home Assistant. Access Pages neither clears logs on restart nor
+provides a clear-log action, diagnostic files, or automatic upload. Review any
+whole-App log before sharing because other components' ordinary messages are
+separate from the fixed, privacy-limited request diagnostic schema.
+
+Emission is throttled per process, including loss reports. In normal mode the
+allowance is one record initially, replenished once per minute. Detailed mode
+allows 12 records initially, replenished once every two seconds. Each record is
+at most 512 bytes. With P page Gateway processes, at most P+2 processes emit guest
+diagnostics; the aggregate bound scales with that count. These are emission
+bounds, not a disk quota or a promised complete trace. Counters and throttles
+reset on process restart. The App owns emission; Home Assistant owns retention.
+
+When output is blocked or the allowance is exhausted, evidence is dropped.
+`lost` reports the cumulative suppressed/dropped count in that process (capped
+at 2,147,483,647); a quiet process with unreported loss attempts a bounded loss
+summary once per minute. Healthy polling alone never causes a loss summary.
+Missing records therefore do not prove a request never reached a component.
+Some problems will require enabling this mode and reproducing them again.

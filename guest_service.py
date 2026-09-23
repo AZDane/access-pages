@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import json
 import http.client
 import mimetypes
@@ -20,6 +19,7 @@ from threading import BoundedSemaphore
 from urllib.parse import parse_qs, urlsplit
 
 import guest_diagnostics as diagnostics
+import guest_request as lifetime
 
 
 SOCKET_PATH = Path(os.environ.get(
@@ -60,12 +60,12 @@ PUBLIC_GUEST_ERRORS = {
     "control_unavailable": "This control is not available for that value",
     "ha_unavailable": "Home Assistant could not complete the request",
     "temporarily_unavailable": "Guest access temporarily unavailable",
+    "action_uncertain": "The command may have been sent. Check refreshed state before trying again.",
     "action_deadline": "This command timed out before dispatch. Refresh state before trying again.",
 }
 GUEST_REQUEST_SLOTS = BoundedSemaphore(64)
 
 
-@diagnostics.timed_work("guest_service", "connector_health")
 def _connector_healthy() -> bool:
     broker = http.client.HTTPConnection("127.0.0.1", 8083, timeout=2)
     try:
@@ -202,6 +202,7 @@ class GuestHandler(HealthHandler):
         self._json(code, {"error": "Guest request denied"})
 
     def end_headers(self) -> None:
+        diagnostics.boundary(6, "service")
         stages = diagnostics.stage_header()
         if stages:
             self.send_header(diagnostics.STAGES, stages)
@@ -221,13 +222,8 @@ class GuestHandler(HealthHandler):
         except (BrokenPipeError, ConnectionResetError):
             # The peer has gone away; a second response cannot reach it.
             self.close_connection = True
-            diagnostics.emit("guest_response_written", "guest_service", status=status,
-                             outcome="disconnected")
-        else:
-            diagnostics.emit("guest_response_written", "guest_service", status=status,
-                             outcome=getattr(self, "_failure_outcome", None) or (
-                                 "success" if status < 400 else
-                                 "unavailable" if status >= 500 else "denied"))
+            diagnostics.failure(4)
+            diagnostics.record("service", status=status)
 
     def _json(self, status: int, payload: dict,
               headers: dict[str, str] | None = None) -> None:
@@ -278,43 +274,43 @@ class GuestHandler(HealthHandler):
         self._guest("POST")
 
     def _guest(self, method: str) -> None:
-        self._failure_outcome = None
         parsed = urlsplit(self.path)
-        operation = diagnostics.guest_operation(method, parsed.path, "bootstrap" in parse_qs(parsed.query))
+        operation = lifetime.guest_operation(method, parsed.path, "bootstrap" in parse_qs(parsed.query))
         try:
-            timing = diagnostics.timing_from_headers(self.headers, operation, required=operation == "action")
+            timing = lifetime.timing_from_headers(self.headers, operation, required=operation == "action")
         except ValueError:
             self._json(400, {"error": "Invalid request timing"})
             return
-        token = diagnostics.CURRENT.set(timing)
+        token = lifetime.CURRENT.set(timing)
         try:
-            diagnostics.emit("guest_service_received", "guest_service")
+            diagnostics.boundary(0, "service")
             self._guest_scoped(method)
         finally:
-            diagnostics.finish()
-            diagnostics.CURRENT.reset(token)
+            lifetime.CURRENT.reset(token)
 
     def _guest_scoped(self, method: str) -> None:
         if not GUEST_REQUEST_SLOTS.acquire(blocking=False):
             self._json(503, {"error": "Guest access temporarily unavailable"})
             return
         try:
-            diagnostics.action_remaining(20)
+            lifetime.action_remaining(20)
             self._serve_guest(method)
-        except diagnostics.ActionDeadlineExceeded:
-            self._failure_outcome = "deadline_exceeded"
-            diagnostics.emit("action_not_dispatched", "guest_service", outcome="deadline_exceeded")
-            self._json(503, {"error": PUBLIC_GUEST_ERRORS["action_deadline"]})
+        except lifetime.ActionDeadlineExceeded:
+            diagnostics.failure(3)
+            timing = lifetime.CURRENT.get()
+            code = "action_deadline" if timing and timing.stages[10] == 1 else "action_uncertain"
+            self._json(503, {"error": PUBLIC_GUEST_ERRORS[code]})
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
-            diagnostics.emit("guest_request_failed", "guest_service", outcome="disconnected")
+            diagnostics.failure(4)
+            diagnostics.record("service")
         except TimeoutError:
-            diagnostics.emit("guest_request_failed", "guest_service", outcome="timeout")
-            self._failure_outcome = "timeout"
+            diagnostics.failure(2)
             self._json(503, {"error": "Guest access temporarily unavailable"})
         except (ValueError, TypeError, json.JSONDecodeError):
             self._json(400, {"error": "Invalid guest request"})
-        except (OSError, RuntimeError):
+        except Exception:
+            diagnostics.failure(1)
             self._json(503, {"error": "Guest access temporarily unavailable"})
         finally:
             GUEST_REQUEST_SLOTS.release()
@@ -473,7 +469,7 @@ def _connect_broker() -> socket.socket:
         raise RuntimeError("Unix peer credentials unavailable")
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        connection.settimeout(diagnostics.action_remaining(2))
+        connection.settimeout(lifetime.action_remaining(2))
         connection.connect(str(BROKER_SOCKET))
         credentials = connection.getsockopt(
             socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
@@ -531,23 +527,22 @@ def _broker_page_identity(capability: str, claimed_page: str) -> tuple[int, str]
 
 
 def _broker_guest_auth(path: str, payload: dict) -> tuple[int, dict]:
-    timing = diagnostics.CURRENT.get()
+    timing = lifetime.CURRENT.get()
     operation = {"/broker-action": "action", "/broker-camera": "camera",
                  "/broker-verification-challenge": "verification",
                  "/broker-verification-verify": "verification"}.get(path)
     if timing and operation:
         # Refine ambiguous public routes only after existing payload validation.
-        diagnostics.CURRENT.set(replace(timing, operation=operation,
-                                        action_deadline=path == "/broker-action"))
+        timing.operation = operation
+        timing.action_deadline = path == "/broker-action"
     if path == "/broker-action":
         if timing is None:
             raise ValueError("Missing action request lifetime")
-        diagnostics.action_remaining(20)
+        lifetime.action_remaining(20)
     try:
         return _broker_guest_auth_scoped(path, payload)
-    except (OSError, http.client.HTTPException) as error:
-        diagnostics.emit("broker_rpc_failed", "guest_service",
-                         outcome=diagnostics.error_outcome(error))
+    except (OSError, http.client.HTTPException):
+        diagnostics.failure(6)
         raise
 
 
@@ -623,12 +618,16 @@ def _broker_guest_auth_scoped(path: str, payload: dict) -> tuple[int, dict]:
             "resource_id", "action_id", "parameters", "proximity",
         )})
     body = json.dumps(scoped).encode("ascii")
-    timing = diagnostics.CURRENT.get()
-    rpc_started = diagnostics.clock_ns()
-    timing_headers = timing.headers(rpc_started) if timing else ""
+    timing = lifetime.CURRENT.get()
+    timing_headers = timing.headers() if timing else ""
+    if timing:
+        timing.stages[9] = min(diagnostics.LIMIT, timing.stages[9] + 1)
+    diagnostics.boundary(1, "service")
     with _connect_broker() as connection:
-        connection.settimeout(diagnostics.action_remaining(20))
+        connection.settimeout(lifetime.action_remaining(20))
         # The broker peer is verified before any capability or session is sent.
+        if timing and path == "/broker-action":
+            timing.stages[10] = 0  # Broker dispatch is unknown until its response.
         connection.sendall((
             f"POST {route} HTTP/1.1\r\n"
             "Host: guest-broker\r\n"
@@ -637,8 +636,6 @@ def _broker_guest_auth_scoped(path: str, payload: dict) -> tuple[int, dict]:
             f"{timing_headers}"
             f"Content-Length: {len(body)}\r\n\r\n"
         ).encode("ascii") + body)
-        diagnostics.emit("broker_rpc_sent", "guest_service",
-                         duration_ns=diagnostics.clock_ns() - rpc_started)
         response = http.client.HTTPResponse(connection)
         response.begin()
         diagnostics.receive_stages(response.getheader(diagnostics.STAGES))

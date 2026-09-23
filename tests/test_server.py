@@ -1160,3 +1160,18 @@ class ParameterValidationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GuestActivityAccessLogTests(unittest.TestCase):
+    def test_existing_guest_callback_has_no_synchronous_access_log(self):
+        handler = object.__new__(Handler)
+        handler.path = "/api/internal/guest-event"
+        handler.requestline = "POST /api/internal/guest-event HTTP/1.1"
+        handler.stderr_write = Mock(side_effect=AssertionError("Guest polling reached synchronous stderr"))
+        handler.client_address = ("127.0.0.1", 1234)
+        for status in (200, 400, 401, 503):
+            handler.log_request(status)
+        handler.stderr_write.assert_not_called()
+        handler.path = "/api/admin/pages"
+        with self.assertRaises(AssertionError):
+            handler.log_request(200)
