@@ -169,6 +169,7 @@ class MinimalObservabilityTests(unittest.TestCase):
 
     def test_detailed_boundaries_expire_and_do_not_generate_requests(self):
         from unittest.mock import Mock
+        self.timing.request_id = 'c' * 31 + '0'
         records = []
         with (patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000),
               patch.object(self.d.SINK, 'emit', side_effect=lambda r, **kw: records.append(r)),
@@ -177,15 +178,145 @@ class MinimalObservabilityTests(unittest.TestCase):
             response.read.return_value = b'[]'
             network.return_value.__enter__.return_value = response
             self.d.boundary(0, 'service')
+            self.d.boundary(1, 'service')
             HomeAssistantClient('http://ha.invalid', 'synthetic').get_states()
             self.assertEqual(network.call_count, 1)
-            self.assertEqual([r['at'] for r in records], ['0', '3', '4'])
+            self.assertEqual([r['at'] for r in records], ['1', '3'])
+            self.assertGreaterEqual(self.timing.stages[4], 0)
             self.now[0] += 1_000_000_000
             self.d.boundary(6, 'service')
-            self.assertEqual(len(records), 3)
+            self.assertEqual(len(records), 2)
             HomeAssistantClient('http://ha.invalid', 'synthetic').get_states()
             self.assertEqual(network.call_count, 2)
-            self.assertEqual(len(records), 3)
+            self.assertEqual(len(records), 2)
+
+    def test_unselected_boundaries_retain_vector_without_emission_or_loss(self):
+        with (patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000),
+              patch.object(self.d.SINK, 'emit') as emit):
+            for index in range(7):
+                self.d.boundary(index, 'service')
+                self.now[0] += 1_000_000
+            emit.assert_not_called()
+            self.assertEqual(self.timing.stages[:7], list(range(7)))
+
+    def test_detailed_rpc_and_ha_failures_are_not_sampled_or_expired_as_detail(self):
+        from urllib.error import URLError
+        from ha import HomeAssistantError
+        with (patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000),
+              patch.object(self.d.SINK, 'emit') as emit,
+              patch('ha.urlopen', side_effect=URLError(TimeoutError('private')))):
+            self.d.failure(6, 'service')
+            self.assertEqual(emit.call_args.args[0]['v'][11], 6)
+            self.assertFalse(emit.call_args.kwargs['detail'])
+            with self.assertRaises(HomeAssistantError):
+                HomeAssistantClient('http://ha.invalid', 'synthetic').get_states()
+            record = emit.call_args.args[0]
+            self.assertEqual(record['part'], 'ha')
+            self.assertEqual(record['outcome'], 'error')
+            self.assertGreaterEqual(record['v'][4], record['v'][3])
+            self.assertFalse(emit.call_args.kwargs['detail'])
+
+    def test_selected_request_leaves_evidence_before_blocked_ha_returns(self):
+        import json
+        import threading
+        entered, release, written = threading.Event(), threading.Event(), threading.Event()
+        records = []
+        def write(line):
+            records.append(json.loads(line))
+            if records[-1].get('part') == 'ha':
+                written.set()
+        sink = self.d.DiagnosticSink(write=write)
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'[]'
+        def network(*args, **kwargs):
+            entered.set()
+            release.wait(5)
+            return response
+        self.timing.request_id = 'c' * 31 + '0'
+        def run():
+            token = request.CURRENT.set(self.timing)
+            try:
+                self.d.boundary(1, 'service')
+                HomeAssistantClient('http://ha.invalid', 'synthetic').get_states()
+            finally:
+                request.CURRENT.reset(token)
+        with (patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000),
+              patch.object(self.d, 'SINK', sink), patch('ha.urlopen', side_effect=network)):
+            worker = threading.Thread(target=run)
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(1))
+                self.assertTrue(written.wait(1))
+                self.assertTrue(worker.is_alive())
+                self.assertEqual([r['at'] for r in records], ['1', '3'])
+                self.assertEqual(records[-1]['v'][4], -1)
+                self.assertEqual({r['id'] for r in records}, {self.timing.request_id})
+            finally:
+                release.set()
+                worker.join(2)
+                sink.queue.join()
+            self.assertFalse(worker.is_alive())
+            self.assertGreaterEqual(self.timing.stages[4], 0)
+            self.assertEqual(len(records), 2)
+
+    def test_unsampled_action_denial_is_recorded_before_response_write(self):
+        import guest_service
+        import ha_broker
+        self.timing.operation = 'action'
+        self.timing.action_deadline = True
+        self.timing.stages[11] = 3
+        for dispatch, outcome in ((1, 'deadline'), (2, 'uncertain')):
+            self.timing.stages[10] = dispatch
+            for cls, method, args in (
+                    (guest_service.GuestHandler, '_send', (503, b'{}', 'application/json')),
+                    (ha_broker.GuestHandler, '_send_denial', (503, 'action_deadline'))):
+                handler = object.__new__(cls)
+                with (patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000),
+                      patch.object(self.d.SINK, 'emit') as emit):
+                    def stop_write(*args):
+                        self.assertEqual(emit.call_args.args[0]['outcome'], outcome)
+                        self.assertFalse(emit.call_args.kwargs['detail'])
+                        raise TimeoutError('synthetic blocked response')
+                    with patch.object(handler, 'send_response', side_effect=stop_write):
+                        with self.assertRaises(TimeoutError):
+                            getattr(handler, method)(*args)
+
+    def test_sampled_observations_leave_output_allowance_for_abnormal_records(self):
+        import json
+        lines = []
+        sink = self.d.DiagnosticSink(write=lines.append)
+        with patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000):
+            for _ in range(100):
+                sink._write({'at': '3'}, detail=True)
+            self.assertEqual(len(lines), 6)
+            for _ in range(6):
+                sink._write({'at': 'end', 'outcome': 'uncertain'})
+            self.assertEqual(len(lines), 12)
+            self.assertEqual(json.loads(lines[-1])['outcome'], 'uncertain')
+            self.assertEqual(json.loads(lines[-1])['lost'], 94)
+
+    def test_sampled_observations_leave_queue_capacity_for_abnormal_records(self):
+        import threading
+        entered, release = threading.Event(), threading.Event()
+        def write(line):
+            entered.set()
+            release.wait(5)
+        sink = self.d.DiagnosticSink(write=write)
+        try:
+            with patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 3600_000_000_000):
+                sink.emit({'at': '1'}, detail=True)
+                self.assertTrue(entered.wait(1))
+                for _ in range(100):
+                    self.now[0] += 3_000_000_000
+                    sink.emit({'at': '1'}, detail=True)
+                self.assertEqual(sink.queue.qsize(), 8)
+                for _ in range(8):
+                    self.now[0] += 3_000_000_000
+                    sink.emit({'at': 'end', 'outcome': 'error'})
+                self.assertEqual(sink.queue.qsize(), 16)
+        finally:
+            release.set()
+            sink.queue.join()
 
     def test_dispatched_but_unconfirmed_is_uncertain_and_not_replayed(self):
         import json
@@ -232,7 +363,7 @@ class MinimalObservabilityTests(unittest.TestCase):
                     self.now[0] += 2_000_000_000
                     sink.emit({'at': 'end'}, detail=True)
                 self.assertLess(time.monotonic() - start, .5)
-                self.assertEqual(sink.queue.qsize(), 16)
+                self.assertEqual(sink.queue.qsize(), 8)
                 self.assertGreater(sink.lost, 900)
             release.set()
             sink.queue.join()

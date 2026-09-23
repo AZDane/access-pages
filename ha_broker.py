@@ -124,9 +124,9 @@ def _emit_guest_event(page_id, grant_id, event, **validated):
         response = connection.getresponse()
         response.read(1024)
         if response.status != HTTPStatus.OK:
-            diagnostics.failure(7)
+            diagnostics.failure(7, "broker")
     except (HTTPException, OSError):
-        diagnostics.failure(7)
+        diagnostics.failure(7, "broker")
     finally:
         connection.close()
 
@@ -572,6 +572,8 @@ class GuestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_denial(self, status, code, retry_after=None):
+        if status >= 500 and diagnostics.detailed():
+            diagnostics.record("broker", status=status)
         body = json.dumps({"code": code}).encode("ascii")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
