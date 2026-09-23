@@ -1499,9 +1499,17 @@ verificationForm.addEventListener("submit", async (event) => {
     await fetchPage({showLoading: true});
     schedulePoll();
   } catch (error) {
-    verificationStatus.className = "status error";
-    verificationStatus.textContent = error.message;
-    showResendOption();
+    if (verificationPending) {
+      verificationStatus.className = "status error";
+      verificationStatus.textContent = error.message;
+      showResendOption();
+    } else if (error instanceof AccessEndedError) {
+      endAccess();
+    } else {
+      // Verification succeeded; the failed state read belongs to the page.
+      showConnectionUnavailable(error);
+      schedulePoll();
+    }
   } finally {
     verificationSubmitting = false;
   }

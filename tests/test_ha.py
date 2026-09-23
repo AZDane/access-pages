@@ -70,6 +70,8 @@ class ProximityBoundaryTests(unittest.TestCase):
 
 
 class ImageResponse:
+    status = 200
+
     def __init__(self, body=b"jpeg", content_type="image/jpeg", length=None):
         self._body = BytesIO(body)
         self.headers = Message()
@@ -88,6 +90,8 @@ class ImageResponse:
 
 
 class JsonResponse:
+    status = 200
+
     def __init__(self, value):
         self._body = json.dumps(value).encode()
 
