@@ -5,12 +5,17 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
+
+// A closed App log pipe must report EPIPE to the worker, not kill the Gateway.
+func init() { signal.Ignore(syscall.SIGPIPE) }
 
 const stagesHeader = "X-Access-Pages-Diagnostic-Stages"
 const diagnosticLimit = 600_000

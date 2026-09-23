@@ -9,6 +9,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -471,5 +472,27 @@ func TestBlockedDiagnosticOutputCannotDelayRequests(t *testing.T) {
 	}
 	if time.Since(start) > time.Second || sink.lost.Load() < 9980 || cap(sink.queue) != 16 {
 		t.Fatal("unbounded logging")
+	}
+}
+
+func TestClosedStderrDoesNotTerminateGateway(t *testing.T) {
+	if os.Getenv("AP_TEST_CLOSED_STDERR") == "1" {
+		// Go normally terminates on SIGPIPE when descriptor 2 has no reader.
+		if _, err := os.Stderr.Write([]byte("synthetic diagnostic\n")); err == nil {
+			os.Exit(2)
+		}
+		os.Exit(0)
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader.Close()
+	defer writer.Close()
+	child := exec.Command(os.Args[0], "-test.run=^TestClosedStderrDoesNotTerminateGateway$")
+	child.Env = append(os.Environ(), "AP_TEST_CLOSED_STDERR=1")
+	child.Stderr = writer
+	if err := child.Run(); err != nil {
+		t.Fatal("closed logging output terminated process:", err)
 	}
 }
