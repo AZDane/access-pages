@@ -54,6 +54,7 @@ const usersPreviewButton = document.getElementById("users-preview");
 const usersTitle = document.getElementById("users-title");
 const addUserButton = document.getElementById("add-user");
 const userDialog = document.getElementById("user-dialog");
+const userDialogStatus = document.getElementById("user-dialog-status");
 const closeUserDialogButton = document.getElementById("close-user-dialog");
 const qurlLabelInput = document.getElementById("qurl-label");
 const oneTimeUseInput = document.getElementById("one-time-use");
@@ -1862,7 +1863,13 @@ async function deleteSelectedActivity() {
   setStatus("Revoked guest and activity history deleted.", "success");
 }
 
+function setUserDialogStatus(message, kind = "") {
+  userDialogStatus.textContent = message;
+  userDialogStatus.className = message ? `status ${kind}` : "status hidden";
+}
+
 function openUserDialog() {
+  setUserDialogStatus("");
   qurlLabelInput.value = "";
   verificationRequiredInput.checked = false;
   sendInvitationInput.checked = false;
@@ -1878,13 +1885,14 @@ function openUserDialog() {
 }
 
 async function generateQurl() {
+  if (generateQurlButton.disabled) return;
   if (!currentPage || !editingExisting) {
-    setStatus("Save the page before generating a qURL.", "error");
+    setUserDialogStatus("Save the page before generating a qURL.", "error");
     return;
   }
 
   if (!layerVApiConfigured) {
-    setStatus(
+    setUserDialogStatus(
       "LayerV API is not configured. Add LAYERV_API_TOKEN to .env.",
       "error",
     );
@@ -1893,13 +1901,11 @@ async function generateQurl() {
 
   const userName = qurlLabelInput.value.trim();
   if (!userName) {
-    setStatus("Enter a guest name before creating the link.", "error");
+    setUserDialogStatus("Enter a guest name before creating the link.", "error");
     qurlLabelInput.focus();
     return;
   }
 
-  generateQurlButton.disabled = true;
-  setStatus(`Creating access for ${userName}… Initial setup can take a few minutes.`);
   const verificationRequested = verificationRequiredInput.checked;
   const invitationRequested = verificationRequested || sendInvitationInput.checked;
   const verificationEmail = verificationEmailInput.value.trim();
@@ -1908,15 +1914,23 @@ async function generateQurl() {
     events: [...document.querySelectorAll('input[name="notification-event"]:checked')].map((input) => input.value),
   } : null;
   if (activityNotificationsInput.checked && !notificationSettings.targets.length) {
-    setStatus("Choose a configured email or mobile notification target.", "error");
+    setUserDialogStatus("Choose a configured email or mobile notification target.", "error");
     activityNotificationOptions.classList.remove("hidden");
     return;
   }
   if (activityNotificationsInput.checked && !notificationSettings.events.length) {
-    setStatus("Choose at least one guest activity to be notified about.", "error");
+    setUserDialogStatus("Choose at least one guest activity to be notified about.", "error");
     return;
   }
 
+  if (invitationRequested && (!verificationEmail || !verificationEmailInput.checkValidity())) {
+    setUserDialogStatus("Enter a valid email address for the invitation.", "error");
+    verificationEmailInput.focus();
+    return;
+  }
+
+  generateQurlButton.disabled = true;
+  setUserDialogStatus(`Creating access for ${userName}… Initial setup can take a few minutes.`);
   try {
     const lifetime = selectedLifetime();
     const duration = lifetime.match(/^([1-9][0-9]*)([mhd])$/);
@@ -1973,7 +1987,7 @@ async function generateQurl() {
     activationButton.textContent = "Copy guest link";
     activationButton.addEventListener("click", () => {
       copyText(data.grant.qurl_link, activationButton).catch((error) => {
-        setStatus(`Copy failed: ${error.message}`, "error");
+        setUserDialogStatus(`Copy failed: ${error.message}`, "error");
       });
     });
 
@@ -2012,7 +2026,7 @@ async function generateQurl() {
       fallback.append(fallbackSummary, sharingContent);
       qurlResult.append(deliveryStatus, fallback);
     } else {
-      if (verificationRequested) {
+      if (invitationRequested) {
         const deliveryStatus = document.createElement("div");
         deliveryStatus.className = "qurl-delivery-status warning";
         const deliveryTitle = document.createElement("strong");
@@ -2020,7 +2034,7 @@ async function generateQurl() {
         const deliveryText = document.createElement("p");
         deliveryText.textContent =
           "The guest link was created. Use a backup sharing option below, " +
-          "then check the email configuration before creating another verified guest.";
+          "then check the email configuration before sending another invitation.";
         deliveryStatus.append(deliveryTitle, deliveryText);
         qurlResult.append(deliveryStatus);
       }
@@ -2040,23 +2054,23 @@ async function generateQurl() {
     await loadGuestActivitySummaries(currentPage.id);
     renderAccessGrants(currentPage);
     if (invitationRequested && data.email_delivery?.sent) {
-      setStatus(
+      setUserDialogStatus(
         `Invitation sent for ${userName}. Access expires ${formatExpiry(data.grant.expires_at)}.`,
         "success",
       );
     } else if (invitationRequested) {
-      setStatus(
+      setUserDialogStatus(
         `Guest link created for ${userName}, but the invitation email was not sent.`,
         "error",
       );
     } else {
-      setStatus(
+      setUserDialogStatus(
         `Guest link created for ${userName}. The page connector is waking and should be ready in a few seconds. Access expires ${formatExpiry(data.grant.expires_at)}.`,
         "success",
       );
     }
   } catch (error) {
-    setStatus(`Error: ${error.message}`, "error");
+    setUserDialogStatus(`Error: ${error.message}`, "error");
   } finally {
     generateQurlButton.disabled = false;
   }
@@ -2122,6 +2136,7 @@ async function revokeAllQurls() {
   revokeQurlsButton.disabled = true;
   setStatus("Revoking page access…");
 
+  let locallyRevoked = false;
   try {
     const response = await adminApi.fetch(
       `api/admin/pages/${encodeURIComponent(currentPage.id)}/qurls`,
@@ -2131,21 +2146,27 @@ async function revokeAllQurls() {
     );
     const data = await responseJson(response, "Could not revoke access");
 
-    if (!response.ok) {
+    if (!response.ok && !data.local_access_revoked) {
       throw new Error(data.error || "Could not revoke access");
     }
 
+    locallyRevoked = true;
     currentPage.access_grants = [];
     qurlResult.classList.add("hidden");
     await loadPages();
     await loadGuestActivitySummaries(currentPage.id);
     renderAccessGrants(currentPage);
+    const failures = data.remote_failures?.length || 0;
+    const pending = data.remote_revocation_pending_count || 0;
+    const summary = `Revoked ${data.revoked_count} access link${data.revoked_count === 1 ? "" : "s"} locally.`;
     setStatus(
-      `Revoked ${data.revoked_count} access link${data.revoked_count === 1 ? "" : "s"}.`,
-      "success",
+      summary + (failures
+        ? " Remote cleanup is still pending and will be retried."
+        : pending ? " Remote revocation is queued." : " Remote revocation confirmed."),
+      failures || pending ? "warning" : "success",
     );
   } catch (error) {
-    setStatus(`Error: ${error.message}`, "error");
+    setStatus(`${locallyRevoked ? "Access revoked locally. Could not refresh the guest list: " : "Error: "}${error.message}`, "error");
   } finally {
     revokeQurlsButton.disabled = false;
   }
@@ -2387,7 +2408,9 @@ async function deletePage() {
     await loadPages();
     showDashboard();
     renderPageList();
-    if (data.remote_failures?.length) {
+    if (data.policy_cleanup_pending) {
+      setStatus("Page deleted and local access revoked. Policy and remote cleanup will continue in the background.", "warning");
+    } else if (data.remote_failures?.length) {
       setStatus(
         `Page deleted and local access revoked, but ${data.remote_failures.length} LayerV qURL ` +
         `${data.remote_failures.length === 1 ? "revocation" : "revocations"} failed.`,
