@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import guest_request as diagnostics
 import guest_service
 
 
@@ -62,6 +63,8 @@ class GuestCutoverTests(unittest.TestCase):
         headers = {
             "X-Access-Pages-Page-ID": page_id,
             "X-Page-Capability": capability,
+            diagnostics.REQUEST_ID: "a" * 32,
+            diagnostics.STARTED_NS: str(diagnostics.clock_ns()),
         }
         if cookie:
             headers["Cookie"] = "access_pages_guest=" + cookie
@@ -204,9 +207,47 @@ class GuestCutoverTests(unittest.TestCase):
             self.assertEqual(self.request("GET", self.prefix + "?bootstrap=" + secret)[0], 303)
             self.assertEqual(self.request("GET", self.prefix + "?bootstrap=" + "b" * 43)[0], 401)
         self.assertEqual([call.args[0] for call in broker.call_args_list], [
-            "/broker-bootstrap-resume", "/broker-bootstrap-resume", "/broker-bootstrap-resume",
+            "/broker-bootstrap-resume", "/broker-bootstrap-resume",
+            "/broker-bootstrap", "/broker-bootstrap-resume",
             "/broker-bootstrap", "/broker-bootstrap",
         ])
+
+    def test_stale_cookie_can_exchange_only_a_broker_approved_invitation(self):
+        secret = "a" * 43
+        cookie = "stale-session-token-1234567890"
+        for exchange_status in (200, 401):
+            with self.subTest(exchange_status=exchange_status):
+                with patch.object(guest_service, "_broker_guest_auth", side_effect=[
+                    (401, {}),
+                    (exchange_status, {
+                        "session": "new-session-token-1234567890",
+                        "expires_at": 2_000_000_000,
+                    }),
+                ]) as broker:
+                    status, headers, _ = self.request(
+                        "GET", self.prefix + "?bootstrap=" + secret, cookie=cookie,
+                    )
+                self.assertEqual(status, 303 if exchange_status == 200 else 401)
+                self.assertEqual([call.args[0] for call in broker.call_args_list], [
+                    "/broker-bootstrap-resume", "/broker-bootstrap",
+                ])
+                self.assertEqual(broker.call_args.args[1]["bootstrap"], secret)
+                if exchange_status == 200:
+                    self.assertEqual(headers["Location"], self.prefix)
+                    self.assertIn("access_pages_guest=new-session-token-1234567890;",
+                                  headers["Set-Cookie"])
+                else:
+                    self.assertNotIn("Set-Cookie", headers)
+
+    def test_bootstrap_resume_outage_does_not_create_another_session(self):
+        with patch.object(guest_service, "_broker_guest_auth", return_value=(503, {})) as broker:
+            status, headers, _ = self.request(
+                "GET", self.prefix + "?bootstrap=" + "a" * 43,
+                cookie="session-token-1234567890",
+            )
+        self.assertEqual(status, 503)
+        self.assertEqual(broker.call_count, 1)
+        self.assertNotIn("Set-Cookie", headers)
 
     def test_verification_pending_revocation_and_cross_page_fail_closed(self):
         def pending(route, payload):

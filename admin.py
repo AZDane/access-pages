@@ -210,6 +210,7 @@ def handle_post(handler, path, payload, runtime):
             handler._validate_entity_policy(payload)
             page_id = str(payload.get("id", "")).strip()
             with runtime.page_action_lock(page_id):
+                runtime.POLICY_PUBLISHER.prepare(page_id)
                 page = runtime.PAGE_STORE.create(payload)
                 try:
                     runtime.POLICY_PUBLISHER.publish(page)
@@ -229,6 +230,11 @@ def handle_post(handler, path, payload, runtime):
                 runtime.HTTPStatus.BAD_GATEWAY,
                 {"error": str(error)},
             )
+        except OSError:
+            handler._send_json(
+                runtime.HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": "Could not persist the page change. Reload before retrying."},
+            )
         return
 
     if path.startswith("/api/admin/pages/"):
@@ -241,6 +247,7 @@ def handle_post(handler, path, payload, runtime):
                 handler._validate_entity_policy(payload)
                 with runtime.page_action_lock(page_id):
                     previous = runtime.PAGE_STORE.load(page_id)
+                    runtime.POLICY_PUBLISHER.prepare(page_id)
                     page = runtime.PAGE_STORE.update(page_id, payload)
                     try:
                         runtime.POLICY_PUBLISHER.publish(page)
@@ -256,6 +263,11 @@ def handle_post(handler, path, payload, runtime):
                 handler._send_json(
                     runtime.HTTPStatus.BAD_GATEWAY,
                     {"error": str(error)},
+                )
+            except OSError:
+                handler._send_json(
+                    runtime.HTTPStatus.INTERNAL_SERVER_ERROR,
+                    {"error": "Could not persist the page change. Reload before retrying."},
                 )
             return
 
@@ -321,6 +333,7 @@ def handle_put(handler, path, runtime):
         handler._validate_entity_policy(payload)
         with runtime.page_action_lock(page_id):
             previous = runtime.PAGE_STORE.load(page_id)
+            runtime.POLICY_PUBLISHER.prepare(page_id)
             page = runtime.PAGE_STORE.update(page_id, payload)
             try:
                 runtime.POLICY_PUBLISHER.publish(page)
@@ -341,6 +354,11 @@ def handle_put(handler, path, runtime):
         handler._send_json(
             runtime.HTTPStatus.BAD_GATEWAY,
             {"error": str(error)},
+        )
+    except OSError:
+        handler._send_json(
+            runtime.HTTPStatus.INTERNAL_SERVER_ERROR,
+            {"error": "Could not persist the page change. Reload before retrying."},
         )
 
 
@@ -414,8 +432,15 @@ def handle_delete(handler, path, runtime):
             with runtime.page_action_lock(page_id):
                 page = runtime.PAGE_STORE.load(page_id)
                 grants = list(page["access_grants"])
-                runtime.POLICY_PUBLISHER.delete(page_id)
+                runtime.POLICY_PUBLISHER.prepare(page_id)
                 runtime.PAGE_STORE.delete(page_id)
+                policy_cleanup_pending = False
+                try:
+                    runtime.POLICY_PUBLISHER.delete(page_id)
+                except runtime.PolicyPublishError:
+                    # Local deletion is authoritative. The persisted intent
+                    # retries policy removal without restoring access.
+                    policy_cleanup_pending = True
                 for grant in grants:
                     try:
                         runtime.VERIFICATION_RECIPIENTS.delete(page_id, grant["id"])
@@ -456,8 +481,10 @@ def handle_delete(handler, path, runtime):
                     remote_failures.append({"grant_id": grant["id"], "error": str(error)})
             runtime.audit("page_deleted", page_id=page_id, remote_failure_count=len(remote_failures))
             handler._send_json(
-                runtime.HTTPStatus.BAD_GATEWAY if remote_failures else 200,
-                {"success": not remote_failures, "page_deleted": True, "remote_failures": remote_failures},
+                runtime.HTTPStatus.BAD_GATEWAY if remote_failures or policy_cleanup_pending else 200,
+                {"success": not (remote_failures or policy_cleanup_pending),
+                 "page_deleted": True, "policy_cleanup_pending": policy_cleanup_pending,
+                 "remote_failures": remote_failures},
             )
         except (runtime.PageConfigError, runtime.PageNotFoundError) as error:
             handler._send_page_error(error)
@@ -465,6 +492,11 @@ def handle_delete(handler, path, runtime):
             handler._send_json(
                 runtime.HTTPStatus.BAD_GATEWAY,
                 {"error": str(error)},
+            )
+        except OSError:
+            handler._send_json(
+                runtime.HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": "Could not persist the page change. Reload before retrying."},
             )
         return
 

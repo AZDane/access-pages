@@ -108,3 +108,30 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
+
+      - name: Verify Gateway startup with unavailable logging
+        run: >-
+          docker run --rm --network none --user root --entrypoint python
+          --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
+          access-pages-app:security-scan /tmp/probe.py
+
+  arm64-package:
+    name: ARM64 package
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - name: Build native ARM64 App image
+        run: >-
+          docker build --file Dockerfile.ha-app --build-arg BUILD_ARCH=aarch64
+          --build-arg BUILD_VERSION=security-scan --tag access-pages-app:arm64-test .
+      - name: Exercise packaged services and identities on ARM64
+        run: >-
+          docker run --rm --network none --user root --entrypoint python
+          --volume "$PWD/tests/packaged_security_probe.py:/tmp/probe.py:ro"
+          access-pages-app:arm64-test /tmp/probe.py
+      - name: Verify Gateway startup with unavailable logging on ARM64
+        run: >-
+          docker run --rm --network none --user root --entrypoint python
+          --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
+          access-pages-app:arm64-test /tmp/probe.py

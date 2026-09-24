@@ -112,7 +112,7 @@ class FrontendAssetTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(end_access)
-        self.assertIn("clearCachedControls()", end_access.group("body"))
+        self.assertIn("invalidateState()", end_access.group("body"))
         clear_controls = re.search(
             r"function clearCachedControls\(\) \{(?P<body>.*?)^\}",
             javascript,

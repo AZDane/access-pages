@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
 FROM python:3.12-slim-bookworm@sha256:392307d22300de8b5986851a12d9176dfc0fc073e65bf6523ebd7dcbeb23564e
 
 ARG BUILD_ARCH
-ARG BUILD_VERSION=0.1.123
+ARG BUILD_VERSION=0.1.129
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -40,7 +40,7 @@ LABEL \
 
 WORKDIR /app
 
-COPY server.py actions.py admin.py access.py upstream_cleanup.py guest_resources.py guest_service.py internal.py config.py ha.py ha_broker.py pages.py layerv.py layerv_broker.py policy.py policy_store.py audit.py activity.py rate_limit.py email_delivery.py verification.py ./
+COPY server.py actions.py admin.py access.py upstream_cleanup.py guest_resources.py guest_service.py guest_diagnostics.py guest_request.py internal.py config.py ha.py ha_broker.py pages.py layerv.py layerv_broker.py policy.py policy_store.py audit.py activity.py rate_limit.py email_delivery.py verification.py ./
 COPY static ./static
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
 COPY third_party_licenses ./third_party_licenses

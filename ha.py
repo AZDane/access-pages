@@ -1,10 +1,20 @@
 import json
 import math
+from http.client import HTTPException
 from datetime import datetime, timezone
 from time import monotonic
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
+import guest_diagnostics as diagnostics
+import guest_request as lifetime
+
+
+def _http_error_detail(error):
+    try:
+        return error.read().decode("utf-8", errors="replace")
+    except (OSError, HTTPException):
+        return ""
 
 
 CURATED_ACTIONS = {
@@ -412,14 +422,17 @@ class HomeAssistantClient:
 
         try:
             # The base URL is administrator-controlled Home Assistant config.
-            with urlopen(request, timeout=self.timeout) as response:  # nosec B310
+            timeout = lifetime.action_remaining(self.timeout)
+            with diagnostics.ha_request(method == "POST" and path.startswith("/api/services/")), urlopen(  # nosec B310
+                request, timeout=timeout,
+            ) as response:
                 body = response.read()
                 if not body:
                     return {}
                 return json.loads(body.decode("utf-8"))
 
         except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
+            detail = _http_error_detail(error)
             raise HomeAssistantError(
                 "Home Assistant returned an error",
                 status=error.code,
@@ -431,8 +444,12 @@ class HomeAssistantClient:
                 "Could not reach Home Assistant",
                 detail=str(error.reason),
             ) from error
+        except (OSError, HTTPException) as error:
+            raise HomeAssistantError(
+                "Home Assistant connection was interrupted",
+            ) from error
 
-        except json.JSONDecodeError as error:
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise HomeAssistantError(
                 "Home Assistant returned invalid JSON",
                 detail=str(error),
@@ -475,7 +492,9 @@ class HomeAssistantClient:
             },
         )
         try:
-            with urlopen(request, timeout=self.timeout) as response:  # nosec B310
+            with diagnostics.ha_request(), urlopen(  # nosec B310
+                request, timeout=lifetime.action_remaining(self.timeout),
+            ) as response:
                 content_type = response.headers.get_content_type().lower()
                 if content_type not in CAMERA_IMAGE_TYPES:
                     raise HomeAssistantError(
@@ -503,6 +522,10 @@ class HomeAssistantClient:
             raise HomeAssistantError(
                 "Could not reach Home Assistant",
                 detail=str(error.reason),
+            ) from error
+        except (OSError, HTTPException) as error:
+            raise HomeAssistantError(
+                "Home Assistant connection was interrupted",
             ) from error
 
     def get_states(
@@ -770,7 +793,7 @@ class BrokerHomeAssistantClient(HomeAssistantClient):
                 body = response.read()
                 return json.loads(body.decode("utf-8")) if body else {}
         except HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
+            detail = _http_error_detail(error)
             raise HomeAssistantError(
                 "Home Assistant broker rejected the request",
                 status=error.code,
@@ -781,7 +804,11 @@ class BrokerHomeAssistantClient(HomeAssistantClient):
                 "Could not reach Home Assistant broker",
                 detail=str(error.reason),
             ) from error
-        except json.JSONDecodeError as error:
+        except (OSError, HTTPException) as error:
+            raise HomeAssistantError(
+                "Home Assistant broker connection was interrupted",
+            ) from error
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise HomeAssistantError(
                 "Home Assistant broker returned invalid JSON",
             ) from error
@@ -826,6 +853,10 @@ class BrokerHomeAssistantClient(HomeAssistantClient):
             raise HomeAssistantError(
                 "Could not reach Home Assistant broker",
                 detail=str(error.reason),
+            ) from error
+        except (OSError, HTTPException) as error:
+            raise HomeAssistantError(
+                "Home Assistant broker connection was interrupted",
             ) from error
 
     def get_states(self, entity_ids=None):

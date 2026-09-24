@@ -21,6 +21,7 @@ from contextlib import contextmanager
 
 from pages import PageNotFoundError, PageStore
 from guest_resources import GuestResources
+from guest_request import clock_ns
 
 
 DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/data"))
@@ -67,6 +68,40 @@ RUNTIME_ENVIRONMENT = {
     # The App supplies an isolated container-local temporary filesystem.
     "TMPDIR": "/tmp",  # nosec B108
 }
+DIAGNOSTIC_ENVIRONMENT = {}
+
+
+def _diagnostic_environment(options):
+    """Consume a native duration selection once; Off + restart rearms it."""
+    selection = options.get("diagnostic_logging", "off")
+    durations = {"off": 0, "30 minutes": 1800, "1 hour": 3600, "4 hours": 14400}
+    if selection not in durations:
+        raise SetupError("Invalid diagnostic logging duration")
+    marker = DATA_DIR / "diagnostics-consumed"
+    try:
+        consumed = False
+        if marker.exists():
+            with marker.open("rb") as source:
+                consumed = source.read(2) != b"0"
+        if selection == "off" or not consumed:
+            # Durably consume before enabling. Failure leaves diagnostics OFF.
+            fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "wb") as output:
+                output.write(b"0" if selection == "off" else b"1")
+                output.flush()
+                os.fsync(output.fileno())
+            directory = os.open(DATA_DIR, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        if selection != "off" and not consumed:
+            return {"ACCESS_PAGES_DIAGNOSTICS_UNTIL_NS": str(clock_ns() + durations[selection] * 1_000_000_000)}
+    except OSError:
+        pass
+    return {}
+
+
 PROCESS_IDENTITIES = {
     "admin": (2100, 2000, [], 0o007),
     "guest_service": (2101, 2101, [], 0o077),
@@ -425,6 +460,7 @@ def _page_endpoint_environment(
     host: str,
 ) -> dict:
     return {
+        **DIAGNOSTIC_ENVIRONMENT,
         **RUNTIME_ENVIRONMENT,
         "HOST": host,
         "PORT": "8080",
@@ -436,6 +472,7 @@ def _page_endpoint_environment(
 
 def _guest_service_environment() -> dict[str, str]:
     return {
+        **DIAGNOSTIC_ENVIRONMENT,
         "PATH": RUNTIME_ENVIRONMENT["PATH"],
         "LANG": RUNTIME_ENVIRONMENT["LANG"],
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -508,6 +545,7 @@ def _ha_broker_environment(config: dict) -> dict:
     if not supervisor_token:
         raise SetupError("Home Assistant did not provide SUPERVISOR_TOKEN")
     return {
+        **DIAGNOSTIC_ENVIRONMENT,
         **RUNTIME_ENVIRONMENT,
         "HA_BROKER_HOST": "127.0.0.1",
         "HA_BROKER_PORT": "8082",
@@ -1045,6 +1083,7 @@ def _stop(processes: list[subprocess.Popen]) -> None:
 
 
 def main() -> int:
+    global DIAGNOSTIC_ENVIRONMENT
     processes: list[subprocess.Popen] = []
     ingress: subprocess.Popen | None = None
     shutdown_requested = False
@@ -1064,6 +1103,10 @@ def main() -> int:
         # hidden on a fresh installation. Prepare it before the unprivileged
         # onboarding registration process attempts its first write.
         _prepare_runtime_permissions()
+        DIAGNOSTIC_ENVIRONMENT = _diagnostic_environment(options)
+        print("Access Pages diagnostic logging: " + (
+            "temporary capture enabled" if DIAGNOSTIC_ENVIRONMENT else "off"
+        ), flush=True)
         while True:
             setup_error = ""
             while True:

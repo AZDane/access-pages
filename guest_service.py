@@ -18,6 +18,9 @@ from pathlib import Path
 from threading import BoundedSemaphore
 from urllib.parse import parse_qs, urlsplit
 
+import guest_diagnostics as diagnostics
+import guest_request as lifetime
+
 
 SOCKET_PATH = Path(os.environ.get(
     "GUEST_SERVICE_SOCKET", "/run/access-pages/guest/http.sock"
@@ -57,6 +60,8 @@ PUBLIC_GUEST_ERRORS = {
     "control_unavailable": "This control is not available for that value",
     "ha_unavailable": "Home Assistant could not complete the request",
     "temporarily_unavailable": "Guest access temporarily unavailable",
+    "action_uncertain": "The command may have been sent. Check refreshed state before trying again.",
+    "action_deadline": "This command timed out before dispatch. Refresh state before trying again.",
 }
 GUEST_REQUEST_SLOTS = BoundedSemaphore(64)
 
@@ -196,15 +201,31 @@ class GuestHandler(HealthHandler):
     def send_error(self, code, message=None, explain=None) -> None:
         self._json(code, {"error": "Guest request denied"})
 
+    def end_headers(self) -> None:
+        diagnostics.boundary(6, "service")
+        stages = diagnostics.stage_header()
+        if stages:
+            self.send_header(diagnostics.STAGES, stages)
+        super().end_headers()
+
     def _send(self, status: int, body: bytes, content_type: str,
               headers: dict[str, str] | None = None) -> None:
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Content-Length", str(len(body)))
-        for name, value in (headers or {}).items():
-            self.send_header(name, value)
-        self.end_headers()
-        self.wfile.write(body)
+        try:
+            if status >= 500 and diagnostics.detailed():
+                diagnostics.record("service", status=status)
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            for name, value in (headers or {}).items():
+                self.send_header(name, value)
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            # The peer has gone away; a second response cannot reach it.
+            self.close_connection = True
+            diagnostics.failure(4)
+            diagnostics.record("service", status=status)
 
     def _json(self, status: int, payload: dict,
               headers: dict[str, str] | None = None) -> None:
@@ -255,14 +276,43 @@ class GuestHandler(HealthHandler):
         self._guest("POST")
 
     def _guest(self, method: str) -> None:
+        parsed = urlsplit(self.path)
+        operation = lifetime.guest_operation(method, parsed.path, "bootstrap" in parse_qs(parsed.query))
+        try:
+            timing = lifetime.timing_from_headers(self.headers, operation, required=operation == "action")
+        except ValueError:
+            self._json(400, {"error": "Invalid request timing"})
+            return
+        token = lifetime.CURRENT.set(timing)
+        try:
+            diagnostics.boundary(0, "service")
+            self._guest_scoped(method)
+        finally:
+            lifetime.CURRENT.reset(token)
+
+    def _guest_scoped(self, method: str) -> None:
         if not GUEST_REQUEST_SLOTS.acquire(blocking=False):
             self._json(503, {"error": "Guest access temporarily unavailable"})
             return
         try:
+            lifetime.action_remaining(20)
             self._serve_guest(method)
+        except lifetime.ActionDeadlineExceeded:
+            diagnostics.failure(3)
+            timing = lifetime.CURRENT.get()
+            code = "action_deadline" if timing and timing.stages[10] == 1 else "action_uncertain"
+            self._json(503, {"error": PUBLIC_GUEST_ERRORS[code]})
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            diagnostics.failure(4)
+            diagnostics.record("service")
+        except TimeoutError:
+            diagnostics.failure(2)
+            self._json(503, {"error": "Guest access temporarily unavailable"})
         except (ValueError, TypeError, json.JSONDecodeError):
             self._json(400, {"error": "Invalid guest request"})
-        except (OSError, RuntimeError):
+        except Exception:
+            diagnostics.failure(1)
             self._json(503, {"error": "Guest access temporarily unavailable"})
         finally:
             GUEST_REQUEST_SLOTS.release()
@@ -308,8 +358,11 @@ class GuestHandler(HealthHandler):
                 if status >= 500:
                     self._json(status, {"error": "Guest access temporarily unavailable"})
                     return
-                self._json(401, {"error": "Invitation unavailable"})
-                return
+                if status != 401:
+                    self._json(status, {"error": "Invitation unavailable"})
+                    return
+                # A stale browser cookie must not block a reusable invitation.
+                # The broker validates the secret and enforces single-use grants.
             status, result = _broker_guest_auth("/broker-bootstrap", {
                 "capability": capability, "page_id": page_id,
                 "grant_id": grant_id, "bootstrap": query["bootstrap"][0],
@@ -418,7 +471,7 @@ def _connect_broker() -> socket.socket:
         raise RuntimeError("Unix peer credentials unavailable")
     connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
-        connection.settimeout(2)
+        connection.settimeout(lifetime.action_remaining(2))
         connection.connect(str(BROKER_SOCKET))
         credentials = connection.getsockopt(
             socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i")
@@ -476,6 +529,26 @@ def _broker_page_identity(capability: str, claimed_page: str) -> tuple[int, str]
 
 
 def _broker_guest_auth(path: str, payload: dict) -> tuple[int, dict]:
+    timing = lifetime.CURRENT.get()
+    operation = {"/broker-action": "action", "/broker-camera": "camera",
+                 "/broker-verification-challenge": "verification",
+                 "/broker-verification-verify": "verification"}.get(path)
+    if timing and operation:
+        # Refine ambiguous public routes only after existing payload validation.
+        timing.operation = operation
+        timing.action_deadline = path == "/broker-action"
+    if path == "/broker-action":
+        if timing is None:
+            raise ValueError("Missing action request lifetime")
+        lifetime.action_remaining(20)
+    try:
+        return _broker_guest_auth_scoped(path, payload)
+    except (OSError, http.client.HTTPException):
+        diagnostics.failure(6, "service")
+        raise
+
+
+def _broker_guest_auth_scoped(path: str, payload: dict) -> tuple[int, dict]:
     routes = {
         "/broker-bootstrap": ("/guest/v1/bootstrap", "bootstrap"),
         "/broker-bootstrap-resume": ("/guest/v1/bootstrap-resume", "session"),
@@ -547,18 +620,27 @@ def _broker_guest_auth(path: str, payload: dict) -> tuple[int, dict]:
             "resource_id", "action_id", "parameters", "proximity",
         )})
     body = json.dumps(scoped).encode("ascii")
+    timing = lifetime.CURRENT.get()
+    timing_headers = timing.headers() if timing else ""
+    if timing:
+        timing.stages[9] = min(diagnostics.LIMIT, timing.stages[9] + 1)
+    diagnostics.boundary(1, "service")
     with _connect_broker() as connection:
-        connection.settimeout(20)
+        connection.settimeout(lifetime.action_remaining(20))
         # The broker peer is verified before any capability or session is sent.
+        if timing and path == "/broker-action":
+            timing.stages[10] = 0  # Broker dispatch is unknown until its response.
         connection.sendall((
             f"POST {route} HTTP/1.1\r\n"
             "Host: guest-broker\r\n"
             f"X-Page-Capability: {capability}\r\n"
             f"X-Access-Pages-Page-ID: {page_id}\r\n"
+            f"{timing_headers}"
             f"Content-Length: {len(body)}\r\n\r\n"
         ).encode("ascii") + body)
         response = http.client.HTTPResponse(connection)
         response.begin()
+        diagnostics.receive_stages(response.getheader(diagnostics.STAGES))
         if response.status in (400, 401, 403, 404, 429, 502, 503):
             raw = response.read(1025)
             if len(raw) > 1024:

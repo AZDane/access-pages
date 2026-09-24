@@ -26,6 +26,8 @@ let commandInProgress = false;
 let accessEnded = false;
 let connectionUnavailable = false;
 let statusRequest = null;
+let stateGeneration = 0;
+let controlsFresh = false;
 let connectionFailures = 0;
 let verificationPending = false;
 let lastStatusCheckedAt = 0;
@@ -99,19 +101,34 @@ function resumeCameraRefresh() {
   cameraFrames.forEach((frame) => frame.resume?.());
 }
 
+function invalidateState({clear = true} = {}) {
+  stateGeneration++;
+  statusRequest = null;
+  controlsFresh = false;
+  if (clear) cachedProximity = null;
+  pauseCameraRefresh();
+  if (clear) clearCachedControls();
+  else setPageButtonsDisabled(true);
+}
+
+function stateIsCurrent(generation) {
+  return generation === stateGeneration && !accessEnded &&
+    !document.hidden && navigator.onLine;
+}
+
 function showConnectionUnavailable(error) {
   if (accessEnded) return;
+  invalidateState();
   connectionUnavailable = true;
   connectionFailures = Math.min(connectionFailures + 1, 5);
-  clearCachedControls();
   statusBox.className = "status error";
   statusBox.textContent = `${error.message} Controls are unavailable. Retrying status…`;
 }
 
 function endAccess() {
+  invalidateState();
   accessEnded = true;
   clearTimeout(pollTimer);
-  clearCachedControls();
   statusBox.className = "status error";
   statusBox.textContent =
     "This access link has expired or been revoked.";
@@ -190,18 +207,21 @@ function renderCameraFrame(page, resource, card) {
 
   const interval = resource.camera_refresh_interval ?? 30;
   const refreshImage = async () => {
-    if (frame.loading || accessEnded || document.hidden || !navigator.onLine || !cameraFrames.has(resource.id)) return;
+    if (frame.loading || !controlsFresh || commandInProgress || accessEnded || document.hidden || !navigator.onLine || cameraFrames.get(resource.id) !== frame) return;
+    const generation = stateGeneration;
     frame.loading = true;
     frame.feedback.textContent = "Refreshing image…";
     try {
       const response = await accessApi.cameraFrame(page.id, resource.id, Date.now());
+      if (!stateIsCurrent(generation) || cameraFrames.get(resource.id) !== frame) return;
       if (!response.ok) throw responseError(response, {}, "Image refresh failed");
       const blob = await response.blob();
-      if (accessEnded || document.hidden || cameraFrames.get(resource.id) !== frame) return;
+      if (!stateIsCurrent(generation) || cameraFrames.get(resource.id) !== frame) return;
       if (frame.imageUrl) URL.revokeObjectURL(frame.imageUrl);
       frame.imageUrl = URL.createObjectURL(blob);
       frame.image.src = frame.imageUrl;
     } catch (error) {
+      if (!stateIsCurrent(generation) || cameraFrames.get(resource.id) !== frame) return;
       if (error instanceof AccessEndedError) endAccess();
       else if (error instanceof AccessConnectionError) showConnectionUnavailable(error);
       else frame.feedback.textContent = "Image refresh failed; try again shortly";
@@ -211,7 +231,7 @@ function renderCameraFrame(page, resource, card) {
   };
   if (!frame.image.getAttribute("src")) refreshImage();
   const schedule = () => {
-    if (frame.timer || frame.interval <= 0 || document.hidden || accessEnded ||
+    if (frame.timer || frame.interval <= 0 || document.hidden || !controlsFresh || commandInProgress || accessEnded ||
         !cameraFrames.has(resource.id)) return;
     frame.timer = setTimeout(() => {
       frame.timer = null;
@@ -1186,16 +1206,18 @@ function browserLocation() {
   });
 }
 
-async function actionProximity() {
+async function actionProximity(generation) {
   if (!proximityPolicy.required) return null;
   if (cachedProximity && cachedProximity.expiresAt > Date.now()) {
     return cachedProximity.reading;
   }
   const accepted = await explainProximity();
+  if (!stateIsCurrent(generation)) return null;
   if (!accepted) throw new Error("Location is required to use controls.");
   statusBox.className = "status";
   statusBox.textContent = "Checking that you’re near the home…";
   const reading = await browserLocation();
+  if (!stateIsCurrent(generation)) return null;
   cachedProximity = {
     reading,
     expiresAt: Date.now() + (
@@ -1213,7 +1235,9 @@ function setPageButtonsDisabled(disabled) {
   )
     .forEach((control) => {
       if (disabled) {
-        control.dataset.commandWasDisabled = control.disabled ? "1" : "0";
+        if (control.dataset.commandWasDisabled === undefined) {
+          control.dataset.commandWasDisabled = control.disabled ? "1" : "0";
+        }
         control.disabled = true;
       } else if (control.dataset.commandWasDisabled !== undefined) {
         control.disabled = control.dataset.commandWasDisabled === "1";
@@ -1222,22 +1246,25 @@ function setPageButtonsDisabled(disabled) {
     });
 }
 
-async function fetchPage({showLoading = false} = {}) {
+async function fetchPage({showLoading = false, afterAction = false, onFresh = null} = {}) {
   if (statusRequest) return statusRequest;
-  if (accessEnded || commandInProgress) return;
-  statusRequest = fetchPageSnapshot({showLoading});
+  if (accessEnded || document.hidden || !navigator.onLine || (commandInProgress && !afterAction)) return false;
+  const generation = stateGeneration;
+  const request = fetchPageSnapshot({showLoading, generation, onFresh});
+  statusRequest = request;
   try {
-    return await statusRequest;
+    return await request;
+  } catch (error) {
+    // An obsolete failure must not revoke or overwrite a newer browser state.
+    if (!stateIsCurrent(generation)) return false;
+    throw error;
   } finally {
-    statusRequest = null;
+    if (statusRequest === request) statusRequest = null;
   }
 }
 
-async function fetchPageSnapshot({showLoading = false} = {}) {
-  if (!currentPageId || commandInProgress || accessEnded) {
-    return;
-  }
-
+async function fetchPageSnapshot({showLoading, generation, onFresh}) {
+  if (!currentPageId) return false;
   if (showLoading) {
     statusBox.className = "status";
     statusBox.textContent = "Loading available controls…";
@@ -1245,11 +1272,12 @@ async function fetchPageSnapshot({showLoading = false} = {}) {
 
   const response = await accessApi.fetchPage(currentPageId);
   const data = await responseData(response);
-  // A concurrent request may have confirmed revocation while this one waited.
-  if (accessEnded || commandInProgress || !navigator.onLine) return;
+  if (!stateIsCurrent(generation)) return false;
 
   if (!response.ok) {
     if (response.status === 403 && data.verification_required) {
+      controlsFresh = false;
+      clearCachedControls();
       verificationPending = true;
       clearTimeout(pollTimer);
       verificationMessage.textContent =
@@ -1259,32 +1287,30 @@ async function fetchPageSnapshot({showLoading = false} = {}) {
         verificationCodeRequested = true;
         requestVerificationCode(false);
       }
-      return;
+      return false;
     }
-    throw responseError(
-      response,
-      data,
-      "Could not load access page",
-      [401, 403, 404, 410],
-    );
+    throw responseError(response, data, "Could not load access page", [401, 403, 404, 410]);
   }
 
   connectionUnavailable = false;
   connectionFailures = 0;
   lastStatusCheckedAt = Date.now();
-  render(data);
+  controlsFresh = true;
   verificationPending = false;
   if (verificationDialog.open) verificationDialog.close();
+  // A command acknowledgement alone is not fresh, authorized page state.
+  onFresh?.();
+  render(data);
+  if (commandInProgress) setPageButtonsDisabled(true);
+  else resumeCameraRefresh();
 
-  const refreshed = data.refreshed_at
-    ? new Date(data.refreshed_at)
-    : null;
-
+  const refreshed = data.refreshed_at ? new Date(data.refreshed_at) : null;
   statusBox.className = "status connected";
   statusBox.textContent =
     refreshed && !Number.isNaN(refreshed.getTime())
       ? `Live status · updated ${refreshed.toLocaleTimeString()}`
       : "Live status connected";
+  return true;
 }
 
 async function runAction(
@@ -1295,7 +1321,9 @@ async function runAction(
   payload = {},
   {onSuccess = null} = {},
 ) {
-  if (accessEnded || connectionUnavailable || commandInProgress) return;
+  if (accessEnded || !controlsFresh || connectionUnavailable || commandInProgress || document.hidden || !navigator.onLine) return;
+  invalidateState({clear: false});
+  const generation = stateGeneration;
   const isSelect = button.tagName === "SELECT";
   const originalText = isSelect ? "" : button.textContent;
   commandInProgress = true;
@@ -1309,7 +1337,8 @@ async function runAction(
   statusBox.textContent = "Sending command to Home Assistant…";
 
   try {
-    const proximity = await actionProximity();
+    const proximity = await actionProximity(generation);
+    if (!stateIsCurrent(generation)) return;
     const requestPayload = proximity
       ? {...payload, proximity}
       : payload;
@@ -1321,21 +1350,17 @@ async function runAction(
     );
 
     const data = await responseData(response);
+    if (!stateIsCurrent(generation)) return;
 
     if (!response.ok) {
       throw responseError(response, data, "Command failed");
     }
 
-    statusBox.className = "status success";
-    statusBox.textContent =
-      "Command sent. Refreshing current status…";
-    onSuccess?.();
-
-    commandInProgress = false;
-    // A read started before the command may contain the previous entity state.
-    if (statusRequest) await statusRequest.catch(() => {});
-    await fetchPage();
+    statusBox.className = "status";
+    statusBox.textContent = "Command sent. Refreshing current status…";
+    await fetchPage({afterAction: true, onFresh: onSuccess});
   } catch (error) {
+    if (!stateIsCurrent(generation)) return;
     if (error instanceof AccessEndedError) {
       endAccess();
     } else if (error instanceof AccessConnectionError) {
@@ -1350,8 +1375,12 @@ async function runAction(
       button.textContent = originalText;
     }
     if (!accessEnded) {
-      if (!connectionUnavailable) setPageButtonsDisabled(false);
-      schedulePoll();
+      if (controlsFresh && !connectionUnavailable) {
+        setPageButtonsDisabled(false);
+        resumeCameraRefresh();
+      }
+      if (generation !== stateGeneration) resumeStatusChecks();
+      else schedulePoll();
     }
   }
 }
@@ -1499,9 +1528,17 @@ verificationForm.addEventListener("submit", async (event) => {
     await fetchPage({showLoading: true});
     schedulePoll();
   } catch (error) {
-    verificationStatus.className = "status error";
-    verificationStatus.textContent = error.message;
-    showResendOption();
+    if (verificationPending) {
+      verificationStatus.className = "status error";
+      verificationStatus.textContent = error.message;
+      showResendOption();
+    } else if (error instanceof AccessEndedError) {
+      endAccess();
+    } else {
+      // Verification succeeded; the failed state read belongs to the page.
+      showConnectionUnavailable(error);
+      schedulePoll();
+    }
   } finally {
     verificationSubmitting = false;
   }
@@ -1550,7 +1587,8 @@ async function load() {
 
 function resumeStatusChecks() {
   if (accessEnded || verificationPending || document.hidden || !navigator.onLine) return;
-  if (Date.now() - lastStatusCheckedAt >= POLL_INTERVAL_MS) {
+  if (!controlsFresh || Date.now() - lastStatusCheckedAt >= POLL_INTERVAL_MS) {
+    if (controlsFresh && !statusRequest && !commandInProgress) invalidateState();
     poll();
   } else {
     schedulePoll();
@@ -1561,17 +1599,17 @@ document.addEventListener("visibilitychange", () => {
   if (document.hidden === wasHidden) return;
   wasHidden = document.hidden;
   if (document.hidden) {
-    pauseCameraRefresh();
+    invalidateState();
     schedulePoll();
   } else if (!accessEnded) {
     reconcileResendOption();
-    resumeCameraRefresh();
     poll();
   }
 });
 
 for (const event of ["pageshow", "focus"]) {
-  window.addEventListener(event, () => {
+  window.addEventListener(event, (event = {}) => {
+    if (event.persisted) invalidateState();
     reconcileResendOption();
     resumeStatusChecks();
   });

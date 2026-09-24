@@ -344,6 +344,12 @@ class Handler(BaseHTTPRequestHandler):
                         f"{domain}.{service or action_id}"
                     )
 
+    def log_request(self, code="-", size="-"):
+        # Every healthy guest poll already reports initial access to this route.
+        # Keep product activity/security processing; its RPC caller observes errors.
+        if urlparse(self.path).path != "/api/internal/guest-event":
+            super().log_request(code, size)
+
     def log_message(self, format, *args):
         # Avoid writing query-string bearer tokens into normal request logs.
         safe_path = urlparse(self.path).path
@@ -1394,6 +1400,19 @@ class Handler(BaseHTTPRequestHandler):
 
 
 
+def retry_pending_policies():
+    for page_id in POLICY_PUBLISHER.pending_pages():
+        with page_action_lock(page_id):
+            try:
+                page = PAGE_STORE.load(page_id)
+            except PageNotFoundError:
+                POLICY_PUBLISHER.delete(page_id)
+            else:
+                # Admin rollback may have restored the prior
+                # policy after an ambiguous network failure.
+                POLICY_PUBLISHER.publish(page)
+
+
 def run():
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     PAGE_STORE.recover_pending_revocations()
@@ -1413,16 +1432,7 @@ def run():
                                     VERIFICATION_RECIPIENTS.delete(page["id"], grant["id"])
                                     ACTIVITY_STORE.mark_revoked(page["id"], grant, revoked_at=parse_time(grant["expires_at"]))
                         PAGE_STORE.cleanup.drain(LAYERV_CLIENT)
-                    for page_id in POLICY_PUBLISHER.pending_pages():
-                        with page_action_lock(page_id):
-                            try:
-                                page = PAGE_STORE.load(page_id)
-                            except PageNotFoundError:
-                                POLICY_PUBLISHER.delete(page_id)
-                            else:
-                                # Admin rollback may have restored the prior
-                                # policy after an ambiguous network failure.
-                                POLICY_PUBLISHER.publish(page)
+                    retry_pending_policies()
                 except (OSError, sqlite3.Error, PolicyPublishError, PageConfigError):
                     audit("upstream_cleanup_storage_failed")
                 time.sleep(5)

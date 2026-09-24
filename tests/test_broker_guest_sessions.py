@@ -22,6 +22,7 @@ os.environ.setdefault("HA_BASE_URL", "http://ha.invalid")
 os.environ.setdefault("HA_TOKEN", "synthetic-ha-token")
 os.environ.setdefault("ADMIN_TOKEN", "synthetic-owner-token")
 
+import guest_request as diagnostics
 import ha_broker
 import server
 from activity import GuestActivityStore
@@ -150,11 +151,13 @@ class BrokerGuestSessionTests(unittest.TestCase):
             patcher.stop()
         self.temporary.cleanup()
 
-    def request(self, route, capability, page_id, body):
+    def request(self, route, capability, page_id, body, *, started_ns=None):
         connection = socket.socket(socket.AF_UNIX)
         try:
             connection.connect(str(self.socket_path))
             payload = json.dumps(body).encode()
+            timing = diagnostics.RequestTiming("a" * 32, started_ns or diagnostics.clock_ns(),
+                                               "action" if route.endswith("/action") else "other")
             request = (
                 f"POST {route} HTTP/1.1\r\n"
                 "Host: broker\r\n"
@@ -162,6 +165,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 "X-Broker-Token: synthetic-admin-broker-token\r\n"
                 f"X-Page-Capability: {capability}\r\n"
                 f"X-Access-Pages-Page-ID: {page_id}\r\n"
+                f"{timing.headers()}"
                 f"Content-Length: {len(payload)}\r\n\r\n"
             ).encode() + payload
             connection.sendall(request)
@@ -169,7 +173,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
             response.begin()
             status = response.status
             data = response.read()
-            return status, json.loads(data) if status == 200 else None
+            return status, json.loads(data) if data and response.getheader("Content-Type", "").startswith("application/json") else None
         finally:
             connection.close()
 
@@ -280,7 +284,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
             }).encode()
             headers = (f"X-Page-Capability: {self.cap_a}\r\n"
                        "X-Access-Pages-Page-ID: page-a\r\n"
-                       f"X-Forwarded-For: 203.0.113.{index + 1}\r\n")
+                       f"X-Forwarded-For: 203.0.113.{index + 1}\r\n"
+                       + diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns(),
+                                                   "action").headers())
             self.assertEqual(self.raw_request("/guest/v1/action", headers, body),
                              200 if index < 12 else 429)
         self.assertEqual(ha_broker.HA_CLIENT.call_service.call_count, 12)
@@ -754,6 +760,63 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.request("/guest/v1/page-view", self.cap_a, "page-a", {
             "grant_id": self.grant_a, "session": session,
         })[0], 503)
+
+    def test_interrupted_ha_dispatch_is_uncertain_and_not_replayed(self):
+        from ha import HomeAssistantClient
+        session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        client = HomeAssistantClient("http://ha.invalid", "synthetic")
+        for error in (TimeoutError(), ConnectionResetError()):
+            with self.subTest(error=type(error)), \
+                    patch.object(ha_broker.HA_CLIENT, "call_service", side_effect=client.call_service), \
+                    patch("ha.urlopen", side_effect=error) as dispatch:
+                status, body = self.action(session)
+                self.assertEqual(status, 502)
+                self.assertEqual(body["code"], "action_uncertain")
+                self.assertEqual(dispatch.call_count, 1)
+
+    def test_action_lifetime_checked_at_dequeue_and_after_preparation(self):
+        session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        body = {"grant_id": self.grant_a, "session": session, "resource_id": "garden",
+                "action_id": "turn_on", "parameters": {}, "proximity": None}
+        now = diagnostics.clock_ns()
+        with patch("ha_broker._guest_action", wraps=ha_broker._guest_action) as dispatch:
+            status, _ = self.request("/guest/v1/action", self.cap_a, "page-a", body,
+                                     started_ns=now - 8_100_000_000)
+            self.assertEqual(status, 503)
+            dispatch.assert_not_called()
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
+
+        original = ha_broker._service_data
+        current = [now]
+        def delayed_preparation(*args):
+            result = original(*args)
+            current[0] += 8_000_000_000
+            return result
+        with (patch("guest_request.clock_ns", side_effect=lambda: current[0]),
+              patch("ha_broker._service_data", side_effect=delayed_preparation)):
+            self.assertEqual(self.request("/guest/v1/action", self.cap_a, "page-a", body,
+                                          started_ns=now)[0], 503)
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
+        # A new, explicit command has its own lifetime and can still succeed.
+        self.assertEqual(self.action(session)[0], 200)
+        ha_broker.HA_CLIENT.call_service.assert_called_once()
+
+    def test_action_requires_trusted_lifetime_and_cannot_downgrade_operation(self):
+        session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        body = json.dumps({"grant_id": self.grant_a, "session": session,
+                           "resource_id": "garden", "action_id": "turn_on",
+                           "parameters": {}, "proximity": None}).encode()
+        headers = f"X-Page-Capability: {self.cap_a}\r\nX-Access-Pages-Page-ID: page-a\r\n"
+        self.assertEqual(self.raw_request("/guest/v1/action", headers, body), 400)
+        downgraded = diagnostics.RequestTiming("a" * 32, diagnostics.clock_ns() - 9_000_000_000, "state")
+        self.assertEqual(self.raw_request("/guest/v1/action", headers +
+                                         downgraded.headers(), body), 503)
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
+        # A diagnostic label cannot reject a valid authorized action either.
+        unknown = diagnostics.RequestTiming("b" * 32, diagnostics.clock_ns(), "other")
+        self.assertEqual(self.raw_request("/guest/v1/action", headers +
+                                         unknown.headers(), body), 200)
+        ha_broker.HA_CLIENT.call_service.assert_called_once()
 
     def test_allowed_action_dispatches_only_policy_service_without_proximity(self):
         session = self.exchange(
@@ -1252,6 +1315,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
         })
 
     def test_one_time_individual_sessions_are_bound_to_current_page_and_grant(self):
+        page = self.pages.load("page-a")
+        page["access_grants"][0]["one_time_use"] = True
+        self.pages.replace("page-a", page)
         code, first = self.exchange(
             self.cap_a, "page-a", self.grant_a, self.secret_a
         )
@@ -1281,6 +1347,72 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.status(
             self.cap_a, "page-a", self.grant_b, first["session"]
         )[0], 401)
+
+    def test_reusable_invitation_creates_independent_device_sessions(self):
+        sessions = []
+        for _ in range(2):
+            status, result = self.exchange(
+                self.cap_a, "page-a", self.grant_a, self.secret_a,
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["status"], "session_ready")
+            self.assertEqual(result["expires_at"], int(self.expiry.timestamp()))
+            sessions.append(result["session"])
+        self.assertNotEqual(*sessions)
+        for session in sessions:
+            self.assertEqual(self.status(
+                self.cap_a, "page-a", self.grant_a, session,
+            )[0], 200)
+            self.assertEqual(self.status(
+                self.cap_a, "page-a", self.grant_b, session,
+            )[0], 401)
+        self.pages.remove_access_grant("page-a", self.grant_a)
+        for session in sessions:
+            self.assertEqual(self.status(
+                self.cap_a, "page-a", self.grant_a, session,
+            )[0], 401)
+        self.assertEqual(self.exchange(
+            self.cap_a, "page-a", self.grant_a, self.secret_a,
+        )[0], 401)
+
+    def test_previously_consumed_reusable_invitation_works_after_upgrade(self):
+        original, _ = self.sessions.consume_bootstrap(
+            "page-a", self.grant_a, self.secret_a,
+            sha256(self.secret_a.encode()).hexdigest(), self.expiry,
+        )
+        with patch("ha_broker.GUEST_SESSION_STORE", VerificationStore(self.sessions.path)):
+            status, result = self.exchange(
+                self.cap_a, "page-a", self.grant_a, self.secret_a,
+            )
+            self.assertEqual(status, 200)
+            self.assertNotEqual(original, result["session"])
+            for session in (original, result["session"]):
+                self.assertEqual(self.status(
+                    self.cap_a, "page-a", self.grant_a, session,
+                )[0], 200)
+
+    def test_reusable_invitation_requires_verification_on_each_device(self):
+        sessions = []
+        for _ in range(2):
+            status, result = self.exchange(
+                self.cap_a, "page-a", self.grant_v, self.secret_v,
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(result["status"], "verification_required")
+            sessions.append(result["session"])
+        first, second = sessions
+        with patch("verification.secrets.randbelow", side_effect=[123456, 654321]):
+            self.assertEqual(self.challenge(first)[0], 200)
+            first_code = self.sent_codes[-1][2]
+            self.assertEqual(self.challenge(second)[0], 200)
+            second_code = self.sent_codes[-1][2]
+        self.assertEqual(self.verify(first, first_code)[1]["status"], "session_ready")
+        self.assertEqual(self.status(
+            self.cap_a, "page-a", self.grant_v, second,
+        )[1]["status"], "verification_required")
+        self.assertEqual(self.read(second, grant_id=self.grant_v)[0], 403)
+        self.assertEqual(self.verify(second, first_code)[0], 401)
+        self.assertEqual(self.verify(second, second_code)[1]["status"], "session_ready")
 
     def test_bootstrap_page_and_grant_claims_cannot_broaden_authority(self):
         self.assertEqual(self.exchange(

@@ -1,5 +1,7 @@
 import unittest
 import json
+import ast
+import re
 from pathlib import Path
 
 
@@ -51,6 +53,8 @@ class PackagingTests(unittest.TestCase):
             "internal.py",
             "config.py",
             "ha.py",
+            "guest_diagnostics.py",
+            "guest_request.py",
             "ha_broker.py",
             "layerv_broker.py",
             "policy.py",
@@ -62,6 +66,31 @@ class PackagingTests(unittest.TestCase):
             "rate_limit.py",
         ):
             self.assertIn(f"COPY {module} .", dockerfile)
+
+    def test_supported_images_include_local_import_dependency_closure(self):
+        local = {path.stem for path in ROOT.glob('*.py')}
+        manifests = []
+        for definition in ('Dockerfile', 'Dockerfile.ha-app'):
+            source = (ROOT / definition).read_text()
+            modules = set()
+            for line in source.splitlines():
+                if line.startswith('COPY '):
+                    modules.update(re.findall(r'(?<![/\w-])([\w_]+)\.py\b', line))
+            modules &= local
+            manifests.append(modules)
+            for module in modules:
+                tree = ast.parse((ROOT / f'{module}.py').read_text())
+                imports = set()
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        imports.update(alias.name.split('.')[0] for alias in node.names)
+                    elif isinstance(node, ast.ImportFrom) and node.module:
+                        imports.add(node.module.split('.')[0])
+                self.assertFalse((imports & local) - modules, (definition, module, imports - modules))
+            self.assertIn('guest_diagnostics', modules)
+            self.assertNotIn('tests/', source)
+        self.assertEqual(manifests[1] - manifests[0], {'guest_service'})
+        self.assertFalse(manifests[0] - manifests[1])
 
     def test_endpoint_has_no_gateway_upstream_switch(self):
         source = (ROOT / "cmd" / "guest-endpoint" / "main.go").read_text(encoding="utf-8")

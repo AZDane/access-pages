@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -49,9 +50,23 @@ var staticPaths = map[string]bool{
 func requiredEnv(name string) string {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
-		log.Fatalf("missing required environment variable: %s", name)
+		fatalStartup("missing required environment variable: " + name)
 	}
 	return value
+}
+
+// At most one best-effort write on a fatal path; logging cannot prevent exit.
+func fatalStartup(message string) {
+	done := make(chan struct{})
+	go func() {
+		log.Print(message)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+	}
+	os.Exit(1)
 }
 
 func allowedGuestServicePath(pageID, path string) bool {
@@ -89,6 +104,49 @@ func allowedGuestServicePath(pageID, path string) bool {
 }
 
 func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	started, clockError := bootNanos()
+	clientContext := r.Context()
+	requestID := opaqueID()
+	operation := guestOperation(r.Method, r.URL.Path, r.URL.Query().Has("bootstrap"))
+	trace := newRequestTrace()
+	r = r.WithContext(context.WithValue(r.Context(), requestTraceKey{}, trace))
+	observed := &observedResponse{ResponseWriter: w}
+	w = observed
+	w.Header().Set(requestIDHeader, requestID)
+	if operation != "asset" && r.URL.Path != "/health" {
+		defer func() {
+			failure := recover()
+			ended, _ := bootNanos()
+			elapsed := max(0, (ended-started)/int64(time.Millisecond))
+			outcome := "ok"
+			if observed.status >= 500 || trace.stages[11] != 0 {
+				outcome = "error"
+			}
+			if elapsed >= 5000 {
+				outcome = "slow"
+			}
+			if trace.stages[11] == 3 {
+				outcome = "uncertain"
+				if trace.stages[10] == 1 {
+					outcome = "deadline"
+				}
+			}
+			if observed.failed || clientContext.Err() != nil || failure != nil {
+				outcome = "disconnect"
+			}
+			if (operation == "action" || trace.stages[10] == 2) && outcome != "ok" && trace.stages[10] != 1 && trace.stages[10] != 3 {
+				outcome = "uncertain"
+			}
+			if outcome != "ok" || detailedAt(ended) {
+				diagnostics.emit(diagnostic{At: "end", RequestID: requestID, Operation: operation,
+					ElapsedMS: min(diagnosticLimit, elapsed), Status: observed.status,
+					Outcome: outcome, Stages: trace.stages, detail: outcome == "ok"})
+			}
+			if failure != nil {
+				panic(failure)
+			}
+		}()
+	}
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -96,6 +154,10 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+		return
+	}
+	if clockError != nil {
+		http.Error(w, "guest service unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	// Host is separate from Header in net/http but counted by the old gateway.
@@ -145,12 +207,59 @@ func (e *endpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Header.Set("X-Access-Pages-Page-ID", e.pageID)
 	r.Header.Set("X-Page-Capability", e.capability)
+	r.Header.Set(requestIDHeader, requestID)
+	r.Header.Set(startedHeader, strconv.FormatInt(started, 10))
+	if operation == "action" {
+		now, err := bootNanos()
+		if err != nil || now-started >= int64(actionLifetime) {
+			http.Error(w, "guest request timed out", http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), actionLifetime-time.Duration(now-started))
+		defer cancel()
+		r = r.WithContext(ctx)
+	}
 	e.proxy.ServeHTTP(w, r)
+}
+
+func guestOperation(method, path string, bootstrap bool) string {
+	parts := strings.Split(path, "/")
+	if method == http.MethodGet && ((len(parts) == 3 && parts[1] == "static") ||
+		(len(parts) == 6 && parts[1] == "g" && parts[4] == "static")) {
+		return "asset"
+	}
+	if len(parts) < 5 || parts[1] != "g" {
+		return "other"
+	}
+	if len(parts) == 5 && parts[4] == "" {
+		if bootstrap {
+			return "bootstrap"
+		}
+		return "document"
+	}
+	if method == http.MethodGet && len(parts) == 7 && parts[4] == "api" && parts[5] == "access" {
+		return "state"
+	}
+	if len(parts) == 9 && parts[4] == "api" && parts[5] == "access" {
+		if method == http.MethodGet && parts[7] == "camera" {
+			return "camera"
+		}
+		if method == http.MethodPost {
+			// Payload validation in the guest service resolves these ambiguous routes.
+			if parts[7] == "verification" && (parts[8] == "send" || parts[8] == "verify") {
+				return "other"
+			}
+			return "action"
+		}
+	}
+	return "other"
 }
 
 func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httputil.ReverseProxy {
 	upstream := &url.URL{Scheme: "http", Host: "guest-service"}
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
+	proxy.ErrorLog = log.New(io.Discard, "", 0)
+	proxy.ModifyResponse = captureDiagnosticStages
 	originalDirector := proxy.Director
 	proxy.Director = func(request *http.Request) {
 		originalDirector(request)
@@ -197,9 +306,12 @@ func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httput
 			return conn, nil
 		},
 	}
-	proxy.ErrorHandler = func(w http.ResponseWriter, _ *http.Request, _ error) {
-		log.Printf("guest service unavailable")
-		http.Error(w, "guest service unavailable", http.StatusBadGateway)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, _ error) {
+		status := http.StatusBadGateway
+		if errors.Is(r.Context().Err(), context.DeadlineExceeded) {
+			status = http.StatusServiceUnavailable
+		}
+		http.Error(w, "guest service unavailable", status)
 	}
 	return proxy
 }
@@ -210,10 +322,10 @@ func main() {
 	host := requiredEnv("HOST")
 	port, err := strconv.Atoi(requiredEnv("PORT"))
 	if err != nil || port < 1 || port > 65535 {
-		log.Fatal("invalid PORT")
+		fatalStartup("invalid PORT")
 	}
 	if requiredEnv("GUEST_ENDPOINT_GUEST_SERVICE_SOCKET") != guestSocket {
-		log.Fatal("invalid guest service socket")
+		fatalStartup("invalid guest service socket")
 	}
 	proxy := newGuestServiceProxy(guestSocket, 2101, 2101, 2004)
 	server := &http.Server{
@@ -225,8 +337,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    maxGuestHeaderBytes,
 	}
-	log.Printf("Access Pages page endpoint listening on http://%s", server.Addr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		fatalStartup(err.Error())
 	}
 }

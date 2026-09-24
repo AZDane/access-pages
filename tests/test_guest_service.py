@@ -10,6 +10,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import guest_request as diagnostics
 
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "guest_service.py"
@@ -29,7 +30,21 @@ class UnixHTTPConnection(http.client.HTTPConnection):
 
 
 class GuestServiceTests(unittest.TestCase):
+    def test_generic_failure_handler_preserves_os_and_runtime_error_response(self):
+        handler = object.__new__(guest_service.GuestHandler)
+        for error in (OSError, RuntimeError):
+            with (self.subTest(error=error),
+                  patch.object(handler, '_serve_guest', side_effect=error),
+                  patch.object(handler, '_json') as respond,
+                  patch.object(guest_service.diagnostics, 'failure') as failure):
+                handler._guest_scoped('GET')
+                failure.assert_called_once_with(1)
+                respond.assert_called_once_with(503, {'error': 'Guest access temporarily unavailable'})
+
     def test_action_client_sends_only_access_pages_identifiers(self):
+        started = diagnostics.clock_ns() - 4_000_000_000
+        token = diagnostics.CURRENT.set(diagnostics.RequestTiming("c" * 32, started, "action"))
+        self.addCleanup(diagnostics.CURRENT.reset, token)
         payload = {
             "capability": "synthetic-page-capability-123456",
             "page_id": "guest", "grant_id": "grant_" + "g" * 16,
@@ -53,6 +68,11 @@ class GuestServiceTests(unittest.TestCase):
             self.assertEqual((status, result["success"]), (200, True))
             sent = connect.return_value.__enter__.return_value.sendall.call_args.args[0]
             self.assertIn(b"POST /guest/v1/action", sent)
+            self.assertIn(f"{diagnostics.STARTED_NS}: {started}\r\n".encode(), sent)
+            self.assertIn(f"{diagnostics.OPERATION}: action\r\n".encode(), sent)
+            remaining = connect.return_value.__enter__.return_value.settimeout.call_args.args[0]
+            self.assertGreater(remaining, 0)
+            self.assertLessEqual(remaining, 4)
             for forbidden in (b"entity_id", b"service_data", b"grant_deadline"):
                 self.assertNotIn(forbidden, sent)
             response.read.return_value = json.dumps({

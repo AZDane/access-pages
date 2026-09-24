@@ -28,6 +28,20 @@ class AppRunnerTests(unittest.TestCase):
         with self.assertRaises(app_runner.SetupError):
             app_runner._resource_isolation_environment({"resource_isolation": "automatic"})
 
+    def test_diagnostics_duration_is_one_shot_across_restart(self):
+        for selection, seconds in (("30 minutes", 1800), ("1 hour", 3600), ("4 hours", 14400)):
+            with self.subTest(selection=selection), patch.object(app_runner, "clock_ns", return_value=123):
+                self.assertEqual(app_runner._diagnostic_environment({}), {})
+                env = app_runner._diagnostic_environment({"diagnostic_logging": selection})
+                self.assertEqual(int(env["ACCESS_PAGES_DIAGNOSTICS_UNTIL_NS"]), 123 + seconds * 1_000_000_000)
+                self.assertEqual((self.paths["DATA_DIR"] / "diagnostics-consumed").read_bytes(), b"1")
+                self.assertEqual(app_runner._diagnostic_environment({"diagnostic_logging": selection}), {})
+                # Changing the selected duration cannot silently rearm either.
+                self.assertEqual(app_runner._diagnostic_environment({"diagnostic_logging": "4 hours"}), {})
+        with patch.object(app_runner.os, "fsync", side_effect=OSError):
+            self.assertEqual(app_runner._diagnostic_environment({}), {})
+            self.assertEqual(app_runner._diagnostic_environment({"diagnostic_logging": "30 minutes"}), {})
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)

@@ -1,0 +1,293 @@
+{
+  "runtimeCommit": "c74f5f467ab65ff80a1d7b388508d4c2c4a79546",
+  "previousCandidate": "4d838cedd25a6a5719cb4ab93410ec5a3c2faafe",
+  "baselineCommit": "0ef568e7ac9d03e8408938b71c67bf86a48920ec",
+  "candidateAmd64Image": "sha256:e4c422e66286d3859bd0acc074d82acb01e1a8e9d40496c615ecff126cc5c37e",
+  "scope": "Disposable local Chrome/container fixtures, real guest UIDs, real Admin callback handler, synthetic HA and Connector; no live HA-Nova or LayerV.",
+  "metricsScope": "CPU/RSS sum Gateway, Guest Service and broker; excludes Admin/fixture/browser. Concurrent local runs are not a hardware benchmark.",
+  "cleanupProductionDiff": {
+    "added": 10,
+    "removed": 25,
+    "net": -15
+  },
+  "cleanupNetRemoved": {
+    "obsoleteRpcTimestamp": 6,
+    "gatewayByteCounter": 2,
+    "duplicateExceptionHandler": 3,
+    "brokerOutcomeVariable": 4
+  },
+  "workloads": {
+    "baseline": {
+      "name": "baseline",
+      "seconds": 120,
+      "start": "2026-09-23T21:19:07.814Z",
+      "end": "2026-09-23T21:21:07.815Z",
+      "requests": 40,
+      "polls": 40,
+      "counts": {
+        "connector_probe": 40,
+        "guest_event": 40,
+        "ha_read_start": 40,
+        "ha_read_end": 40
+      },
+      "cpuSeconds": 0.21,
+      "cpuPercent": 0.175,
+      "rssBefore": 76152832,
+      "rssAfter": 78368768,
+      "latencyMedian": 6.719354999993811,
+      "latencyP95": 7.613646999991033,
+      "latencyMax": 7.751615000001038,
+      "diagnosticRecords": 40,
+      "diagnosticBytes": 15547,
+      "maxRecordBytes": 390,
+      "callbackAccessRecords": 40,
+      "callbackAccessBytes": 3400,
+      "lastObservedLossByPID": {
+        "17": 0
+      }
+    },
+    "normal": {
+      "name": "normal",
+      "seconds": 120,
+      "start": "2026-09-23T21:19:06.449Z",
+      "end": "2026-09-23T21:21:06.455Z",
+      "requests": 40,
+      "polls": 40,
+      "counts": {
+        "connector_probe": 40,
+        "guest_event": 40,
+        "ha_read_start": 40,
+        "ha_read_end": 40
+      },
+      "cpuSeconds": 0.19,
+      "cpuPercent": 0.15833333333333333,
+      "rssBefore": 78512128,
+      "rssAfter": 81002496,
+      "latencyMedian": 6.705997999997635,
+      "latencyP95": 7.547411999999895,
+      "latencyMax": 7.620911000005435,
+      "diagnosticRecords": 0,
+      "diagnosticBytes": 0,
+      "maxRecordBytes": 0,
+      "callbackAccessRecords": 0,
+      "callbackAccessBytes": 0,
+      "lastObservedLossByPID": {}
+    },
+    "detail": {
+      "name": "detail",
+      "seconds": 120,
+      "start": "2026-09-23T21:19:07.635Z",
+      "end": "2026-09-23T21:21:07.636Z",
+      "requests": 40,
+      "polls": 40,
+      "counts": {
+        "connector_probe": 40,
+        "guest_event": 40,
+        "ha_read_start": 40,
+        "ha_read_end": 40
+      },
+      "cpuSeconds": 0.22,
+      "cpuPercent": 0.18333333333333332,
+      "rssBefore": 77529088,
+      "rssAfter": 79351808,
+      "latencyMedian": 6.9485379999969155,
+      "latencyP95": 7.8157280000014,
+      "latencyMax": 8.601643999999851,
+      "diagnosticRecords": 128,
+      "diagnosticBytes": 22362,
+      "maxRecordBytes": 181,
+      "callbackAccessRecords": 0,
+      "callbackAccessBytes": 0,
+      "lastObservedLossByPID": {
+        "14": 10,
+        "13": 35,
+        "11": 59
+      },
+      "boundaries": {
+        "gateway:received": 26,
+        "service:0": 26,
+        "service:1": 14,
+        "broker:2": 26,
+        "ha:3": 14,
+        "ha:4": 2,
+        "broker:5": 1,
+        "service:6": 2,
+        "gateway:end": 16,
+        "gateway:loss": 1
+      },
+      "completeGatewayVectors": 16,
+      "idsWithGatewayServiceBroker": 26,
+      "expiryUpperBound": "2026-09-23T21:20:25.872848+00:00",
+      "requestRecordsAfterExpiryUpperBound": 0,
+      "haReadsAfterExpiryUpperBound": 14
+    },
+    "failure": {
+      "start": "2026-09-23T21:19:10.725Z",
+      "end": "2026-09-23T21:20:15.753Z",
+      "requests": 1298,
+      "seconds": 65,
+      "diagnosticRecords": 2,
+      "diagnosticBytes": 370,
+      "maxRecordBytes": 186,
+      "callbackAccessRecords": 0,
+      "callbackAccessBytes": 0,
+      "lastObservedLossByPID": {
+        "14": 1199
+      },
+      "lossReportsIncludingIdle": [
+        {
+          "ap_diag": 1,
+          "pid": 14,
+          "part": "gateway",
+          "at": "loss",
+          "ms": 0,
+          "v": [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          "lost": 1298
+        }
+      ]
+    }
+  },
+  "outputFaults": {
+    "closed": {
+      "name": "closed",
+      "seconds": 15,
+      "start": "2026-09-23T21:23:05.639Z",
+      "end": "2026-09-23T21:23:20.640Z",
+      "requests": 5,
+      "polls": 5,
+      "counts": {
+        "connector_probe": 5,
+        "guest_event": 5,
+        "ha_read_start": 5,
+        "ha_read_end": 5
+      },
+      "cpuSeconds": 0.02,
+      "cpuPercent": 0.13333333333333333,
+      "rssBefore": 77668352,
+      "rssAfter": 77930496,
+      "latencyMedian": 6.741947999999866,
+      "latencyP95": 7.059189999999944,
+      "latencyMax": 7.059189999999944
+    },
+    "blocked": {
+      "name": "blocked",
+      "seconds": 15,
+      "start": "2026-09-23T21:24:47.567Z",
+      "end": "2026-09-23T21:25:02.567Z",
+      "requests": 5,
+      "polls": 5,
+      "counts": {
+        "connector_probe": 5,
+        "guest_event": 5,
+        "ha_read_start": 5,
+        "ha_read_end": 5
+      },
+      "cpuSeconds": 0.02,
+      "cpuPercent": 0.13333333333333333,
+      "rssBefore": 77660160,
+      "rssAfter": 77660160,
+      "latencyMedian": 6.028751999998349,
+      "latencyP95": 6.381186999999954,
+      "latencyMax": 6.381186999999954
+    }
+  },
+  "outputFaultScope": "Detailed diagnostics enabled. Closed pipe from launch; full undrained pipe after Gateway readiness. Filling before launch blocks the pre-existing synchronous Gateway startup log, outside request diagnostics.",
+  "browserScenarios": {
+    "actions": [
+      {
+        "name": "timed-out action response is not replayed automatically",
+        "seconds": 16.371000051498413,
+        "passed": true,
+        "actionDispatchedOnce": true,
+        "timeoutDoesNotUndoAction": true
+      },
+      {
+        "name": "queued action below",
+        "seconds": 2.6610000133514404,
+        "passed": true,
+        "newHaPosts": 1,
+        "elapsed": 2.499000072479248,
+        "dispatchDelay": 1.9904122352600098
+      },
+      {
+        "name": "queued action expired",
+        "seconds": 14.378000020980835,
+        "passed": true,
+        "newHaPosts": 0,
+        "elapsed": 14.067000150680542
+      },
+      {
+        "name": "queued action revoke",
+        "seconds": 2.6570000648498535,
+        "passed": true,
+        "newHaPosts": 0,
+        "elapsed": 2.498000144958496
+      },
+      {
+        "name": "queued action expire",
+        "seconds": 2.6489999294281006,
+        "passed": true,
+        "newHaPosts": 0,
+        "elapsed": 2.4880001544952393
+      }
+    ],
+    "verification-regression": [
+      {
+        "name": "verification per device survives timeout; wrong-device code denied",
+        "seconds": 16.52500009536743,
+        "passed": true,
+        "independentOTP": true,
+        "revokedBoth": true,
+        "automaticRecovery": true
+      },
+      {
+        "name": "single-use also times out and recovers existing session; second denied",
+        "seconds": 16.259000062942505,
+        "passed": true
+      },
+      {
+        "name": "unauthenticated, wrong-session, revoked in-flight state and action denied",
+        "seconds": 1.744999885559082,
+        "passed": true
+      }
+    ],
+    "delays": [
+      {
+        "name": "first state timeout, controls absent, automatic recovery same cookie",
+        "seconds": 16.193000078201294,
+        "passed": true,
+        "timeoutAt": 1790198431.352,
+        "recoveredAt": 1790198437.343,
+        "titleDuringTimeout": "Access Page"
+      },
+      {
+        "name": "poll timeout after first success matches screenshot title and recovers",
+        "seconds": 19.16000008583069,
+        "passed": true,
+        "timeoutAt": 1790198450.508,
+        "recoveredAt": 1790198456.505,
+        "oldControlBlocked": true
+      },
+      {
+        "name": "slow real HA read and second-device broker queue",
+        "seconds": 10.305000066757202,
+        "passed": true,
+        "secondDeviceLoadSeconds": 10.059000015258789,
+        "slowHAStatus": 503
+      }
+    ]
+  }
+}

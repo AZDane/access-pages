@@ -1,5 +1,96 @@
 # Changelog
 
+## 0.1.129
+
+- Keep paired guest actions such as Turn on and Turn off side-by-side on narrow
+  mobile screens, including reduced effective widths with Display Zoom.
+- Preserve equal-width buttons, readable wrapping labels, existing touch-target
+  sizes, and the current tablet, desktop, and other control layouts.
+
+## 0.1.128
+
+- Owner-test prerelease for live acceptance; not approved for external beta.
+- Retire page grants durably before deletion and persist policy publication
+  intent before changes, allowing interrupted operations to recover safely.
+- Require fresh authorized state before completing a guest action in the UI.
+  Suppress obsolete responses and gate stale controls after reconnect,
+  background return and browser restoration. Never replay a device action.
+- Normalize interrupted Home Assistant requests while preserving uncertain
+  action outcomes and the existing receipt-aged action deadline.
+- Keep invitation validation and errors visible inside the dialog. Distinguish
+  local revocation, queued cleanup and unconfirmed remote revocation.
+- Include UTC timestamps in new `ap_diag` records and preserve Gateway startup
+  when logging is unavailable. Synchronize native temporary-diagnostic help
+  text explaining expiration, consumed selections and the Off/restart re-arm.
+- Keep healthy logging quiet and diagnostic capture bounded. The historical
+  timeout is not claimed resolved; target-device live acceptance remains pending.
+- Publish new versioned images without moving existing `latest` tags for this
+  prerelease. Existing release tags and images remain available unchanged.
+
+## 0.1.127
+
+- Owner-only HA-Nova acceptance prerelease; not approved for external beta.
+  Preserve 0.1.126 as the reference for the live diagnostic-policy finding.
+- Prefer one final Gateway timing summary per completed request in temporary
+  diagnostic mode. Retain successful pre-RPC and pre-HA observations only for a
+  consistent one-in-16 request sample, reserving capacity for abnormal evidence.
+- Keep immediate failure, disconnect, deadline and uncertainty evidence. Normal
+  healthy polling remains silent; timing, action freshness, expiration, restart
+  protection and network behavior are unchanged.
+- Accepted diagnostic limitation: an unsampled request that hangs indefinitely
+  without a detected failure may leave no useful early-boundary evidence.
+- Separate inherited issue: stderr already full before startup can block the
+  Gateway's synchronous startup message. This release does not fix that issue
+  or establish the cause of the historical timeout.
+- External-beta promotion and the stable development baseline decision await
+  the owner's live acceptance results and a separate assessment.
+
+## 0.1.126
+
+- Keep healthy guest polling silent. Replace buffered event histories and helper
+  tracing with compact correlated boundary timings and throttled abnormal
+  summaries through Home Assistant App logs. No diagnostic files or extra
+  network requests are created.
+- Add one-shot diagnostic logging for 30 minutes, one hour, or four hours through
+  App configuration. It expires automatically and does not reactivate on restart.
+- Keep eight-second action freshness independent of logging, retain disconnect
+  and verification recovery fixes, and preserve a received request ID if browser
+  response-body processing subsequently fails. Unconfirmed actions are never
+  replayed.
+- The historical timeout remains unresolved; another occurrence may require a
+  temporary diagnostic capture and reproduction.
+
+## 0.1.125
+
+- Skip empty redirect-body writes and end response handling when a peer
+  disconnects, preserving the session cookie and 303 redirect headers.
+- Resume status polling when email verification succeeds but the following
+  state read fails. Keep verification independent for each device.
+- Add bounded, privacy-safe request-stage diagnostics across the Guest Gateway,
+  guest service, broker, and HA client, separating broker wait from HA latency.
+  Summarize ordinary successful state polls once; retain detailed slow/error
+  evidence. Keep saved identifiers opaque and include the diagnostic dependency
+  in both supported images.
+- Reject queued guest actions after a non-renewable eight-second lifetime from
+  Gateway receipt, with another check immediately before HA dispatch. Preserve
+  all session, verification, policy, revocation, and authorization-expiry checks.
+  Already-dispatched actions cannot be recalled and are never replayed.
+- The historical 0.1.124 first-use timeout remains unexplained. These changes do
+  not establish or fix its cause, and do not change LayerV behavior.
+
+## 0.1.124
+
+- Allow reusable guest invitations to open on multiple devices with independent
+  sessions, including links already opened before upgrading. Preserve single-use
+  consumption, grant expiry, revocation, and separate email verification on each
+  device.
+- Allow a valid reusable invitation to replace a stale browser session cookie.
+- Replace the obsolete ten-minute Connector warm-up message with a simple page
+  save confirmation.
+- Clarify that page endpoints and the shared Connector stay running, and document
+  the resource allocation tradeoff between guest and page isolation when minting
+  invitations.
+
 ## 0.1.123
 
 - Remove experimental hidden-page maintenance polling after testing showed

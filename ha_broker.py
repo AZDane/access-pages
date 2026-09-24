@@ -16,6 +16,8 @@ import struct
 import threading
 import time
 from pathlib import Path
+import guest_diagnostics as diagnostics
+import guest_request as lifetime
 
 from ha import (
     CAMERA_IMAGE_TYPES,
@@ -122,9 +124,9 @@ def _emit_guest_event(page_id, grant_id, event, **validated):
         response = connection.getresponse()
         response.read(1024)
         if response.status != HTTPStatus.OK:
-            print(f"guest event rejected: {event} ({response.status})", flush=True)
-    except (HTTPException, OSError) as error:
-        print(f"guest event delivery failed: {event}: {type(error).__name__}", flush=True)
+            diagnostics.failure(7, "broker")
+    except (HTTPException, OSError):
+        diagnostics.failure(7, "broker")
     finally:
         connection.close()
 
@@ -540,6 +542,17 @@ class Handler(BaseHTTPRequestHandler):
 class GuestHandler(BaseHTTPRequestHandler):
     """Separate guest authority; never dispatch to the TCP broker handler."""
 
+    def send_response(self, code, message=None):
+        self._response_status = int(code)
+        super().send_response(code, message)
+
+    def end_headers(self):
+        diagnostics.boundary(5, "broker")
+        stages = diagnostics.stage_header()
+        if stages:
+            self.send_header(diagnostics.STAGES, stages)
+        super().end_headers()
+
     def _send_page(self, page_id):
         body = json.dumps({"page_id": page_id}).encode("ascii")
         self.send_response(HTTPStatus.OK)
@@ -559,6 +572,8 @@ class GuestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_denial(self, status, code, retry_after=None):
+        if status >= 500 and diagnostics.detailed():
+            diagnostics.record("broker", status=status)
         body = json.dumps({"code": code}).encode("ascii")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -609,6 +624,38 @@ class GuestHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self):
+        operation = "action" if self.path == "/guest/v1/action" else "other"
+        try:
+            timing = lifetime.timing_from_headers(
+                self.headers, operation, required=operation == "action", internal_rpc=True,
+            )
+        except ValueError:
+            self._send_denial(HTTPStatus.BAD_REQUEST, "invalid_request")
+            return
+        token = lifetime.CURRENT.set(timing)
+        self._response_status = None
+        try:
+            diagnostics.boundary(2, "broker")
+            try:
+                # The Unix listener is serial: work may already have waited here.
+                lifetime.action_remaining(20)
+                self._scoped_POST()
+            except lifetime.ActionDeadlineExceeded:
+                diagnostics.failure(3)
+                self._send_denial(HTTPStatus.SERVICE_UNAVAILABLE, "action_deadline")
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+            diagnostics.failure(4)
+            diagnostics.record("broker", status=self._response_status)
+        except Exception:
+            # A partial response cannot safely be replaced; retain local evidence.
+            self.close_connection = True
+            diagnostics.failure(1)
+            diagnostics.record("broker", status=500)
+        finally:
+            lifetime.CURRENT.reset(token)
+
+    def _scoped_POST(self):
         if self.path not in {
             "/guest/v1/page-identity",
             "/guest/v1/bootstrap",
@@ -759,7 +806,8 @@ class GuestHandler(BaseHTTPRequestHandler):
             )
             return
         except HomeAssistantError:
-            self._send_denial(HTTPStatus.BAD_GATEWAY, "ha_unavailable")
+            self._send_denial(HTTPStatus.BAD_GATEWAY,
+                              "action_uncertain" if self.path == "/guest/v1/action" else "ha_unavailable")
             return
         except (OSError, sqlite3.Error):
             self._send_denial(HTTPStatus.SERVICE_UNAVAILABLE, "temporarily_unavailable")
@@ -864,6 +912,7 @@ def _exchange_guest_bootstrap(page_id, grant_id, bootstrap):
         session, stored_expiry = GUEST_SESSION_STORE.consume_bootstrap(
             page_id, grant_id, bootstrap, grant["token_hash"],
             datetime.fromtimestamp(expiry, tz=timezone.utc),
+            one_time_use=grant["one_time_use"],
         )
     except ValueError:
         return None
@@ -1139,6 +1188,7 @@ def _guest_action(page_id, grant_id, session, resource_id, action_id,
         "parameters": service_data,
     }
     try:
+        lifetime.action_remaining(20)
         HA_CLIENT.call_service(
             resource["domain"], action["service"], resource["entity_id"],
             service_data, grant_deadline=deadline,

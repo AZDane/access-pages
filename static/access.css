@@ -875,7 +875,8 @@ footer a:hover {
 }
 
 @media (max-width: 350px) {
-  .action-grid,
+  /* Keep two-action controls in the equal-width mobile columns. */
+  .action-grid:not(:has(> button:nth-child(2):last-child)),
   .parameter-actions {
     grid-template-columns: 1fr;
   }

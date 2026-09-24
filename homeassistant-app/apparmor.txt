@@ -37,6 +37,7 @@ profile access_pages flags=(attach_disconnected,mediate_deleted) {
   # not grant access to arbitrary descendants.
   /data/ rw,
   /data/options.json r,
+  /data/diagnostics-consumed rw,
   /data/app-config.json rwk,
   /data/.app-config.json.tmp rwk,
   /data/installation-id rwk,
