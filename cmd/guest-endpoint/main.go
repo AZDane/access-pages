@@ -50,9 +50,23 @@ var staticPaths = map[string]bool{
 func requiredEnv(name string) string {
 	value := strings.TrimSpace(os.Getenv(name))
 	if value == "" {
-		log.Fatalf("missing required environment variable: %s", name)
+		fatalStartup("missing required environment variable: " + name)
 	}
 	return value
+}
+
+// At most one best-effort write on a fatal path; logging cannot prevent exit.
+func fatalStartup(message string) {
+	done := make(chan struct{})
+	go func() {
+		log.Print(message)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+	}
+	os.Exit(1)
 }
 
 func allowedGuestServicePath(pageID, path string) bool {
@@ -308,10 +322,10 @@ func main() {
 	host := requiredEnv("HOST")
 	port, err := strconv.Atoi(requiredEnv("PORT"))
 	if err != nil || port < 1 || port > 65535 {
-		log.Fatal("invalid PORT")
+		fatalStartup("invalid PORT")
 	}
 	if requiredEnv("GUEST_ENDPOINT_GUEST_SERVICE_SOCKET") != guestSocket {
-		log.Fatal("invalid guest service socket")
+		fatalStartup("invalid guest service socket")
 	}
 	proxy := newGuestServiceProxy(guestSocket, 2101, 2101, 2004)
 	server := &http.Server{
@@ -323,8 +337,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 		MaxHeaderBytes:    maxGuestHeaderBytes,
 	}
-	log.Printf("Access Pages page endpoint listening on http://%s", server.Addr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+		fatalStartup(err.Error())
 	}
 }

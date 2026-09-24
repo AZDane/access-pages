@@ -146,6 +146,78 @@ class MinimalObservabilityTests(unittest.TestCase):
         token = request.CURRENT.set(self.timing)
         self.addCleanup(request.CURRENT.reset, token)
 
+    def test_utc_observation_survives_queue_delay_and_wall_clock_jumps(self):
+        from datetime import datetime, timezone
+        import json
+        import threading
+        entered, release = threading.Event(), threading.Event()
+        records = []
+        def write(line):
+            entered.set()
+            release.wait(5)
+            records.append(json.loads(line))
+        sink = self.d.DiagnosticSink(write=write)
+        try:
+            with (patch.object(self.d, 'DETAIL_UNTIL', self.now[0] + 1_000_000_000),
+                  patch.object(self.d, 'datetime') as wall):
+                for year, at in ((2026, '1'), (2036, '3'), (2016, 'end')):
+                    wall.now.return_value = datetime(year, 9, 24, 0, 8, 54, 123456, timezone.utc)
+                    sink.emit({'at': at})
+                    self.assertTrue(entered.wait(1))
+                    self.assertEqual(self.timing.remaining(), 8)
+                    self.assertEqual(self.d.offset(self.timing), 0)
+                    self.assertTrue(self.d.detailed())
+                self.assertEqual(sink.admission.tokens, 9)
+                # Both future and past wall clocks leave the monotonic deadline intact.
+                self.now[0] += 8_000_000_000
+                self.assertFalse(self.d.detailed())
+                with self.assertRaises(request.ActionDeadlineExceeded):
+                    self.timing.remaining()
+                # Keep detailed output allowance while draining this queue test.
+                self.now[0] -= 8_000_000_000
+                release.set()
+                sink.queue.join()
+            self.assertEqual([r['timestamp'] for r in records], [
+                f'{year}-09-24T00:08:54.123Z' for year in (2026, 2036, 2016)])
+            self.assertEqual(sink.output.tokens, 9)
+        finally:
+            release.set()
+
+    def test_idle_loss_report_has_utc_timestamp(self):
+        import json
+        from queue import Empty
+        from datetime import datetime
+        lines = []
+        sink = self.d.DiagnosticSink(write=lines.append)
+        sink.lose()
+        with patch.object(sink.queue, 'get', side_effect=[Empty, RuntimeError('stop test worker')]):
+            with self.assertRaisesRegex(RuntimeError, 'stop test worker'):
+                sink._run()
+        record = json.loads(lines[0])
+        self.assertEqual((record['at'], record['lost']), ('loss', 1))
+        datetime.strptime(record['timestamp'], '%Y-%m-%dT%H:%M:%S.%fZ')
+        self.assertEqual(len(record['timestamp']), 24)
+
+    def test_maximum_diagnostic_with_timestamp_still_fits_record_bound(self):
+        import json
+        lines = []
+        sink = self.d.DiagnosticSink(write=lines.append)
+        sink.lost = self.d.COUNTER_MAX
+        self.timing.request_id = 'f' * 32
+        self.timing.operation = 'verification'
+        self.timing.action_deadline = True
+        self.timing.stages = [self.d.LIMIT] * 10 + [2, 7]
+        self.now[0] += self.d.LIMIT * 1_000_000
+        with patch.object(self.d, 'SINK', sink), patch.object(self.d.os, 'getpid', return_value=2147483647):
+            self.d.record('service', status=599)
+            sink.queue.join()
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
+        self.assertEqual(record['outcome'], 'uncertain')
+        self.assertEqual(record['ms'], self.d.LIMIT)
+        self.assertEqual(len(record['timestamp']), 24)
+        self.assertLessEqual(len(lines[0].encode()), 512)
+
     def test_normal_success_constructs_no_records_or_history(self):
         with patch.object(self.d.SINK, 'emit') as emit:
             for _ in range(1200):

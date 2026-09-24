@@ -1,5 +1,6 @@
 """Compact observations of existing traffic, emitted only through App stderr."""
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import os
 from queue import Empty, Full, Queue
@@ -24,6 +25,11 @@ DETAIL_UNTIL = min(DETAIL_UNTIL, request.clock_ns() + 14_400_000_000_000)
 
 def detailed():
     return request.clock_ns() < DETAIL_UNTIL
+
+
+def utc_timestamp():
+    """Observation time for correlation only; never used for elapsed time."""
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class Budget:
@@ -63,6 +69,7 @@ class DiagnosticSink:
             self.lost = min(COUNTER_MAX, self.lost + 1)
 
     def emit(self, record, *, detail=False):
+        record = {**record, "timestamp": utc_timestamp()}
         # No output I/O, serialization or worker-held lock on the request path.
         with self.lock:
             if self.worker is None:
@@ -114,7 +121,7 @@ class DiagnosticSink:
                 record, detail = self.queue.get(timeout=60)
             except Empty:
                 if self.lost != self.reported:
-                    self._write({"at": "loss"})
+                    self._write({"at": "loss", "timestamp": utc_timestamp()})
                 continue
             try:
                 self._write(record, detail)

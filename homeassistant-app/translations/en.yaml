@@ -1,4 +1,12 @@
 configuration:
+  diagnostic_logging:
+    name: Temporary diagnostic capture request
+    description: >-
+      Requests one capture for the selected duration after saving and restarting
+      the App. The saved duration may remain displayed after capture expires;
+      it is not current logging status. Restarting a consumed selection does not
+      start another capture. To re-arm, select Off, save and restart, then select
+      the desired duration, save and restart again.
   connector_id:
     name: Connector ID
     description: Optional stable connector name. Leave empty to generate one, and do not change it after registration.
