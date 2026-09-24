@@ -96,7 +96,7 @@ jobs:
             BUILD_VERSION=${{ needs.validate.outputs.version }}
           tags: |
             ghcr.io/azdane/access-pages-app:${{ needs.validate.outputs.version }}-${{ matrix.arch }}
-            ghcr.io/azdane/access-pages-app:latest-${{ matrix.arch }}
+            ${{ github.event_name == 'release' && !github.event.release.prerelease && format('ghcr.io/azdane/access-pages-app:latest-{0}', matrix.arch) || '' }}
           provenance: mode=max
           sbom: true
 
@@ -129,6 +129,7 @@ jobs:
             "ghcr.io/azdane/access-pages-app:${VERSION}-aarch64"
 
       - name: Publish latest multi-architecture manifest
+        if: github.event_name == 'release' && !github.event.release.prerelease
         run: |
           docker buildx imagetools create \
             --tag ghcr.io/azdane/access-pages-app:latest \

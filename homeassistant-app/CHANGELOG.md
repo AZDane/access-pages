@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.1.128
+
+- Owner-test prerelease for live acceptance; not approved for external beta.
+- Retire page grants durably before deletion and persist policy publication
+  intent before changes, allowing interrupted operations to recover safely.
+- Require fresh authorized state before completing a guest action in the UI.
+  Suppress obsolete responses and gate stale controls after reconnect,
+  background return and browser restoration. Never replay a device action.
+- Normalize interrupted Home Assistant requests while preserving uncertain
+  action outcomes and the existing receipt-aged action deadline.
+- Keep invitation validation and errors visible inside the dialog. Distinguish
+  local revocation, queued cleanup and unconfirmed remote revocation.
+- Include UTC timestamps in new `ap_diag` records and preserve Gateway startup
+  when logging is unavailable. Synchronize native temporary-diagnostic help
+  text explaining expiration, consumed selections and the Off/restart re-arm.
+- Keep healthy logging quiet and diagnostic capture bounded. The historical
+  timeout is not claimed resolved; target-device live acceptance remains pending.
+- Publish new versioned images without moving existing `latest` tags for this
+  prerelease. Existing release tags and images remain available unchanged.
+
 ## 0.1.127
 
 - Owner-only HA-Nova acceptance prerelease; not approved for external beta.
