@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.129
+
+- Keep paired guest actions such as Turn on and Turn off side-by-side on narrow
+  mobile screens, including reduced effective widths with Display Zoom.
+- Preserve equal-width buttons, readable wrapping labels, existing touch-target
+  sizes, and the current tablet, desktop, and other control layouts.
+
 ## 0.1.128
 
 - Owner-test prerelease for live acceptance; not approved for external beta.
