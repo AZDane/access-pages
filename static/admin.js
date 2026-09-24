@@ -2161,7 +2161,7 @@ async function revokeAllQurls() {
     const summary = `Revoked ${data.revoked_count} access link${data.revoked_count === 1 ? "" : "s"} locally.`;
     setStatus(
       summary + (failures
-        ? " Remote cleanup is still pending and will be retried."
+        ? " Remote revocation is not confirmed. Check the connection and cleanup status."
         : pending ? " Remote revocation is queued." : " Remote revocation confirmed."),
       failures || pending ? "warning" : "success",
     );
@@ -2409,7 +2409,7 @@ async function deletePage() {
     showDashboard();
     renderPageList();
     if (data.policy_cleanup_pending) {
-      setStatus("Page deleted and local access revoked. Policy and remote cleanup will continue in the background.", "warning");
+      setStatus("Page deleted and local access revoked. Policy cleanup is pending; remote revocation may still need attention.", "warning");
     } else if (data.remote_failures?.length) {
       setStatus(
         `Page deleted and local access revoked, but ${data.remote_failures.length} LayerV qURL ` +

@@ -549,7 +549,7 @@ async function testInvitationAndRevocationFeedback() {
   assert.match(fixture.elements.get("user-dialog-status").textContent, /Rejected invitation/);
 
   for (const [status, pending, failures, message] of [
-    [200, 1, [], /locally.*queued/], [502, 0, [{}], /locally.*retried/], [200, 0, [], /confirmed/],
+    [200, 1, [], /locally.*queued/], [502, 0, [{error: "Missing qURL ID"}], /locally.*not confirmed/], [200, 0, [], /confirmed/],
   ]) {
     const admin = harness("admin", {async fetch() { return jsonResponse(status, {
       local_access_revoked: true, revoked_count: 1, remote_revocation_pending_count: pending, remote_failures: failures,
