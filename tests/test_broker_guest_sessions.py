@@ -173,7 +173,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
             response.begin()
             status = response.status
             data = response.read()
-            return status, json.loads(data) if status == 200 else None
+            return status, json.loads(data) if data and response.getheader("Content-Type", "").startswith("application/json") else None
         finally:
             connection.close()
 
@@ -760,6 +760,19 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.assertEqual(self.request("/guest/v1/page-view", self.cap_a, "page-a", {
             "grant_id": self.grant_a, "session": session,
         })[0], 503)
+
+    def test_interrupted_ha_dispatch_is_uncertain_and_not_replayed(self):
+        from ha import HomeAssistantClient
+        session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        client = HomeAssistantClient("http://ha.invalid", "synthetic")
+        for error in (TimeoutError(), ConnectionResetError()):
+            with self.subTest(error=type(error)), \
+                    patch.object(ha_broker.HA_CLIENT, "call_service", side_effect=client.call_service), \
+                    patch("ha.urlopen", side_effect=error) as dispatch:
+                status, body = self.action(session)
+                self.assertEqual(status, 502)
+                self.assertEqual(body["code"], "action_uncertain")
+                self.assertEqual(dispatch.call_count, 1)
 
     def test_action_lifetime_checked_at_dequeue_and_after_preparation(self):
         session = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
