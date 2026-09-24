@@ -61,6 +61,7 @@ func captureDiagnosticStages(response *http.Response) error {
 
 type diagnostic struct {
 	Version   int       `json:"ap_diag"`
+	Timestamp string    `json:"timestamp"`
 	PID       int       `json:"pid"`
 	RequestID string    `json:"id,omitempty"`
 	Part      string    `json:"part"`
@@ -131,6 +132,7 @@ func (s *diagnosticSink) lose() {
 	}
 }
 func (s *diagnosticSink) emit(record diagnostic) {
+	record.Timestamp = diagnosticTimestamp()
 	now, _ := bootNanos()
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -157,6 +159,7 @@ func (s *diagnosticSink) run() {
 				continue
 			}
 			record.At = "loss"
+			record.Timestamp = diagnosticTimestamp()
 		}
 		now, _ := bootNanos()
 		if (record.detail && !detailedAt(now)) || !s.output.take(now, detailedAt(now)) {
@@ -180,6 +183,11 @@ func (s *diagnosticSink) run() {
 }
 
 var diagnostics = newDiagnosticSink(os.Stderr)
+
+// UTC is correlation metadata; all budgets and durations use the boot clock.
+func diagnosticTimestamp() string {
+	return time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+}
 
 type observedResponse struct {
 	http.ResponseWriter

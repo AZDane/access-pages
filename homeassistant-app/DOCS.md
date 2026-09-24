@@ -433,7 +433,8 @@ requests taking at least five seconds inside Access Pages can produce a compact
 summary. Ordinary startup and existing product activity logs are separate.
 
 For a recurring problem, open the App's **Configuration** and set
-`diagnostic_logging` to `30 minutes`, `1 hour`, or `4 hours`, then save and restart
+**Temporary diagnostic capture request** (`diagnostic_logging`) to `30 minutes`,
+`1 hour`, or `4 hours`, then save and restart
 the App. The default is `off`. Timing observations include successful requests
 while this temporary mode is active. It observes existing traffic; it does not
 add polls, probes, HA calls, uploads, or LayerV requests.
@@ -449,11 +450,23 @@ half the Python sink's burst allowance and queue capacity for abnormal/loss
 records; Gateway summaries have no competing routine intermediate records.
 
 The duration starts when the App starts and cannot be extended by traffic.
+The saved duration may remain displayed after capture expires and runtime
+diagnostics are Off. This option records a one-shot capture request, not current
+logging status. Access Pages does not rewrite the Home Assistant configuration.
 An App restart stops the capture: leaving the same selection configured does
 **not** start another capture, even if you change its duration. To start another,
 select `off`, save and restart, then select the desired duration, save and restart
 again. Selecting `off` and restarting also stops a capture early. A failed
 activation stays off. No invitation or session data is changed.
+
+New diagnostic records include `timestamp`, an absolute UTC observation time
+with millisecond precision, captured before asynchronous queuing. Standalone
+loss reports are timestamped when created. It aids correlation with LayerV and
+product logs; clocks on separate systems may differ. Action freshness, deadlines,
+durations, expiration, and throttling continue to use monotonic time exclusively.
+Older retained records may lack `timestamp`; no migration is needed. Access Pages
+does not read historical diagnostics, and missing timestamps do not invalidate
+their request IDs or timing vectors.
 
 Use the Access Pages App **Logs** tab and Home Assistant's **Download logs**
 control. The download contains the retained App output requested from Home
