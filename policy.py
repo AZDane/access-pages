@@ -1,5 +1,6 @@
 import json
 import os
+from http.client import HTTPException
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -27,6 +28,13 @@ class PolicyPublisher:
         if self.pending_directory is None:
             return []
         return [p.name.removeprefix(".policy-pending-") for p in self.pending_directory.glob(".policy-pending-*")]
+
+    def prepare(self, page_id):
+        """Persist retry intent before changing the local source of policy."""
+        try:
+            self._mark(page_id)
+        except OSError as error:
+            raise PolicyPublishError("Could not persist policy publication intent") from error
 
     def _mark(self, page_id):
         if self.configured and self.pending_directory is not None:
@@ -81,22 +89,21 @@ class PolicyPublisher:
             with urlopen(request, timeout=10) as response:  # nosec B310
                 response.read()
         except HTTPError as error:
-            error.read()
             raise PolicyPublishError(
                 f"Policy publisher rejected the request ({error.code})"
             ) from error
-        except URLError as error:
+        except (URLError, OSError, HTTPException) as error:
             raise PolicyPublishError(
                 "Authoritative policy store is unavailable"
             ) from error
 
     def publish(self, page):
         policy = {**page, "access_grants": []}
-        self._mark(page["id"])
+        self.prepare(page["id"])
         self._request("PUT", page["id"], policy)
         self._clear(page["id"])
 
     def delete(self, page_id):
-        self._mark(page_id)
+        self.prepare(page_id)
         self._request("DELETE", page_id)
         self._clear(page_id)

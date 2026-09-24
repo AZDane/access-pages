@@ -252,10 +252,15 @@ class PageStore:
         if not path.exists():
             raise PageNotFoundError(page_id)
 
-        for grant in self._load_unlocked(page_id)["access_grants"]:
-            self.cleanup.enqueue(page_id, grant)
-
+        # Retire authority durably before unlinking. Even if an interrupted
+        # directory update restores the file, it must contain no usable grants.
+        self.revoke_page_access_grants(page_id)
         path.unlink()
+        descriptor = os.open(self.directory, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
 
     def _write(self, path: Path, page: dict) -> None:
         self.ensure_directory()
