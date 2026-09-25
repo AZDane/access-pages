@@ -147,10 +147,12 @@ Home Assistant acceptance. The documented Trivy exception expires automatically
 and must be reviewed again before 2027.
 
 The AppArmor profile limits host and filesystem access. The App supervisor and
-its isolated Gateway, Ingress, broker, policy-store, and Connector processes
-share one App container, but use separate UIDs, GIDs, minimal environments,
-and explicitly permissioned persistent directories. Artifact-level permission
-testing confirms that page endpoint processes cannot read the LayerV API key,
+its child processes share one App container. Guest endpoints and the main
+application roles use distinct identities. The LayerV broker and its supervised
+qURL runtime currently share an identity and trust boundary. Processes use
+minimal environments and explicitly permissioned persistent directories.
+Artifact-level permission testing confirms that page endpoint processes cannot
+read the LayerV API key,
 Connector identity, administrator runtime data, broker registry, or
 authoritative policy store. The root supervisor and the host kernel/container
 runtime remain part of the trusted computing base. `ARCHITECTURE.md` documents
