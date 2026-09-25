@@ -154,16 +154,28 @@ class PageStore:
             raise PageNotFoundError(page_id)
 
         current = self._load_unlocked(page_id)
-        page = validate_page(payload, required_id=page_id)
-
         # Access grants are security state and are never accepted from the
-        # browser's normal page-edit payload.
-        page["access_grants"] = current["access_grants"]
+        # browser's normal page-edit payload, even during validation.
+        if isinstance(payload, dict):
+            payload = {**payload, "access_grants": current["access_grants"]}
+        page = validate_page(payload, required_id=page_id)
         self._write(current_path, page)
         return page
 
     def replace(self, page_id: str, page: dict) -> dict:
         with self._lock:
+            return self._replace_unlocked(page_id, page)
+
+    def remove_saved_guest_link(self, page_id: str, grant_id: str) -> dict:
+        """Forget the owner's invitation copy without changing guest authority."""
+        with self._lock:
+            page = self._load_unlocked(page_id)
+            grant = next((item for item in page["access_grants"]
+                          if item["id"] == grant_id), None)
+            if grant is None:
+                raise PageNotFoundError(grant_id)
+            grant["qurl_link"] = ""
+            grant.pop("access_url", None)
             return self._replace_unlocked(page_id, page)
 
     def remove_access_grant(self, page_id: str, grant_id: str) -> dict:
@@ -321,6 +333,8 @@ def validate_access_grants(raw_grants: object) -> list[dict]:
             "lifetime",
             "one_time_use",
             "qurl_link",
+            # The admin response alias is accepted but never persisted.
+            "access_url",
             "qurl_site",
             "resource_id",
             "qurl_id",
@@ -611,7 +625,7 @@ def grant_admin_view(grant: dict) -> dict:
     return {
         key: value
         for key, value in grant.items()
-        if key != "token_hash"
+        if key not in {"token_hash", "access_url"}
     }
 
 

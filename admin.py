@@ -130,6 +130,27 @@ def handle_get(handler, parsed, path, runtime):
 
 
 def handle_post(handler, path, payload, runtime):
+    if path.startswith("/api/admin/pages/") and path.endswith("/finish-sharing"):
+        if not handler._require_admin():
+            return
+        parts = path.removeprefix("/api/admin/pages/").split("/")
+        if len(parts) != 4 or parts[1] != "grants" or not parts[2]:
+            handler._send_json(404, {"error": "not found"})
+            return
+        page_id, _, grant_id, _ = parts
+        try:
+            with runtime.page_action_lock(page_id):
+                page = runtime.PAGE_STORE.remove_saved_guest_link(page_id, grant_id)
+            handler._send_json(200, runtime.page_admin_view(page))
+        except (runtime.PageConfigError, runtime.PageNotFoundError) as error:
+            handler._send_page_error(error)
+        except OSError:
+            handler._send_json(
+                runtime.HTTPStatus.INTERNAL_SERVER_ERROR,
+                {"error": "Could not remove the saved guest link. Reload before retrying."},
+            )
+        return
+
     if path == "/api/admin/connection/reset":
         if not handler._require_admin():
             return

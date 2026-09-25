@@ -57,6 +57,7 @@ class Element {
   addEventListener(name, callback) { this.listeners.set(name, callback); }
   checkValidity() { return this.value.includes("@"); }
   appendChild(child) { this.children.push(child); return child; }
+  append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this.attributes.set(name, value); }
   getAttribute(name) { return name === "src" ? this.src || null : this.attributes.get(name) || null; }
@@ -64,6 +65,7 @@ class Element {
   close() { this.open = false; }
   showModal() { this.open = true; }
   focus() {}
+  scrollIntoView() {}
 }
 
 function harness(name, api) {
@@ -561,7 +563,120 @@ async function testInvitationAndRevocationFeedback() {
   }
 }
 
+function descendants(element) {
+  return [element, ...element.children.flatMap(descendants)];
+}
+
+async function testExplicitFinishedSharing() {
+  for (const smtpSent of [false, true]) {
+    const link = "https://qurl.invalid/#retained-invitation";
+    const grant = {id: "grant_aaaaaaaaaaaaaaaa", label: "Guest", qurl_link: link,
+      access_url: link, expires_at: "2099-01-01T00:00:00Z", verification_required: true};
+    const persisted = {id: "fixture", title: "Fixture", access_grants: []};
+    const requests = [];
+    let failRemoval = false;
+    const fixture = harness("admin", {async fetch(route, options = {}) {
+      requests.push([route, options.method || "GET"]);
+      if (route.endsWith("/qurls")) {
+        persisted.access_grants = [structuredClone(grant)];
+        return jsonResponse(201, {grant: structuredClone(grant), email_delivery: {sent: smtpSent}});
+      }
+      if (route.endsWith("/finish-sharing")) {
+        assert.equal(options.method, "POST");
+        assert.equal(options.body, "{}");
+        if (failRemoval) return jsonResponse(500, {error: "Could not save"});
+        persisted.access_grants[0].qurl_link = "";
+        delete persisted.access_grants[0].access_url;
+      }
+      return jsonResponse(200, structuredClone(persisted));
+    }});
+    fixture.document.createElementNS = () => new Element();
+    fixture.context.window.requestAnimationFrame = callback => callback();
+    vm.runInContext(fs.readFileSync(path.join(root, "static/vendor/qrcodegen.js"), "utf8"), fixture.context);
+    vm.runInContext("window.qrcodegen = qrcodegen", fixture.context);
+    fixture.context.copies = [];
+    vm.runInContext(`
+      currentPage = {id: 'fixture', title: 'Fixture', access_grants: []};
+      editingExisting = true; layerVApiConfigured = true;
+      selectedLifetime = () => '1h';
+      loadPages = async () => {}; loadGuestActivitySummaries = async () => {};
+      legacyCopyText = value => { copies.push(value); return true; };
+      openUserDialog();
+    `, fixture.context);
+    fixture.elements.get("qurl-label").value = "Guest";
+    fixture.elements.get("send-invitation").checked = true;
+    fixture.elements.get("verification-email").value = "guest@example.test";
+    await vm.runInContext("generateQurl()", fixture.context);
+    const result = fixture.elements.get("qurl-result");
+    const findResult = text => descendants(result).find(element => element.textContent === text);
+    assert.ok(descendants(result).some(element => element.value === link));
+    assert.ok(findResult("Finished Sharing"));
+    assert.equal(persisted.access_grants[0].qurl_link, link, "SMTP must not finalize sharing");
+    findResult("Copy guest link").listeners.get("click")();
+    await settle();
+    assert.equal(fixture.context.copies[0], link);
+    assert.ok(descendants(result).some(element => element.attributes.get("viewBox")), "Real local QR rendered");
+    findResult("Show QR codes").listeners.get("click")();
+    assert.ok(decodeURIComponent(findResult("Compose email").href).includes(link));
+    findResult("Compose email").listeners.get("click")({preventDefault() { throw new Error("Unexpected block"); }});
+    const messages = findResult("Open Messages + copy");
+    assert.match(messages.href, /^sms:/);
+    messages.listeners.get("click")();
+    assert.ok(fixture.context.copies.some(value => value.includes(link)));
+    const shares = [];
+    fixture.context.navigator.share = async data => shares.push(data);
+    const native = vm.runInContext("buildSharePanel('Guest', currentPage.access_grants[0].qurl_link)", fixture.context);
+    await descendants(native).find(element => element.textContent === "Share…").listeners.get("click")();
+    assert.ok(shares[0].text.includes(link));
+    assert.equal(requests.length, 1, "Copy/share/QR/email must not finalize");
+
+    const cancelled = findResult("Finished Sharing").listeners.get("click")();
+    assert.equal(fixture.elements.get("confirm-title").textContent, "Finished sharing this invitation?");
+    assert.equal(fixture.elements.get("accept-confirm").textContent, "Remove Saved Link");
+    assert.match(fixture.elements.get("confirm-message").textContent, /invitation will continue to work normally/);
+    fixture.elements.get("cancel-confirm").listeners.get("click")();
+    await cancelled;
+    fixture.elements.get("close-user-dialog").listeners.get("click")();
+    await vm.runInContext("manageUsers('fixture')", fixture.context);
+    let buttons = descendants(fixture.elements.get("grant-list"));
+    assert.ok(buttons.some(element => element.textContent === "Copy guest link"));
+    assert.ok(buttons.some(element => element.textContent === "Finished Sharing"));
+    assert.equal(persisted.access_grants[0].qurl_link, link);
+    assert.equal(requests.filter(([route]) => route.endsWith("/finish-sharing")).length, 0);
+
+    failRemoval = true;
+    const failed = buttons.find(element => element.textContent === "Finished Sharing").listeners.get("click")();
+    fixture.elements.get("accept-confirm").listeners.get("click")();
+    await failed;
+    assert.equal(persisted.access_grants[0].qurl_link, link);
+    assert.match(fixture.elements.get("status").textContent, /Could not save/);
+    failRemoval = false;
+    // Finalize an existing guest after reopening, also clearing its hidden result.
+    const finished = buttons.find(element => element.textContent === "Finished Sharing").listeners.get("click")();
+    fixture.elements.get("accept-confirm").listeners.get("click")();
+    await finished;
+    assert.equal(persisted.access_grants[0].qurl_link, "");
+    assert.equal(vm.runInContext("currentPage.access_grants[0].qurl_link", fixture.context), "");
+    assert.equal(vm.runInContext("'access_url' in currentPage.access_grants[0]", fixture.context), false);
+    assert.equal(descendants(result).some(element => element.value === link || element.href?.includes(link)), false);
+    await vm.runInContext("manageUsers('fixture')", fixture.context);
+    buttons = descendants(fixture.elements.get("grant-list"));
+    assert.equal(buttons.some(element => ["Copy guest link", "Finished Sharing"].includes(element.textContent)), false);
+    for (const label of ["View activity", "Revoke this link", "Invitation shared — link no longer stored"]) {
+      assert.ok(buttons.some(element => element.textContent === label), label);
+    }
+    const ordinary = vm.runInContext("confirmAction('Ordinary confirmation')", fixture.context);
+    assert.equal(fixture.elements.get("accept-confirm").textContent, "Confirm");
+    assert.equal(fixture.elements.get("confirm-title").textContent, "Confirm this action");
+    fixture.elements.get("close-confirm-dialog").listeners.get("click")();
+    assert.equal(await ordinary, false);
+    assert.equal(requests.filter(([route]) => route.endsWith("/qurls")).length, 1, "No replacement minted");
+    assert.equal(requests.some(([, method]) => method === "DELETE"), false);
+  }
+}
+
 (async () => {
+  await testExplicitFinishedSharing();
   await testActionFreshState();
   await testPrecommandReadCannotFinalizeAction();
   await testObsoleteResponses();
