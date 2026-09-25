@@ -36,7 +36,12 @@ class CleanupReconciliationTests(unittest.TestCase):
             with self.subTest(resource_isolation=mode):
                 self._exercise(mode)
 
-    def _exercise(self, mode):
+    def test_finalized_invitations_keep_both_cleanup_modes_and_durable_retries(self):
+        for mode in ("guest", "page"):
+            with self.subTest(resource_isolation=mode):
+                self._exercise(mode, finalize=True)
+
+    def _exercise(self, mode, *, finalize=False):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             pages = PageStore(root / "pages")
@@ -82,6 +87,7 @@ class CleanupReconciliationTests(unittest.TestCase):
                     "resource_crid": client.resource_id,
                     "upstream_scope": mode,
                     "qurl_id": qurl_id,
+                    "qurl_link": f"https://qurl.invalid/#{secret}",
                 }
             guest_a, guest_b, other_page = (item[1] for item in identities)
             pages.create({"id": "page-a", "title": "Page A", "resources": [],
@@ -124,6 +130,13 @@ class CleanupReconciliationTests(unittest.TestCase):
                 )["session"]
                 self.assertIsNotNone(ha_broker._guest_session_status("page-a", guest_a, session_a))
                 self.assertIsNotNone(ha_broker._guest_session_status("page-a", guest_b, session_b))
+                if finalize:
+                    for page_id, grant_id, _secret, _qurl in identities:
+                        pages.remove_saved_guest_link(page_id, grant_id)
+                    management.delete_qurl.assert_not_called()
+                    management.delete_resource.assert_not_called()
+                    self.assertIsNotNone(ha_broker._guest_session_status("page-a", guest_a, session_a))
+                    self.assertIsNotNone(ha_broker._guest_session_status("page-a", guest_b, session_b))
                 with sessions._connect() as db:
                     session_count = db.execute("SELECT COUNT(*) FROM guest_sessions").fetchone()[0]
                 self.assertEqual(session_count, 2)
