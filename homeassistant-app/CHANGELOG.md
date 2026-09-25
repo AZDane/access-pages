@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.130
+
+- Add Finished Sharing with an explicit Remove Saved Link confirmation. Remove
+  Access Pages' saved invitation copy while keeping guest access, sessions,
+  expiration, verification, and revocation working normally.
+- Keep links available for copying, sharing, QR codes, and email until the owner
+  confirms. Afterwards, show that the link is no longer stored and prevent stale
+  page edits from restoring it. Existing backups and distributed copies remain.
+- Correct the Email verification required label and describe unconfirmed Home
+  Assistant action results without falsely reporting that the action was rejected.
+- Describe proximity as device-reported and clarify the LayerV broker/qURL
+  runtime's current shared identity and trust boundary.
+
 ## 0.1.129
 
 - Keep paired guest actions such as Turn on and Turn off side-by-side on narrow
