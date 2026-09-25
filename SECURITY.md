@@ -33,7 +33,10 @@ guest session remains mandatory in both modes. See the
   packaged routes.
 - Every page, entity, action, and action parameter is enforced server-side.
 - Invitation bootstrap secrets are stored as SHA-256 hashes. Remote qURL links
-  are separately persisted and remain secret-bearing.
+  are separately persisted while available for owner sharing and remain
+  secret-bearing. After the owner confirms **Finished Sharing**, Access Pages
+  removes its saved link without revoking the invitation. Previously created
+  backups and distributed copies may still contain it; this is not secure erasure.
 - Local revocation takes effect before remote qURL cleanup is attempted.
 - The LayerV API key and connector identity are installation-specific secrets.
 

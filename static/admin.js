@@ -140,6 +140,7 @@ const emailStatus = document.getElementById("email-status");
 let availableMobileAlertTargets = [];
 let savedMobileAlertTargets = new Set();
 const confirmDialog = document.getElementById("confirm-dialog");
+const confirmTitle = document.getElementById("confirm-title");
 const confirmMessage = document.getElementById("confirm-message");
 const closeConfirmDialogButton = document.getElementById(
   "close-confirm-dialog",
@@ -190,13 +191,15 @@ function settleConfirmation(accepted) {
   resolve(accepted);
 }
 
-function confirmAction(message) {
+function confirmAction(message, {title = "Confirm this action", acceptLabel = "Confirm"} = {}) {
   if (confirmationResolver) {
     return Promise.resolve(false);
   }
   return new Promise((resolve) => {
     confirmationResolver = resolve;
+    confirmTitle.textContent = title;
     confirmMessage.textContent = message;
+    acceptConfirmButton.textContent = acceptLabel;
     confirmDialog.showModal();
     acceptConfirmButton.focus();
   });
@@ -1596,6 +1599,56 @@ function buildSharePanel(guestName, activationUrl) {
   return panel;
 }
 
+const sharedInvitationStatus = "Invitation shared — link no longer stored";
+
+function finishedSharingButton(pageId, grant) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = "Finished Sharing";
+  button.addEventListener("click", () => finishSharing(pageId, grant, button));
+  return button;
+}
+
+async function finishSharing(pageId, grant, button) {
+  if (button.disabled) return;
+  const confirmed = await confirmAction(
+    "Access Pages will remove its saved copy of this guest link. " +
+    "The guest's invitation will continue to work normally, but you won't be able to copy this same link again. " +
+    "If you need another invitation later, create a new guest invitation.",
+    {title: "Finished sharing this invitation?", acceptLabel: "Remove Saved Link"},
+  );
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    const response = await adminApi.fetch(
+      `api/admin/pages/${encodeURIComponent(pageId)}/grants/${encodeURIComponent(grant.id)}/finish-sharing`,
+      {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"},
+    );
+    const data = await responseJson(response, "Could not remove the saved guest link");
+    if (!response.ok) throw new Error(data.error || "Could not remove the saved guest link");
+
+    grant.qurl_link = "";
+    delete grant.access_url;
+    if (currentPage?.id === pageId) {
+      currentPage.access_grants = data.access_grants;
+      renderAccessGrants(currentPage);
+    }
+    if (qurlResult.dataset.pageId === pageId && qurlResult.dataset.grantId === grant.id) {
+      const status = document.createElement("p");
+      status.textContent = sharedInvitationStatus;
+      qurlResult.replaceChildren(status);
+    }
+    if (userDialog.open) setUserDialogStatus(sharedInvitationStatus, "success");
+    else setStatus(sharedInvitationStatus, "success");
+  } catch (error) {
+    if (userDialog.open) setUserDialogStatus(`Error: ${error.message}`, "error");
+    else setStatus(`Error: ${error.message}`, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function renderAccessGrants(page) {
   const grants = page?.access_grants || [];
   grantCount.textContent = String(grants.length);
@@ -1663,7 +1716,15 @@ function renderAccessGrants(page) {
       });
     });
 
-    actions.append(activityButton, copyButton, revokeButton);
+    actions.appendChild(activityButton);
+    if (grant.qurl_link) {
+      actions.append(copyButton, finishedSharingButton(page.id, grant));
+    } else {
+      const shared = document.createElement("span");
+      shared.textContent = sharedInvitationStatus;
+      copy.appendChild(shared);
+    }
+    actions.appendChild(revokeButton);
     card.append(copy, actions);
     grantList.appendChild(card);
   });
@@ -1969,6 +2030,8 @@ async function generateQurl() {
     ];
 
     qurlResult.replaceChildren();
+    qurlResult.dataset.pageId = currentPage.id;
+    qurlResult.dataset.grantId = data.grant.id;
 
     const activationLabel = document.createElement("strong");
     activationLabel.textContent = "Access Pages link";
@@ -2040,6 +2103,7 @@ async function generateQurl() {
       }
       qurlResult.append(sharingContent);
     }
+    qurlResult.appendChild(finishedSharingButton(currentPage.id, data.grant));
     qurlResult.classList.remove("hidden");
     qurlResult.classList.remove("result-reveal");
     void qurlResult.offsetWidth;

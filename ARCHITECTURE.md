@@ -190,6 +190,11 @@ not retire the shared resource while another guest still needs it.
 
 - Page JSON is stored atomically under `$GATEWAY_DATA_DIR/pages`.
 - New guest bearer tokens are persisted only as SHA-256 hashes.
+- Complete invitation links are also retained for owner sharing until the owner
+  confirms **Finished Sharing**. This clears the saved link while preserving
+  grant authority and cleanup identifiers; it does not revoke the invitation.
+  Earlier backups and distributed copies may still contain the link. No secure
+  erasure is attempted.
 - Guest activity and verification state use separate SQLite stores.
 - SMTP, connector, broker, and policy data use separately permissioned App
   directories and process identities.

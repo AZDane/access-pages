@@ -1314,6 +1314,53 @@ class BrokerGuestSessionTests(unittest.TestCase):
             "page_id": "page-a", "grant_id": self.grant_v, "code": "123456",
         })
 
+    def test_finished_sharing_preserves_sessions_and_unused_reusable_invitation_after_restart(self):
+        page = self.pages.load("page-a")
+        for grant in page["access_grants"]:
+            grant["qurl_link"] = f"https://qurl.invalid/#{grant['id']}"
+        self.pages.replace("page-a", page)
+        first = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]
+        for grant in page["access_grants"]:
+            self.pages.remove_saved_guest_link("page-a", grant["id"])
+        with (
+            patch("ha_broker.GUEST_GRANT_STORE", PageStore(self.pages.directory)),
+            patch("ha_broker.GUEST_SESSION_STORE", VerificationStore(self.sessions.path)),
+        ):
+            self.assertEqual(self.status(self.cap_a, "page-a", self.grant_a, first["session"])[0], 200)
+            ha_broker.HA_CLIENT.get_states.return_value = []
+            self.assertEqual(self.read(first["session"])[0], 200)
+            self.assertEqual(self.action(first["session"])[0], 200)
+            for grant_id, secret in ((self.grant_a, self.secret_a), (self.grant_b, self.secret_b)):
+                for _ in range(2):
+                    status, result = self.exchange(self.cap_a, "page-a", grant_id, secret)
+                    self.assertEqual(status, 200)
+                    self.assertEqual(result["expires_at"], int(self.expiry.timestamp()))
+        self.pages.remove_access_grant("page-a", self.grant_a)
+        self.assertEqual(self.status(self.cap_a, "page-a", self.grant_a, first["session"])[0], 401)
+
+    def test_finished_sharing_preserves_single_use_and_verification(self):
+        page = self.pages.load("page-a")
+        for grant in page["access_grants"]:
+            grant["qurl_link"] = f"https://qurl.invalid/#{grant['id']}"
+            if grant["id"] in (self.grant_a, self.grant_b):
+                grant["one_time_use"] = True
+        self.pages.replace("page-a", page)
+        first = self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[1]["session"]
+        for grant in page["access_grants"]:
+            self.pages.remove_saved_guest_link("page-a", grant["id"])
+        self.assertEqual(self.status(self.cap_a, "page-a", self.grant_a, first)[0], 200)
+        self.assertEqual(self.exchange(self.cap_a, "page-a", self.grant_a, self.secret_a)[0], 401)
+        status, unused = self.exchange(self.cap_a, "page-a", self.grant_b, self.secret_b)
+        self.assertEqual(status, 200)
+        self.assertEqual(self.status(self.cap_a, "page-a", self.grant_b, unused["session"])[0], 200)
+        self.assertEqual(self.exchange(self.cap_a, "page-a", self.grant_b, self.secret_b)[0], 401)
+        status, pending = self.exchange(self.cap_a, "page-a", self.grant_v, self.secret_v)
+        self.assertEqual(status, 200)
+        self.assertEqual(pending["status"], "verification_required")
+        self.assertEqual(self.challenge(pending["session"])[0], 200)
+        self.assertEqual(self.verify(pending["session"], self.sent_codes[-1][2])[1]["status"], "session_ready")
+        self.assertEqual(self.status(self.cap_a, "page-a", self.grant_v, pending["session"])[0], 200)
+
     def test_one_time_individual_sessions_are_bound_to_current_page_and_grant(self):
         page = self.pages.load("page-a")
         page["access_grants"][0]["one_time_use"] = True

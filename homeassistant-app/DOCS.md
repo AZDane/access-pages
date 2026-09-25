@@ -172,6 +172,16 @@ The guest-link result can be:
 QR codes are generated locally in the browser and are not uploaded to an
 external QR service.
 
+After sharing, choose **Finished Sharing**, then **Remove Saved Link** to
+remove Access Pages' saved copy. The guest's invitation continues to work,
+but you can no longer copy that same link from Access Pages. Create a new
+guest invitation if you need another link later. Guest status, activity,
+expiration, and revoke controls remain available.
+
+Until you confirm, the link remains available across browser and App
+restarts. Closing the dialog, copying, sharing, displaying a QR code, or
+sending an email does not remove it automatically.
+
 Treat the invitation as sensitive. Anyone who obtains it may attempt to
 use it. Revoke the guest if delivery is uncertain.
 
@@ -354,7 +364,11 @@ Access Page definitions, guest grant information, token hashes, LayerV
 revocation identifiers, Connector identity, and required secrets persist
 under `/data`.
 
-Guest access tokens are persisted only as SHA-256 hashes.
+Guest bootstrap secrets are stored as SHA-256 hashes. Access Pages also
+retains the complete invitation while it remains available for owner sharing.
+After the owner confirms sharing is finished, Access Pages removes its saved
+copy. This does not revoke the guest invitation. Previously created backups
+or distributed copies may still contain it; removal is not secure erasure.
 
 Activity history is stored in an administrator-only SQLite database.
 
