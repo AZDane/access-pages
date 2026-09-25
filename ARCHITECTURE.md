@@ -197,7 +197,8 @@ not retire the shared resource while another guest still needs it.
   erasure is attempted.
 - Guest activity and verification state use separate SQLite stores.
 - SMTP, connector, broker, and policy data use separately permissioned App
-  directories and process identities.
+  directories. The LayerV broker and its supervised qURL runtime share an OS
+  identity and trust boundary.
 - Runtime data, connector state, credentials, backups, and logs are not source
   artifacts and must not enter the repository.
 

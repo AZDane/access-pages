@@ -268,11 +268,11 @@ Access Pages can record activity associated with an individual guest
 grant.
 
 Activity can include the time, entity, approved action, safe action
-parameters, and whether Home Assistant accepted the action.
+parameters, and whether the action could be confirmed.
 
 Security events include recognized categories such as expired-link
-attempts, rate limiting, unapproved entity/action requests, and actions
-rejected by Home Assistant.
+attempts, rate limiting, unapproved entity/action requests, and actions whose
+results could not be confirmed.
 
 The activity system does not store guest tokens, access links, request
 headers, arbitrary request data, or IP addresses.

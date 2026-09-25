@@ -747,7 +747,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(reading, dict):
             self._send_json(
                 HTTPStatus.FORBIDDEN,
-                {"error": "You must be near the home to use controls"},
+                {"error": "Your device must report that it is near Home before controls are enabled."},
             )
             return False
         try:

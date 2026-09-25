@@ -113,7 +113,10 @@ def _guest_event(handler, payload, runtime):
                 entity_name=details["entity_name"], action_id=details["action_id"],
                 parameters=details["parameters"],
                 outcome="success" if event == "action_success" else "failed",
-                error="" if event == "action_success" else "Home Assistant rejected the action",
+                error="" if event == "action_success" else (
+                    "The action could not be confirmed. "
+                    "Check the current state before trying again."
+                ),
             )
             if event == "action_failed":
                 runtime.ACTIVITY_STORE.record_security_event(

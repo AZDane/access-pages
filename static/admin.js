@@ -1679,7 +1679,7 @@ function renderAccessGrants(page) {
     details.textContent =
       `${grant.lifetime || "Custom"} · expires ${formatExpiry(grant.expires_at)}` +
       (grant.one_time_use ? " · one-time use" : "") +
-      (grant.verification_required ? " · email verified" : "");
+      (grant.verification_required ? " · Email verification required" : "");
 
     copy.append(heading, details);
 
@@ -1782,7 +1782,9 @@ function securityEventDescription(entry) {
     details.action_id && humanize(details.action_id),
   ].filter(Boolean).join(" · ");
   return {
-    title: `${humanize(entry.event_type)}${guest}`,
+    title: `${entry.event_type === "home_assistant_action_rejected"
+      ? "The action could not be confirmed. Check the current state before trying again."
+      : humanize(entry.event_type)}${guest}`,
     context: context || humanize(details.reason || "Gateway protection"),
   };
 }
@@ -1879,7 +1881,9 @@ async function openGuestActivity(grantId) {
       if (entry.error) {
         const error = document.createElement("small");
         error.className = "activity-error";
-        error.textContent = entry.error;
+        error.textContent = entry.error === "Home Assistant rejected the action"
+          ? "The action could not be confirmed. Check the current state before trying again."
+          : entry.error;
         row.appendChild(error);
       }
       activityList.appendChild(row);
