@@ -20,7 +20,7 @@ The first publication on a genuinely fresh installation follows this sequence:
 
 1. Access Pages uses the retained management API key to mint a one-shot
    Connector/Agent enrollment token.
-2. The LayerV broker passes that token to qURL 2.6.0 login through a protected
+2. The LayerV broker passes that token to qURL 3.0.0 login through a protected
    temporary token file. It does not pass the retained API key to `qurl login`.
 3. qURL establishes sealed, persistent Agent/device state. One supervised
    Connector runtime serves the installation's resources.

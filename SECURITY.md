@@ -40,7 +40,7 @@ guest session remains mandatory in both modes. See the
 - Local revocation takes effect before remote qURL cleanup is attempted.
 - The LayerV API key and connector identity are installation-specific secrets.
 
-The App packages qURL 2.6.0 with embedded Connector v0.14.0 and supervises one
+The App packages qURL 3.0.0 with embedded Connector v0.14.1 and supervises one
 Connector runtime per installation. The retained management API key can read
 and write qURLs and mint a one-shot Agent enrollment token; CRID/headless
 resolve scope is not required. On the first publication of a genuinely fresh
@@ -167,7 +167,7 @@ supervisor, which revalidates and atomically stores the credential for the
 Connector. The onboarding process cannot open the protected key path, and
 initial Connector registration runs under the Connector identity.
 
-The App pins architecture-specific qURL 2.6.0 release archives by SHA-256.
+The App pins architecture-specific qURL 3.0.0 release archives by SHA-256.
 Repository, static-analysis, test, Git-history secret, and built-image scans
 remain release gates. Findings must be reviewed against the actual current
 binary and its embedded Connector module; historical findings for an older
