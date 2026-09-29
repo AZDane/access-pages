@@ -27,7 +27,7 @@ publication, LayerV management, or SMTP credential. It sends scoped guest
 requests to the HA broker's restricted guest Unix interface, where the broker
 checks current grants, individual sessions, verification, published policy,
 proximity, and action parameters. The administrative Python Gateway remains
-available for owner operations and narrow verification-email delivery; it is
+available for owner operations and authenticated broker callbacks; it is
 outside ordinary guest HTTP traffic. Fresh installations use broker-owned
 individual guest sessions.
 
@@ -60,7 +60,7 @@ the qURL uses it before granting access.
 | `guest_service.py` | Isolated scoped guest shell, assets, cookies, and broker-backed guest API |
 | `admin.py` | Administrative page, grant, email, preview, qURL, reset, activity, update, and deletion routes |
 | `access.py` | Administrative preview data and action routes |
-| `internal.py` | Narrow internal verification-email broker endpoint |
+| `internal.py` | Authenticated verification-email delivery, typed guest activity/security events, and configured notifications |
 | `actions.py` | Administrative preview action validation and Home Assistant dispatch |
 | `pages.py` | Page and grant validation plus atomic JSON persistence |
 | `ha.py` | Direct and brokered Home Assistant clients, discovery, state reads, capabilities, and service calls |
@@ -89,7 +89,7 @@ reviewable without introducing a framework or bundler.
 ## HTTP trust-boundary dispatch
 
 The administrative `server.py` handlers validate the request envelope and
-dispatch by URL namespace. Ordinary guest traffic does not enter this server:
+dispatch by URL namespace. Ordinary guest browser HTTP does not enter this server:
 
 ```text
 GET/POST/PUT/DELETE request
@@ -99,7 +99,7 @@ GET/POST/PUT/DELETE request
             |
      +------+------+----------------+
      |             |                |
-/api/admin/*  /api/admin/preview/*  /api/internal/email/guest-verification
+/api/admin/*  /api/admin/preview/*  /api/internal/*
      |             |                |
   admin.py      access.py       internal.py
      |             |                |
@@ -113,6 +113,8 @@ clients, stores, locks, or rate limiters. There is no routing framework or
 route-class hierarchy.
 
 The Gateway has no endpoint capability authority or ordinary guest route.
+TCP HA broker requests for HA operations require the explicit Admin role and
+credential; guest HA authority uses the separate restricted Unix interface.
 
 ## Packaged guest read flow
 
@@ -135,10 +137,12 @@ Assistant data. Metadata, state, camera images, and actions require the
 individual guest session and current grant. The Guest Service cannot load the
 admin Gateway's private page or email stores.
 
-The broker emits only typed, authenticated guest activity and notification
-events derived from identities and outcomes it has validated. The Admin side
-persists activity, selects recipients, and delivers configured alerts. Guest
-Service has neither Admin activity-write nor notification authority.
+The broker synchronously sends typed, authenticated activity/security events
+from validated identities and outcomes to Admin's `/api/internal/guest-event`.
+Guest reads, cameras, and actions can wait on these callbacks. Admin records
+activity and may send configured notifications through SMTP or HA. Callback
+transport failures are handled separately from authorization, but waiting adds
+latency and an availability dependency; it gives guests no Admin authority.
 
 ## Guest action flow
 
@@ -156,10 +160,8 @@ POST /g/<page>/<grant>/api/access/<page>/<resource>/<action>
     -> return a sanitized action result
 ```
 
-An action already dispatched to Home Assistant cannot be recalled by a later
-revocation. Broker rechecks prevent a revoked grant or changed policy from
-authorizing a later dispatch. Gateway `access.py` and `actions.py` serve only
-administrative preview.
+See [Revocation locking](SECURITY.md#revocation-locking) for the limits of the
+final authority check. Gateway `access.py` and `actions.py` serve only administrative preview.
 
 The App runs one compiled endpoint per page under a distinct Linux UID. Each
 receives one page capability and access to the Guest Service socket through
@@ -196,7 +198,9 @@ not retire the shared resource while another guest still needs it.
   grant authority and cleanup identifiers; it does not revoke the invitation.
   Earlier backups and distributed copies may still contain the link. No secure
   erasure is attempted.
-- Guest activity and verification state use separate SQLite stores.
+- Admin owns guest activity; the HA broker owns guest session/verification
+  authority in a separate SQLite store.
+- The LayerV broker owns persisted resource lifecycle state (`guest_resources.py`).
 - SMTP, connector, broker, and policy data use separately permissioned App
   directories. The LayerV broker and its supervised qURL runtime share an OS
   identity and trust boundary.
@@ -207,7 +211,7 @@ not retire the shared resource while another guest still needs it.
 
 - `GatewayHTTPServer` caps active request threads and applies connection
   timeouts.
-- Page locks linearize mutations against local revocation and deletion.
+- Gateway page locks serialize its guarded operations, not guest broker dispatch.
 - Rate limiters use internal locks and bound guest action and invalid-access
   traffic.
 - Request body, header count, aggregate header size, and camera response size
