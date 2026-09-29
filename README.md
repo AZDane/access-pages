@@ -74,13 +74,17 @@ until access has been cryptographically verified.
 NHP is the open-source network-hiding technology developed by OpenNHP.
 The LayerV team are core builders of OpenNHP, and LayerV's founding team
 co-authored the Cloud Security Alliance (CSA) NHP specification. LayerV
-is the enterprise implementation of that foundation, providing the
-managed access service and developer tools used by Access Pages. The
-protocol is also documented in an IETF Internet-Draft.
+provides the external managed NHP/qURL connectivity service and developer
+tools currently used by Access Pages. The protocol is also documented in
+an IETF Internet-Draft.
 
 For more about the relationship between LayerV, OpenNHP, the CSA
 specification, and the IETF work, see
 [LayerV's OpenNHP standards page](https://layerv.ai/standards/).
+
+Access Pages is independently developed open-source software. It
+determines and enforces the Home Assistant capabilities available
+through that connection.
 
 The Access Pages App establishes the protected NHP/FRP path. A guest
 reaches that path through a valid LayerV qURL rather than through a
@@ -100,10 +104,12 @@ by the Home Assistant administrator.
 
 For example, a **Cat Sitter** page might allow someone to:
 
--   unlock a selected door;
 -   turn selected lights on or off;
 -   check the temperature in a room; and
 -   view periodic still images from a selected camera.
+
+The owner can also choose additional supported actions, such as unlocking
+a selected door, where appropriate for their installation.
 
 It does not expose the regular Home Assistant dashboard, configuration,
 history, or unrelated entities.
@@ -111,6 +117,36 @@ history, or unrelated entities.
 The Gateway enforces the approved capabilities on the server. The
 browser cannot gain additional Home Assistant capabilities simply by
 changing what it submits.
+
+## Owner Responsibility
+
+Home Assistant owners control what guests can access and are responsible
+for deciding what is appropriate and safe for their installation. Home
+Assistant is highly customizable: entities and actions can control
+physical equipment, locks, doors, gates, appliances, security equipment,
+or other systems where unintended operation has real-world consequences.
+Access Pages cannot determine whether an entity or action is safe for
+guest use. Owners must review what each entity actually controls, the
+actions they expose, and whether the available protections are appropriate.
+
+The intended conservative default is to enable only the Light category,
+with other supported categories requiring deliberate owner enablement
+before selection for guest pages. **This is not yet the software's
+default**: the App currently leaves `include_domains` empty and excludes
+`alarm_control_panel`, so other categories can appear in the picker.
+Entity categories are configuration aids, not safety classifications;
+even a `light` entity is not inherently safe.
+
+Treat qURLs as access credentials. Once a qURL is provided for sharing,
+Access Pages cannot control how an owner or guest stores, transmits,
+forwards, screenshots, publishes, or otherwise distributes it. Someone
+who obtains a valid qURL may be able to reach the associated guest access,
+subject to any additional protections configured by the owner.
+
+The owner is responsible for deciding who receives a qURL, how it is
+distributed, how long access remains valid, and whether protections such
+as email verification, proximity requirements for actions, expiration,
+or revocation are appropriate.
 
 ## More than a hidden URL
 
