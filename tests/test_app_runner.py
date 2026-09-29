@@ -806,16 +806,8 @@ class AppRunnerTests(unittest.TestCase):
             0o640,
         )
 
-    def test_endpoint_capability_cannot_authenticate_to_ha_broker_after_reconcile(self):
+    def test_reconcile_clears_legacy_registry_and_preserves_endpoint_capability(self):
         from hashlib import sha256
-        with patch.dict(os.environ, {
-            "HA_BROKER_TOKEN": "synthetic-guest-broker",
-            "HA_BROKER_ADMIN_TOKEN": "synthetic-admin-broker",
-            "HA_BASE_URL": "http://ha.invalid",
-            "HA_TOKEN": "synthetic-ha",
-        }):
-            import ha_broker
-
         # Model an existing installation that issued the same credential to
         # both boundaries; reconciliation must remove that old authority too.
         secret = "synthetic-old-endpoint-capability"
@@ -827,10 +819,7 @@ class AppRunnerTests(unittest.TestCase):
         with patch.object(app_runner.os, "chown"):
             capabilities = app_runner._page_capabilities({"cat-sitter"})
         self.assertEqual(capabilities["cat-sitter"], secret)
-        handler = object.__new__(ha_broker.Handler)
-        handler.headers = {"X-Broker-Token": secret}
-        with patch.object(ha_broker, "PAGE_CAPABILITY_REGISTRY", self.paths["HA_CAPABILITY_REGISTRY"]):
-            self.assertEqual(handler._authorized_page(), "")
+        self.assertEqual(json.loads(self.paths["HA_CAPABILITY_REGISTRY"].read_text()), {})
         self.assertEqual(
             json.loads(self.paths["HA_GUEST_CAPABILITY_REGISTRY"].read_text())["cat-sitter"],
             sha256(secret.encode()).hexdigest(),

@@ -121,9 +121,11 @@ class GuestServiceTests(unittest.TestCase):
     def test_health_only_and_headers_cannot_grant_authority(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = str(Path(temporary) / "http.sock")
-            with socketserver.UnixStreamServer(
-                path, guest_service.HealthHandler
-            ) as server:
+            with (
+                socketserver.UnixStreamServer(path, guest_service.GuestHandler) as server,
+                patch.object(guest_service, "_connector_healthy", return_value=True),
+                patch.object(guest_service, "_broker_guest_auth") as authorize,
+            ):
                 thread = threading.Thread(target=server.serve_forever)
                 thread.start()
                 try:
@@ -155,67 +157,14 @@ class GuestServiceTests(unittest.TestCase):
                         self.assertEqual(response.status, 503)
                         response.read()
                         connection.close()
-                    with patch.object(
-                        guest_service, "_broker_page_identity",
-                        return_value=(200, "guest"),
-                    ) as identify:
-                        connection = UnixHTTPConnection(path)
-                        connection.request(
-                            "POST", "/broker-page",
-                            body=json.dumps({
-                                "capability": "synthetic-page-capability-123456",
-                                "page_id": "guest",
-                            }),
-                        )
-                        response = connection.getresponse()
-                        self.assertEqual(response.status, 200)
-                        self.assertEqual(json.loads(response.read()), {
-                            "page_id": "guest",
-                        })
-                        connection.close()
-                        identify.assert_called_once_with(
-                            "synthetic-page-capability-123456", "guest"
-                        )
-                    with patch.object(guest_service, "_broker_page_identity") as identify:
-                        connection = UnixHTTPConnection(path)
-                        connection.request(
-                            "POST", "/broker-page",
-                            body='{"capability":"wrong","capability":"synthetic-page-capability-123456","page_id":"guest"}',
-                        )
-                        response = connection.getresponse()
-                        self.assertEqual(response.status, 400)
-                        response.read()
-                        connection.close()
-                        identify.assert_not_called()
-                    scoped = {
-                        "page_id": "guest",
-                        "grant_id": "grant_" + "g" * 16,
-                        "expires_at": 2_000_000_000,
-                        "status": "verification_required",
-                        "session": "synthetic-session-token-123456",
-                    }
-                    with patch.object(
-                        guest_service, "_broker_guest_auth",
-                        return_value=(200, scoped),
-                    ) as authorize:
-                        connection = UnixHTTPConnection(path)
-                        request = {
-                            "capability": "synthetic-page-capability-123456",
-                            "page_id": "guest",
-                            "grant_id": "grant_" + "g" * 16,
-                            "bootstrap": "synthetic-bootstrap-123456",
-                        }
-                        connection.request(
-                            "POST", "/broker-bootstrap", body=json.dumps(request)
-                        )
-                        response = connection.getresponse()
-                        self.assertEqual(response.status, 200)
-                        self.assertEqual(json.loads(response.read()), scoped)
-                        connection.close()
-                        authorize.assert_called_once_with(
-                            "/broker-bootstrap", request
-                        )
                     for method, route in (
+                        ("POST", "/broker-page"),
+                        ("POST", "/broker-bootstrap"),
+                        ("POST", "/broker-session-status"),
+                        ("POST", "/broker-verification-challenge"),
+                        ("POST", "/broker-verification-verify"),
+                        ("POST", "/broker-resource-state"),
+                        ("POST", "/broker-action"),
                         ("GET", "/admin"),
                         ("GET", "/discovery"),
                         ("POST", "/policy/publish"),
@@ -231,6 +180,7 @@ class GuestServiceTests(unittest.TestCase):
                         self.assertEqual(response.status, 404)
                         response.read()
                         connection.close()
+                    authorize.assert_not_called()
                 finally:
                     server.shutdown()
                     thread.join()

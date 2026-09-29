@@ -123,70 +123,6 @@ class HealthHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_POST(self) -> None:
-        fields = {
-            "/broker-page": {"capability", "page_id"},
-            "/broker-bootstrap": {
-                "capability", "page_id", "grant_id", "bootstrap",
-            },
-            "/broker-session-status": {
-                "capability", "page_id", "grant_id", "session",
-            },
-            "/broker-verification-challenge": {
-                "capability", "page_id", "grant_id", "session", "replace",
-            },
-            "/broker-verification-verify": {
-                "capability", "page_id", "grant_id", "session", "code",
-            },
-            "/broker-resource-state": {
-                "capability", "page_id", "grant_id", "session", "resource_id",
-            },
-            "/broker-action": {
-                "capability", "page_id", "grant_id", "session",
-                "resource_id", "action_id", "parameters", "proximity",
-            },
-        }
-        if self.path not in fields:
-            self.send_error(404)
-            return
-        # These private test paths translate credentials; the broker decides.
-        try:
-            if self.headers.get("Transfer-Encoding"):
-                raise ValueError("Body framing is not supported")
-            lengths = self.headers.get_all("Content-Length", [])
-            if len(lengths) != 1:
-                raise ValueError("Invalid request framing")
-            length = int(lengths[0])
-            if not 0 < length <= 1024:
-                raise ValueError("Invalid request size")
-            payload = json.loads(
-                self.rfile.read(length), object_pairs_hook=_unique_object_pairs,
-            )
-            if not isinstance(payload, dict) or set(payload) != fields[self.path]:
-                raise ValueError("Invalid page identity request")
-            if self.path == "/broker-page":
-                status, page_id = _broker_page_identity(
-                    payload["capability"], payload["page_id"]
-                )
-                result = {"page_id": page_id}
-            else:
-                status, result = _broker_guest_auth(self.path, payload)
-        except (ValueError, TypeError, json.JSONDecodeError):
-            self.send_error(400)
-            return
-        except (OSError, RuntimeError):
-            self.send_error(503)
-            return
-        if status != 200:
-            self.send_error(status)
-            return
-        body = json.dumps(result).encode("ascii")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
     def log_message(self, _format: str, *_args: object) -> None:
         pass
 
@@ -270,9 +206,6 @@ class GuestHandler(HealthHandler):
         self._guest("GET")
 
     def do_POST(self) -> None:
-        if self.path.startswith("/broker-"):
-            super().do_POST()
-            return
         self._guest("POST")
 
     def _guest(self, method: str) -> None:
@@ -495,37 +428,6 @@ def _broker_health() -> None:
             "status": "ok", "authority": "guest",
         }:
             raise RuntimeError("Guest broker readiness failed")
-
-
-def _broker_page_identity(capability: str, claimed_page: str) -> tuple[int, str]:
-    if not isinstance(capability, str) or not re.fullmatch(
-        r"[A-Za-z0-9_-]{16,128}", capability
-    ):
-        raise ValueError("Invalid page capability")
-    if not isinstance(claimed_page, str) or not re.fullmatch(
-        r"[a-z0-9][a-z0-9_-]{0,63}", claimed_page
-    ):
-        raise ValueError("Invalid claimed page")
-    with _connect_broker() as connection:
-        # The capability is sent only after SO_PEERCRED verifies the broker.
-        connection.sendall((
-            "POST /guest/v1/page-identity HTTP/1.1\r\n"
-            "Host: guest-broker\r\n"
-            f"X-Page-Capability: {capability}\r\n"
-            f"X-Access-Pages-Page-ID: {claimed_page}\r\n"
-            "Content-Length: 0\r\n\r\n"
-        ).encode("ascii"))
-        response = http.client.HTTPResponse(connection)
-        response.begin()
-        if response.status in (401, 403):
-            response.read(1024)
-            return response.status, ""
-        if response.status != 200:
-            raise RuntimeError("Guest broker rejected identity request")
-        payload = json.loads(response.read(1024))
-        if payload != {"page_id": claimed_page}:
-            raise RuntimeError("Guest broker returned unexpected page identity")
-        return 200, claimed_page
 
 
 def _broker_guest_auth(path: str, payload: dict) -> tuple[int, dict]:

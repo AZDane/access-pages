@@ -587,19 +587,6 @@ class HomeAssistantBrokerPolicyTests(unittest.TestCase):
             "guest", reading, 750
         )
 
-    def test_admin_discovery_uses_separate_credential(self):
-        handler = object.__new__(ha_broker.Handler)
-        handler.headers = {"X-Broker-Token": "guest-token"}
-        with (
-            patch("ha_broker.TOKEN", "guest-token"),
-            patch("ha_broker.ADMIN_TOKEN", "admin-token"),
-        ):
-            self.assertTrue(handler._authorized())
-            self.assertFalse(handler._authorized(admin=True))
-            handler.headers = {"X-Broker-Token": "admin-token"}
-            self.assertTrue(handler._authorized(admin=True))
-            self.assertFalse(handler._authorized())
-
 
 if __name__ == "__main__":
     unittest.main()

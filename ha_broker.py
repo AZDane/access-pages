@@ -41,14 +41,8 @@ GUEST_SOCKET = Path(os.getenv(
     "HA_BROKER_GUEST_SOCKET", "/run/access-pages/ha-guest/http.sock"
 ))
 GUEST_PEER_UID = 2101
-TOKEN = os.environ["HA_BROKER_TOKEN"]
 ADMIN_TOKEN = os.environ["HA_BROKER_ADMIN_TOKEN"]
-if hmac.compare_digest(TOKEN, ADMIN_TOKEN):
-    raise RuntimeError("HA broker guest and admin tokens must be distinct")
 PAGE_STORE = PageStore(Path(os.getenv("HA_BROKER_POLICY_DIR", "/policy")))
-PAGE_CAPABILITY_REGISTRY = Path(os.getenv(
-    "HA_PAGE_CAPABILITY_REGISTRY", "/policy-capabilities/page-capabilities.json"
-))
 GUEST_CAPABILITY_REGISTRY = Path(os.getenv(
     "HA_GUEST_CAPABILITY_REGISTRY", "/policy-capabilities/guest-page-capabilities.json"
 ))
@@ -366,27 +360,9 @@ def send_notification(target, title, message):
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _authorized(self, *, admin=False):
+    def _authorized(self):
         supplied = self.headers.get("X-Broker-Token", "")
-        if admin:
-            return hmac.compare_digest(supplied, ADMIN_TOKEN)
-        return hmac.compare_digest(supplied, TOKEN)
-
-    def _authorized_page(self):
-        supplied = self.headers.get("X-Broker-Token", "")
-        if not supplied:
-            return ""
-        try:
-            registry = json.loads(
-                PAGE_CAPABILITY_REGISTRY.read_text(encoding="utf-8")
-            )
-        except (OSError, json.JSONDecodeError):
-            return ""
-        supplied_hash = sha256(supplied.encode()).hexdigest()
-        for page_id, expected_hash in registry.items():
-            if hmac.compare_digest(supplied_hash, str(expected_hash)):
-                return str(page_id)
-        return ""
+        return hmac.compare_digest(supplied, ADMIN_TOKEN)
 
     def log_message(self, *_args):
         return
@@ -427,12 +403,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, {"error": "not found"})
 
     def do_POST(self):
-        role = self.headers.get("X-Broker-Role", "guest")
-        admin_request = role == "admin"
-        bound_page_id = "" if admin_request else self._authorized_page()
-        if role not in {"guest", "admin"} or not (
-            self._authorized(admin=True) if admin_request else bound_page_id
-        ):
+        if self.headers.get("X-Broker-Role") != "admin" or not self._authorized():
             self._send(HTTPStatus.UNAUTHORIZED, {"error": "unauthorized"})
             return
         try:
@@ -443,10 +414,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise BrokerPolicyError("Entity IDs are required")
                 assigned = {
                     resource["entity_id"]
-                    for page in (
-                        [_page(bound_page_id)] if bound_page_id else
-                        [_page(item["id"]) for item in PAGE_STORE.list_pages()]
-                    )
+                    for page in [_page(item["id"]) for item in PAGE_STORE.list_pages()]
                     for resource in page["resources"]
                 }
                 if any(item not in assigned for item in requested):
@@ -455,7 +423,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, states)
             elif self.path == "/v1/camera-image":
                 body, content_type = camera_image(
-                    bound_page_id or str(payload.get("page_id", "")),
+                    str(payload.get("page_id", "")),
                     str(payload.get("resource_id", "")),
                 )
                 self._send_image(body, content_type)
@@ -463,7 +431,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(
                     200,
                     execute_page_action(
-                        bound_page_id or str(payload.get("page_id", "")),
+                        str(payload.get("page_id", "")),
                         str(payload.get("resource_id", "")),
                         str(payload.get("action_id", "")),
                         payload.get("parameters", {}),
@@ -474,20 +442,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(
                     200,
                     verify_page_proximity(
-                        bound_page_id or str(payload.get("page_id", "")),
+                        str(payload.get("page_id", "")),
                         payload.get("reading"),
                     ),
                 )
             elif self.path == "/v1/notification-targets":
-                if not admin_request:
-                    raise BrokerPolicyError("Admin authority required", HTTPStatus.FORBIDDEN)
                 self._send(
                     200,
                     {"targets": notification_targets()},
                 )
             elif self.path == "/v1/send-notification":
-                if not admin_request:
-                    raise BrokerPolicyError("Admin authority required", HTTPStatus.FORBIDDEN)
                 self._send(
                     200,
                     send_notification(
@@ -497,8 +461,6 @@ class Handler(BaseHTTPRequestHandler):
                     ),
                 )
             elif self.path == "/v1/revoke-guest-sessions":
-                if not admin_request:
-                    raise BrokerPolicyError("Admin authority required", HTTPStatus.FORBIDDEN)
                 page_id = payload.get("page_id")
                 grant_id = payload.get("grant_id")
                 if (set(payload) != {"page_id", "grant_id"}
@@ -514,8 +476,6 @@ class Handler(BaseHTTPRequestHandler):
                 GUEST_SESSION_STORE.revoke(page_id, grant_id)
                 self._send(200, {"success": True})
             elif self.path == "/v1/discovery":
-                if not admin_request:
-                    raise BrokerPolicyError("Admin authority required", HTTPStatus.FORBIDDEN)
                 self._send(
                     200,
                     HA_CLIENT.discover_entities(
