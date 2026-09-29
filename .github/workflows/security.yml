@@ -115,6 +115,12 @@ jobs:
           --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
           access-pages-app:security-scan /tmp/probe.py
 
+      - name: Verify packaged qURL supervision and lifetime lock
+        run: >-
+          docker run --rm --network none --user 2103:2103 --entrypoint python
+          --volume "$PWD/tests/packaged_qurl_probe.py:/tmp/probe.py:ro"
+          access-pages-app:security-scan /tmp/probe.py
+
   arm64-package:
     name: ARM64 package
     runs-on: ubuntu-24.04-arm
@@ -134,4 +140,10 @@ jobs:
         run: >-
           docker run --rm --network none --user root --entrypoint python
           --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
+          access-pages-app:arm64-test /tmp/probe.py
+
+      - name: Verify packaged qURL supervision and lifetime lock on ARM64
+        run: >-
+          docker run --rm --network none --user 2103:2103 --entrypoint python
+          --volume "$PWD/tests/packaged_qurl_probe.py:/tmp/probe.py:ro"
           access-pages-app:arm64-test /tmp/probe.py

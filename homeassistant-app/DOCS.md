@@ -375,6 +375,28 @@ Activity history is stored in an administrator-only SQLite database.
 Home Assistant App backups can contain LayerV credentials and Connector
 private state. Protect backups accordingly.
 
+## Upgrading to qURL 3.0.0
+
+App 0.1.131 packages qURL CLI 3.0.0 with LayerV Connector 0.14.1. Upgrade
+the App normally after that version is published, taking a Home Assistant
+App backup first. Stop the old App completely before starting the updated
+version; only one daemon may own its persisted state.
+
+Saved Access Pages, Home Assistant settings, administrator configuration,
+and the existing LayerV account and Connector identity are retained. This
+upgrade introduces no guest-link migration. If old links need replacing,
+revoke those guests using the existing guest controls and create new
+invitations. Local revocation takes effect first; remote cleanup is retried
+durably if LayerV is unavailable. Keep the App running to finish cleanup.
+
+Tunnel TLS certificates are now verified using the packaged system CA store.
+Do not disable verification or relax AppArmor to recover a failed connection.
+Check network access, system time, and the connection status, then restart
+the App. If an upgrade still fails, stop it and restore the matching App
+version and data backup; reapply any guest revocations made since that backup.
+Do not delete the Connector state, wrapping key, or ownership lock. An
+ordinary upgrade does not require **Reset LayerV connection**.
+
 ## Resetting the LayerV connection
 
 Use **Reset LayerV connection** only when this installation must

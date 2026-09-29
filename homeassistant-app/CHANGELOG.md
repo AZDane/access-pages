@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.131
+
+- Upgrade the supported qURL CLI to 3.0.0 with embedded LayerV Connector
+  0.14.1 and verified AMD64/ARM64 archives, licenses, and release SBOMs.
+- Preserve account onboarding, one-time Agent enrollment, sealed credentials,
+  external supervision, and one daemon with isolated per-share sessions.
+- Require the exact daemon version, session mode, and supervised process ID;
+  bound ownership-lock startup waits and finish daemon shutdown within the
+  App runner's stop budget.
+- Assert that the final image contains a usable system CA trust store for
+  tunnel TLS verification. Keep the enforced AppArmor allowlist unchanged.
+- Preserve saved Access Pages, Home Assistant settings, administrator
+  configuration, and Connector identity. No guest-link migration is introduced.
+
 ## 0.1.130
 
 - Add Finished Sharing with an explicit Remove Saved Link confirmation. Remove

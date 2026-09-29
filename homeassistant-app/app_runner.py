@@ -946,7 +946,7 @@ def _reset_connection_files() -> None:
         path.unlink(missing_ok=True)
     if CONNECTOR_STATE_DIR.exists():
         shutil.rmtree(CONNECTOR_STATE_DIR)
-    # The broker owns the qURL 2.6.0 external namespace and its local wrapping
+    # The broker owns the qURL 3.0.0 external namespace and its local wrapping
     # key. Only the administrator's explicit reset may discard this identity.
     for broker_state in (
         ACCESS_PAGES_BROKER_DATA_DIR / "shared-state",

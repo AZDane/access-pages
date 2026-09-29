@@ -47,7 +47,7 @@ GRANT = re.compile(r"grant_[A-Za-z0-9_-]{16}")
 class ConnectorPublisher:
     """Run all guest routes in one pinned CLI daemon owned by the broker.
 
-    qURL 2.6.0 reloads this externally supervised daemon. The broker owns its
+    qURL 3.0.0 reloads this externally supervised daemon. The broker owns its
     lifecycle; CLI commands must never install a native background job.
     """
 
@@ -274,15 +274,15 @@ class ConnectorPublisher:
         self._advance_enrollment(("enrolling", "enrolling"), "enrolled")
         self._mark_bootstrapped()
 
-    def _ipc(self):
+    def _ipc(self, *, timeout=3):
         path = self.state / "daemon.sock"
         st = path.stat()
         if st.st_uid != os.getuid() or st.st_mode & 0o077:
             raise OSError("Connector socket is not owner-only")
-        connection = http.client.HTTPConnection("localhost", timeout=3)
+        connection = http.client.HTTPConnection("localhost", timeout=timeout)
         sock = socket.socket(socket.AF_UNIX)
         try:
-            sock.settimeout(3)
+            sock.settimeout(timeout)
             sock.connect(str(path))
             connection.sock = sock
             connection.request("GET", "/status")
@@ -290,9 +290,13 @@ class ConnectorPublisher:
             if response.status != 200:
                 raise OSError("Connector status unavailable")
             data = json.load(response)
-            expected = "5/2.6.0" + ("/per-share" if self.mode == "per-share" else "")
+            expected = "5/3.0.0" + ("/per-share" if self.mode == "per-share" else "")
             if data.get("job_version") != expected:
                 raise OSError("Connector version or session mode mismatch")
+            # A new daemon can wait behind another process's lifetime lock.
+            # Its predecessor's socket must not make our child look ready.
+            if self.daemon is None or data.get("pid") != self.daemon.pid:
+                raise OSError("Connector process ownership mismatch")
             return data
         finally:
             connection.close()
@@ -313,11 +317,14 @@ class ConnectorPublisher:
                  "--share-group-mode", self.mode],
                 env=environment, pass_fds=(key_fd,), stdout=log, stderr=log,
             )
-        for _ in range(100):
+        # qURL's external ownership lease can wait 60 seconds. Keep our
+        # readiness budget at 10 seconds and cancel only the child we own.
+        deadline = time.monotonic() + 10
+        while (remaining := deadline - time.monotonic()) > 0:
             if self.daemon.poll() is not None:
                 break
             try:
-                self._ipc()
+                self._ipc(timeout=min(3, remaining))
                 return
             except (OSError, ValueError):
                 time.sleep(0.1)
@@ -344,7 +351,8 @@ class ConnectorPublisher:
         if self.daemon is not None and self.daemon.poll() is None:
             self.daemon.send_signal(signal.SIGINT)
             try:
-                self.daemon.wait(timeout=15)
+                # Leave headroom within app_runner's 10-second stop budget.
+                self.daemon.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.daemon.kill()
                 self.daemon.wait()

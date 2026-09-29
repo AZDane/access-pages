@@ -1,7 +1,10 @@
 """Guest resource ownership and restart-safe primary revocation."""
 
 import io
+import json
 from pathlib import Path
+import signal
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
@@ -20,6 +23,66 @@ class DeviceRecoveryTests(unittest.TestCase):
         publisher.bootstrap_complete.touch()
         if shares:
             (publisher.state / "local_shares.json").write_text("{}", encoding="utf-8")
+
+    def test_status_requires_exact_protocol_binary_mode_and_owned_pid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            for mode, expected in (("per-share", "5/3.0.0/per-share"), ("single", "5/3.0.0")):
+                publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key", mode=mode)
+                publisher.daemon = Mock(pid=1234)
+                socket_path = publisher.state / "daemon.sock"
+                socket_path.touch(mode=0o600)
+                for version, pid, accepted in (
+                    (expected, 1234, True),
+                    ("5/2.6.0/per-share", 1234, False),
+                    ("4/3.0.0/per-share", 1234, False),
+                    ("5/3.0.0" if mode == "per-share" else "5/3.0.0/per-share", 1234, False),
+                    (expected, 5678, False),
+                    (expected, 0, False),
+                    (expected, None, False),
+                ):
+                    response = io.BytesIO(json.dumps({"job_version": version, "pid": pid}).encode())
+                    response.status = 200
+                    with (
+                        self.subTest(mode=mode, version=version, pid=pid),
+                        patch("guest_resources.http.client.HTTPConnection") as http,
+                        patch("guest_resources.socket.socket"),
+                    ):
+                        http.return_value.getresponse.return_value = response
+                        if accepted:
+                            self.assertEqual(publisher._ipc()["pid"], 1234)
+                        else:
+                            with self.assertRaises(OSError):
+                                publisher._ipc()
+
+    @patch("guest_resources.time.sleep")
+    @patch("guest_resources.subprocess.Popen")
+    def test_contended_daemon_start_cancels_own_child_within_readiness_budget(self, popen, sleep):
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key")
+            self._enroll_fixture(publisher, shares=True)
+            popen.return_value.poll.return_value = None
+            with (
+                patch.object(publisher, "_ipc", side_effect=OSError("ownership mismatch")) as ipc,
+                patch("guest_resources.time.monotonic", side_effect=[0, 0, 9, 10]),
+            ):
+                with self.assertRaisesRegex(LayerVError, "not ready"):
+                    publisher._start()
+            self.assertEqual([call.kwargs["timeout"] for call in ipc.call_args_list], [3, 1])
+            popen.return_value.send_signal.assert_called_once_with(signal.SIGINT)
+            popen.return_value.wait.assert_called_once_with(timeout=5)
+            popen.return_value.kill.assert_not_called()
+
+    def test_daemon_shutdown_escalates_and_reaps_within_parent_stop_budget(self):
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key")
+            publisher.daemon = Mock()
+            publisher.daemon.poll.return_value = None
+            publisher.daemon.wait.side_effect = [subprocess.TimeoutExpired("qurl", 5), 0]
+            publisher.close()
+            self.assertTrue(publisher.closed)
+            publisher.daemon.send_signal.assert_called_once_with(signal.SIGINT)
+            publisher.daemon.kill.assert_called_once_with()
+            self.assertEqual(publisher.daemon.wait.call_count, 2)
 
     @patch("guest_resources.subprocess.run")
     def test_native_rate_limit_is_not_a_plan_quota_and_uses_local_cooldown(self, run):
@@ -264,7 +327,7 @@ class DeviceRecoveryTests(unittest.TestCase):
             publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="retained-secret")
             self._enroll_fixture(publisher, shares=True)
             popen.return_value.poll.return_value = None
-            with patch.object(publisher, "_ipc", return_value={"job_version": "5/2.6.0/per-share"}):
+            with patch.object(publisher, "_ipc", return_value={"job_version": "5/3.0.0/per-share"}):
                 publisher._start()
             args = popen.call_args.args[0]
             self.assertIn("--supervision", args)
