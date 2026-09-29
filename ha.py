@@ -374,7 +374,8 @@ class HomeAssistantClient:
         area_id: str = "",
     ) -> bool:
         if (
-            entity_id in self.exclude_entities
+            (self.include_domains and domain not in self.include_domains)
+            or entity_id in self.exclude_entities
             or domain in self.exclude_domains
             or (area_id and area_id in self.exclude_areas)
             or (
@@ -384,12 +385,17 @@ class HomeAssistantClient:
         ):
             return False
 
-        if not self.policy_restricted:
+        # Area, entity, and device-class filters narrow the enabled domains;
+        # none can enable another domain implicitly.
+        if not (
+            self.include_areas
+            or self.include_device_classes
+            or self.include_entities
+        ):
             return True
 
         return bool(
             entity_id in self.include_entities
-            or domain in self.include_domains
             or (area_id and area_id in self.include_areas)
             or (
                 device_class

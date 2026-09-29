@@ -406,6 +406,36 @@ class EntityPolicyValidationTests(unittest.TestCase):
                 "resources": [{"entity_id": "light.kitchen", "domain": "light"}],
             })
 
+    def test_save_requires_domain_opt_in_even_in_included_area(self):
+        payload = {"resources": [{
+            "entity_id": "lock.front_door",
+            "domain": "lock",
+            "actions": [{"id": "unlock", "service": "unlock", "name": "Unlock"}],
+        }]}
+        discovered = {"entities": [{
+            "entity_id": "lock.front_door",
+            "domain": "lock",
+            "area_id": "hall",
+            "actions": [{"service": "unlock", "name": "Unlock"}],
+        }]}
+        for domains in ({"light"}, {"light", "lock"}):
+            with self.subTest(domains=domains):
+                client = BrokerHomeAssistantClient(
+                    "http://broker", "admin-secret", broker_role="admin",
+                    include_domains=frozenset(domains),
+                    include_areas=frozenset({"hall"}),
+                )
+                with (
+                    patch("server.HA_CLIENT", client),
+                    patch.object(client, "discover_entities", return_value=discovered),
+                ):
+                    handler = object.__new__(Handler)
+                    if "lock" in domains:
+                        handler._validate_entity_policy(payload)
+                    else:
+                        with self.assertRaisesRegex(PageConfigError, "Entity is unavailable"):
+                            handler._validate_entity_policy(payload)
+
     def test_accepts_exact_curated_entity_action(self):
         payload = {
             "resources": [{

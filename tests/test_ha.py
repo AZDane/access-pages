@@ -204,13 +204,13 @@ class EntityPolicyTests(unittest.TestCase):
         client = HomeAssistantClient("http://ha", "token")
         self.assertTrue(client.entity_allowed("light.kitchen", "light"))
 
-    def test_include_matches_domain_entity_or_device_class(self):
+    def test_other_includes_narrow_explicitly_enabled_domains(self):
         client = HomeAssistantClient(
             "http://ha",
             "token",
-            include_domains=frozenset({"light"}),
+            include_domains=frozenset({"light", "cover"}),
             include_device_classes=frozenset({"awning"}),
-            include_entities=frozenset({"cover.garage"}),
+            include_entities=frozenset({"cover.garage", "light.kitchen"}),
         )
         self.assertTrue(client.entity_allowed("light.kitchen", "light"))
         self.assertTrue(
@@ -222,6 +222,22 @@ class EntityPolicyTests(unittest.TestCase):
         self.assertFalse(
             client.entity_allowed("cover.bedroom", "cover", "blind")
         )
+
+    def test_other_includes_cannot_enable_an_unlisted_domain(self):
+        for additional_filter in (
+            {"include_areas": frozenset({"kitchen"})},
+            {"include_device_classes": frozenset({"garage"})},
+            {"include_entities": frozenset({"cover.garage"})},
+        ):
+            with self.subTest(additional_filter=additional_filter):
+                client = HomeAssistantClient(
+                    "http://ha", "token",
+                    include_domains=frozenset({"light"}),
+                    **additional_filter,
+                )
+                self.assertFalse(client.entity_allowed(
+                    "cover.garage", "cover", "garage", "kitchen",
+                ))
 
     def test_exclusion_wins_over_include(self):
         client = HomeAssistantClient(
@@ -291,6 +307,17 @@ class EntityPolicyTests(unittest.TestCase):
             ({"exclude_domains": frozenset({"cover"})}, ["light.kitchen"]),
             ({"include_domains": frozenset({"cover"}),
               "exclude_entities": frozenset({"cover.garage"})}, ["cover.patio"]),
+            ({"include_domains": frozenset({"light"})}, ["light.kitchen"]),
+            ({"include_domains": frozenset({"light"}),
+              "include_areas": frozenset({"kitchen"})}, ["light.kitchen"]),
+            ({"include_domains": frozenset({"light"}),
+              "include_areas": frozenset({"patio"})}, []),
+            ({"include_domains": frozenset({"light", "cover"}),
+              "include_areas": frozenset({"patio"})}, ["cover.patio"]),
+            ({"include_domains": frozenset({"light"}),
+              "include_entities": frozenset({"cover.garage"})}, []),
+            ({"include_domains": frozenset({"light"}),
+              "include_device_classes": frozenset({"awning"})}, []),
             ({"include_areas": frozenset({"kitchen"})}, ["light.kitchen"]),
             ({"include_device_classes": frozenset({"awning"}),
               "exclude_areas": frozenset({"patio"})}, []),

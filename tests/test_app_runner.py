@@ -1,12 +1,14 @@
 import importlib.util
 import json
 import os
+import runpy
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from guest_resources import ConnectorPublisher
+from ha import BrokerHomeAssistantClient
 
 
 MODULE_PATH = (
@@ -20,6 +22,48 @@ SPEC.loader.exec_module(app_runner)
 
 
 class AppRunnerTests(unittest.TestCase):
+    def test_gateway_discovery_defaults_and_owner_domain_opt_in(self):
+        for configured, expected_domains in (
+            (None, {"light"}),
+            ("", {"light"}),
+            (" \t", {"light"}),
+            (", ,", {"light"}),
+            (" light, sensor,camera ", {"light", "sensor", "camera"}),
+            ("lock", {"lock"}),
+        ):
+            for app_mode in (False, True):
+                with self.subTest(configured=configured, app_mode=app_mode):
+                    policy_environment = (
+                        {} if configured is None
+                        else {"HA_ENTITY_INCLUDE_DOMAINS": configured}
+                    )
+                    if app_mode:
+                        options = (
+                            {} if configured is None
+                            else {"include_domains": configured}
+                        )
+                        policy_environment = app_runner._policy_options(options)
+                    with patch.dict(os.environ, {
+                        "HA_BASE_URL": "http://ha.invalid",
+                        "HA_TOKEN": "synthetic-ha-token",
+                        "ADMIN_TOKEN": "synthetic-admin-token",
+                        **policy_environment,
+                    }, clear=True):
+                        config = runpy.run_path(str(MODULE_PATH.parents[1] / "config.py"))
+                    client = BrokerHomeAssistantClient(
+                        "http://broker.invalid", "synthetic-broker-token",
+                        broker_role="admin",
+                        include_domains=config["HA_ENTITY_INCLUDE_DOMAINS"],
+                    )
+                    with patch.object(client, "_request", return_value={
+                        "entities": [
+                            {"entity_id": f"{domain}.example", "domain": domain}
+                            for domain in ("light", "sensor", "camera", "lock")
+                        ],
+                    }):
+                        result = client.discover_entities()
+                    self.assertEqual(set(result["allowed_domains"]), expected_domains)
+
     def test_resource_isolation_configuration_is_validated_and_explicit(self):
         default = app_runner._resource_isolation_environment({})
         self.assertEqual(default["ACCESS_PAGES_RESOURCE_ISOLATION"], "guest")
