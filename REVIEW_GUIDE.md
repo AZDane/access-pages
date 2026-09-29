@@ -19,8 +19,9 @@ reports are supporting research rather than the primary code-review path.
    validation and shared services.
 4. `Handler` helpers in `server.py` — request bounds, headers, authentication,
    logging, and page locking.
-5. `admin.py`, `access.py`, and `internal.py` — administration, preview, and configured email delivery.
-6. `ha_broker.py` — authoritative guest action policy and mutation path.
+5. `admin.py`, `access.py`, and `internal.py` — administration, preview, authenticated callbacks, and delivery.
+6. `cmd/guest-endpoint/main.go`, `guest_service.py`, and `ha_broker.py` —
+   the [packaged guest path](ARCHITECTURE.md#packaged-guest-read-flow) and Unix authority boundary.
 7. `pages.py` — stored policy validation and atomic persistence.
 8. `ha.py` and `actions.py` — admin preview action handling and Home Assistant client.
 9. `layerv.py`, `layerv_broker.py`, `policy.py`, and `policy_store.py` — qURL

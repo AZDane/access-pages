@@ -63,7 +63,7 @@ The implemented request and credential boundaries are:
 | --- | --- | --- | --- |
 | Admin | Admin token in `X-Admin-Token`; short-lived signed token for page preview | Page, grant, email, preview, qURL, activity, and connection administration | `admin.py` and `access.py` |
 | Guest | Individual grant-bound session and page capability | Saved page metadata, state, camera resources, and saved actions | Packaged `guest_service.py` and HA broker guest interface |
-| Internal | Exact HA broker token | Configured guest-verification email delivery | `internal.py` |
+| Internal | Exact HA broker token | Verification-email delivery, typed guest activity/security events, and configured notifications | `internal.py` |
 | Home Assistant | Direct gateway credential or isolated HA broker credential | Server-resolved discovery, reads, proximity checks, and operations | `ha.py` and `ha_broker.py` |
 
 Credentials are deliberately non-interchangeable. An admin token is not guest
@@ -100,12 +100,15 @@ cannot replace the other page's individual guest session.
 
 ### Revocation locking
 
-The Gateway preview action path uses a page action lock through Home Assistant
-dispatch. In the packaged guest path, the broker independently rechecks the
-current grant, session, and published policy immediately before dispatch. An
-already-dispatched action may finish after revocation; a later action cannot
-use the revoked grant. Grant creation reloads current page state before
-committing so it cannot restore a concurrently revoked grant.
+Gateway page locks serialize the operations they govern, including preview
+through HA dispatch; they do not span the separate guest broker process.
+The broker rechecks current grant, session, and published policy immediately
+before dispatch. If that check observes revocation, the action is denied.
+An action that passes the final check may still complete if revocation occurs
+concurrently before or during transmission to Home Assistant. Once HA may have
+received a service request, Access Pages cannot guarantee its cancellation.
+Grant creation reloads current page state before committing so it cannot
+restore a concurrently revoked grant.
 
 Local access is removed before LayerV qURL cleanup. Remote cleanup failure is
 reported and never restores the local grant. Durable Admin and LayerV broker
