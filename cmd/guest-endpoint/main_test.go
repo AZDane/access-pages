@@ -100,6 +100,14 @@ func TestGuestServiceRoutesAndHeaders(t *testing.T) {
 			t.Fatalf("%s: %d", route, response.Code)
 		}
 	}
+	for _, route := range []string{"/broker-page", "/broker-bootstrap", "/broker-session-status", "/broker-verification-challenge", "/broker-verification-verify", "/broker-resource-state", "/broker-action"} {
+		request := httptest.NewRequest(http.MethodPost, route, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("POST %s: %d", route, response.Code)
+		}
+	}
 	absolute := httptest.NewRequest(http.MethodGet, "http://attacker.invalid"+root, nil)
 	absolute.URL.Scheme, absolute.URL.Host = "http", "attacker.invalid"
 	response := httptest.NewRecorder()
