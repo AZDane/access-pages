@@ -61,8 +61,9 @@ class GuestActivityStoreTests(unittest.TestCase):
         self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
 
     def test_initial_access_is_reported_only_once(self):
-        self.assertTrue(self.store.record_initial_access("cat-sitter", GRANT))
-        self.assertFalse(self.store.record_initial_access("cat-sitter", GRANT))
+        self.store.register_guest("cat-sitter", GRANT)
+        self.assertTrue(self.store.record_registered_initial_access("cat-sitter", GRANT["id"]))
+        self.assertFalse(self.store.record_registered_initial_access("cat-sitter", GRANT["id"]))
 
     def test_revocation_retains_then_explicitly_deletes_history(self):
         self.store.register_guest("cat-sitter", GRANT)

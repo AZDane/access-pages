@@ -2,13 +2,6 @@ import os
 from pathlib import Path
 
 
-def required_env(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"Missing required environment variable: {name}")
-    return value
-
-
 def csv_env(name: str) -> frozenset[str]:
     return frozenset(
         item.strip()
