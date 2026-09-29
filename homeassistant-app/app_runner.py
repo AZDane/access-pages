@@ -205,22 +205,6 @@ def _layer_v_token() -> str:
 
 
 
-def _page_connector_id(
-    base_connector_id: str,
-    page_id: str,
-    generation: int = 0,
-) -> str:
-    """Return a stable LayerV-safe connector ID for one capability page."""
-    digest = sha256(
-        f"{page_id}:{generation}".encode("utf-8")
-    ).hexdigest()[:10]
-    prefix_budget = 64 - len(digest) - 2
-    base = base_connector_id[:prefix_budget].rstrip("-")
-    if not base:
-        base = "ha"
-    return f"{base}-p-{digest}"
-
-
 def _page_connector_target_ip(runtime_uid: int) -> str:
     """Return a stable loopback destination which identifies one page."""
     offset = runtime_uid - PAGE_CONNECTOR_UID_MIN
@@ -874,9 +858,7 @@ def _reconcile_page_endpoints(
         _stop([processes.pop(page_id)])
 
 
-def _reconcile_page_connectors(
-    config: dict,
-) -> dict[str, dict]:
+def _reconcile_page_connectors() -> dict[str, dict]:
     """Publish local page endpoints for the shared native Connector."""
     previous = _read_page_connector_registry()
     history = _read_page_connector_history()
@@ -888,9 +870,6 @@ def _reconcile_page_connectors(
             page_id, {**previous, **entries}, history
         )
         entries[page_id] = {
-            "connector_id": _page_connector_id(config["connector_id"], page_id),
-            "resource_id": "",
-            "generation": 0,
             "runtime_uid": runtime_uid,
             "runtime_gid": runtime_gid,
             "target_ip": _page_connector_target_ip(runtime_uid),
@@ -1174,7 +1153,7 @@ def main() -> int:
                 ingress,
             ]
             try:
-                connector_entries = _reconcile_page_connectors(config)
+                connector_entries = _reconcile_page_connectors()
                 _reconcile_page_endpoints(
                     options, config, connector_entries, page_endpoints,
                 )
@@ -1191,7 +1170,7 @@ def main() -> int:
                     break
                 if time.monotonic() >= next_page_reconcile:
                     try:
-                        connector_entries = _reconcile_page_connectors(config)
+                        connector_entries = _reconcile_page_connectors()
                         _reconcile_page_endpoints(
                             options, config, connector_entries, page_endpoints,
                         )

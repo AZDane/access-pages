@@ -724,22 +724,25 @@ class AppRunnerTests(unittest.TestCase):
                     {"connector_id": invalid}, installation_id
                 )
 
-    def test_page_connector_ids_are_stable_distinct_and_bounded(self):
-        first = app_runner._page_connector_id("ha-installation", "cat-sitter")
-        second = app_runner._page_connector_id("ha-installation", "pool-guy")
-        self.assertEqual(
-            first,
-            app_runner._page_connector_id("ha-installation", "cat-sitter"),
-        )
-        self.assertNotEqual(first, second)
-        self.assertLessEqual(len(first), 64)
-        self.assertRegex(first, r"^[a-z][a-z0-9-]+[a-z0-9]$")
-        self.assertNotEqual(
-            first,
-            app_runner._page_connector_id(
-                "ha-installation", "cat-sitter", generation=1
-            ),
-        )
+    def test_0131_registry_extra_fields_preserve_endpoint_identity(self):
+        app_runner.PageStore(self.paths["DATA_DIR"] / "pages").create({
+            "id": "cat-sitter", "title": "Cat sitter", "description": "",
+            "resources": [], "access_grants": [],
+        })
+        identity = {"runtime_uid": 22004, "runtime_gid": 22004,
+                    "target_ip": "127.77.0.5"}
+        old_entries = {"cat-sitter": {
+            **identity, "connector_id": "ha-installation-p-250fccbf89",
+            "resource_id": "", "generation": 0,
+        }}
+        with patch.object(app_runner.os, "chown"):
+            app_runner._write_page_connector_registry(old_entries)
+            self.assertEqual(app_runner._read_page_connector_registry(), old_entries)
+            for _ in range(2):
+                self.assertEqual(app_runner._reconcile_page_connectors(),
+                                 {"cat-sitter": identity})
+                self.assertEqual(app_runner._read_page_connector_registry(),
+                                 {"cat-sitter": identity})
 
 
 
@@ -842,7 +845,7 @@ class AppRunnerTests(unittest.TestCase):
         })
         with patch.object(app_runner.os, "chown"):
             for _ in range(2):
-                app_runner._reconcile_page_connectors({"connector_id": "ha-installation"})
+                app_runner._reconcile_page_connectors()
         self.assertEqual(
             json.loads(self.paths["CONNECTOR_STATUS_FILE"].read_text()),
             {"total": 1, "active": 0, "mode": "shared", "page_endpoints": 1},
