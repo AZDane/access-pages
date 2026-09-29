@@ -210,20 +210,6 @@ class GuestActivityStore:
             )
             self._purge(connection)
 
-    def record_initial_access(self, page_id: str, grant: dict) -> bool:
-        """Record the first authenticated visit and report whether it is new."""
-        with self._lock, self._connect() as connection:
-            self._upsert_guest(connection, page_id, grant)
-            cursor = connection.execute(
-                """
-                UPDATE guests SET first_access_at = ?
-                WHERE grant_id = ? AND first_access_at IS NULL
-                """,
-                (_iso(_now()), grant["id"]),
-            )
-            self._purge(connection)
-            return cursor.rowcount == 1
-
     def record_registered_initial_access(self, page_id: str, grant_id: str) -> bool:
         """Record a broker-confirmed visit without recreating a removed grant."""
         with self._lock, self._connect() as connection:

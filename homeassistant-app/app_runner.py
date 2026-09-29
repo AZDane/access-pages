@@ -594,11 +594,6 @@ def _policy_store_environment(config: dict) -> dict:
     }
 
 
-# Backward-compatible test/helper alias for the privileged admin plane.
-def _gateway_environment(options: dict, config: dict) -> dict:
-    return _admin_gateway_environment(options, config)
-
-
 def _demote(identity):
     uid, gid, groups, umask = (
         PROCESS_IDENTITIES[identity]

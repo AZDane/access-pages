@@ -372,12 +372,6 @@ class Handler(BaseHTTPRequestHandler):
             return hmac.compare_digest(supplied, ADMIN_TOKEN)
         return hmac.compare_digest(supplied, TOKEN)
 
-    def _admin_request(self):
-        role = self.headers.get("X-Broker-Role", "guest")
-        if role not in {"guest", "admin"}:
-            return None
-        return self.path == "/v1/discovery" or role == "admin"
-
     def _authorized_page(self):
         supplied = self.headers.get("X-Broker-Token", "")
         if not supplied:

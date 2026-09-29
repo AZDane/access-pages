@@ -617,7 +617,7 @@ class AppRunnerTests(unittest.TestCase):
             },
             clear=True,
         ):
-            environment = app_runner._gateway_environment({}, config)
+            environment = app_runner._admin_gateway_environment({}, config)
 
         self.assertNotIn("UNRELATED_SECRET", environment)
         self.assertNotIn("QURL_API_KEY", environment)
@@ -706,7 +706,7 @@ class AppRunnerTests(unittest.TestCase):
             {"SUPERVISOR_TOKEN": "supervisor-synthetic"},
             clear=True,
         ):
-            environment = app_runner._gateway_environment(options, config)
+            environment = app_runner._admin_gateway_environment(options, config)
 
         self.assertEqual(environment["QURL_MAX_LIFETIME_DAYS"], "30")
 
