@@ -16,9 +16,10 @@ The current private-development Gateway is dependency-free Python 3.12 and uses
 `ThreadingHTTPServer`. Small static Go processes provide the page-facing
 endpoints. The Home Assistant App runs these components with supporting
 brokers and stores under separate process identities inside one App container.
-The pinned Connector's `/var/log/layerv` path links to the App's persistent
-`/data/logs/layer-v-connector` directory. Page audit files under that directory
-are supplied to the Connector through `QURL_AUDIT_FILE`.
+The App image links `/var/log/layerv` to the persistent
+`/data/logs/layer-v-connector` directory. The LayerV broker captures its
+supervised qURL daemon's stdout and stderr in
+`/data/access-pages-broker/connector.log`.
 
 The packaged App routes per-page Go endpoints to one shared unprivileged Guest
 Service over a Unix socket. The Guest Service has no HA admin, policy
@@ -32,7 +33,7 @@ individual guest sessions.
 
 ## LayerV enrollment and resources
 
-The App packages qURL 2.6.0 with embedded Connector module v0.14.0. One
+The App packages qURL 3.0.0 with embedded Connector module v0.14.1. One
 externally supervised Connector runtime serves the installation. A dedicated,
 retained management API key has qURL read/write and enrollment-token minting
 authority. On the first required publication of a genuinely fresh
