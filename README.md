@@ -102,10 +102,14 @@ single-use where supported.
 The guest-facing page is narrowly limited to the capabilities selected
 by the Home Assistant administrator.
 
-For example, a **Cat Sitter** page might allow someone to:
+Depending on the devices integrated with Home Assistant and the categories
+enabled by the owner, a **Guest** page might allow someone to:
 
 -   turn selected lights on or off;
--   check the temperature in a room; and
+-   check room temperature and adjust a thermostat;
+-   turn a garden water feature on or off;
+-   switch Jacuzzi jets on or off;
+-   play or pause music on selected speakers; and
 -   view periodic still images from a selected camera.
 
 The owner can also choose additional supported actions, such as unlocking
@@ -129,10 +133,10 @@ Access Pages cannot determine whether an entity or action is safe for
 guest use. Owners must review what each entity actually controls, the
 actions they expose, and whether the available protections are appropriate.
 
-Only the Light category is enabled by default. The owner must explicitly
-enable additional supported categories in the App's `include_domains`
-setting before selecting them for guest pages. This is a conservative
-configuration default, not a guarantee that any entity is safe.
+The App defaults to `include_domains: "light"`, enabling only the Light
+category. The owner must explicitly enable additional supported categories
+in this setting before selecting them for guest pages. This is a
+conservative configuration default, not a guarantee that any entity is safe.
 Entity categories are configuration aids, not safety classifications;
 even a `light` entity is not inherently safe.
 
