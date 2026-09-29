@@ -21,6 +21,11 @@ class AppArmorProfileTests(unittest.TestCase):
         self.assertIn("/usr/local/bin/qurl rix,", self.profile)
         self.assertNotIn("/usr/local/bin/qurl-connector", self.profile)
 
+    def test_qurl_system_trust_and_lifetime_lock_remain_confined(self):
+        self.assertIn("/etc/ssl/certs/{,**} r,", self.profile)
+        self.assertIn("/data/access-pages-broker/{,**} rwk,", self.profile)
+        self.assertIn("network unix stream,", self.profile)
+
     def test_blanket_permissions_are_not_present(self):
         rules = {
             line.strip()

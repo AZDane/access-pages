@@ -17,6 +17,25 @@ from pages import PageStore
 
 
 class LayerVBrokerPolicyTests(unittest.TestCase):
+    def test_shutdown_during_restore_closes_waiting_publisher_before_listener(self):
+        publisher = Mock()
+        with (
+            patch.object(layerv_broker, "ConnectorPublisher", return_value=publisher),
+            patch.object(layerv_broker, "GuestResources"),
+            patch.object(layerv_broker, "ThreadingHTTPServer") as listener,
+            patch.object(layerv_broker.signal, "signal") as register_signal,
+            patch.dict(os.environ, {"ACCESS_PAGES_INSTALLATION_ID": "synthetic"}),
+        ):
+            def interrupted_restore():
+                signum, handler = register_signal.call_args.args
+                self.assertEqual(signum, layerv_broker.signal.SIGTERM)
+                handler(signum, None)
+            publisher.restore.side_effect = interrupted_restore
+            with self.assertRaises(SystemExit):
+                layerv_broker.run()
+            listener.assert_not_called()
+            publisher.close.assert_called_once_with()
+
     def test_expected_agent_restore_failure_keeps_broker_listener_for_admin_reset(self):
         publisher = Mock()
         publisher.restore.side_effect = AgentRecoveryRequired("explicit reset required")
