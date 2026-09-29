@@ -164,8 +164,7 @@ class LayerVBrokerPolicyTests(unittest.TestCase):
             "version": 1,
             "pages": {
                 "guest": {
-                    "connector_id": "ha-test-p-guest",
-                    "resource_id": "r_authoritative",
+                    "target_ip": "127.88.0.1",
                 },
             },
         }), encoding="utf-8")
@@ -222,6 +221,9 @@ class LayerVBrokerPolicyTests(unittest.TestCase):
                     patch("layerv_broker.RESOURCE_ISOLATION", isolation),
                 ):
                     layerv_broker.create_grant("guest", grant_id, "Guest", "1h", target, True, "1h")
+                    manager.ensure.assert_called_once_with(
+                        "guest", grant_id, "http://127.88.0.1:8080", isolation=isolation,
+                    )
                     self.assertEqual(scoped_client.create_qurl.call_args.kwargs["target_path"], target)
                     self.assertTrue(scoped_client.create_qurl.call_args.kwargs["target_path_supported"])
                     with patch("layerv_broker.RESOURCE_ISOLATION", "page" if isolation == "guest" else "guest"):
