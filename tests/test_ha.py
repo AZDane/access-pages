@@ -1,5 +1,6 @@
 import json
 import unittest
+from copy import deepcopy
 from email.message import Message
 from io import BytesIO
 from unittest.mock import patch
@@ -283,6 +284,47 @@ class EntityPolicyTests(unittest.TestCase):
         self.assertEqual(result["entities"][0]["entity_id"], "cover.patio")
         self.assertEqual(result["entities"][0]["type"], "awning")
         self.assertEqual(result["entities"][0]["area_name"], "Patio")
+
+    def test_brokered_discovery_matches_policy_without_mutating_response(self):
+        cases = (
+            ({}, ["cover.garage", "cover.patio", "light.kitchen"]),
+            ({"exclude_domains": frozenset({"cover"})}, ["light.kitchen"]),
+            ({"include_domains": frozenset({"cover"}),
+              "exclude_entities": frozenset({"cover.garage"})}, ["cover.patio"]),
+            ({"include_areas": frozenset({"kitchen"})}, ["light.kitchen"]),
+            ({"include_device_classes": frozenset({"awning"}),
+              "exclude_areas": frozenset({"patio"})}, []),
+            ({"include_entities": frozenset({"cover.garage", "light.kitchen"}),
+              "exclude_device_classes": frozenset({"garage"})}, ["light.kitchen"]),
+        )
+        with (
+            patch.object(HomeAssistantClient, "get_states", return_value=STATES),
+            patch.object(HomeAssistantClient, "get_services", return_value=SERVICES),
+            patch.object(HomeAssistantClient, "get_entity_areas", return_value={
+                "cover.patio": {"area_id": "patio", "area_name": "Patio"},
+                "light.kitchen": {"area_id": "kitchen", "area_name": "Kitchen"},
+            }),
+        ):
+            broker_response = HomeAssistantClient("http://ha", "token").discover_entities()
+            original = deepcopy(broker_response)
+            for policy, expected_ids in cases:
+                with self.subTest(policy=policy):
+                    expected = HomeAssistantClient(
+                        "http://ha", "token", **policy,
+                    ).discover_entities()
+                    client = BrokerHomeAssistantClient(
+                        "http://broker", "admin-secret", broker_role="admin", **policy,
+                    )
+                    with patch.object(client, "_request", return_value=broker_response) as request:
+                        for force in (False, True):
+                            result = client.discover_entities(force=force)
+                            request.assert_called_with("POST", "/v1/discovery", {"force": force})
+                            self.assertEqual(
+                                [entity["entity_id"] for entity in result["entities"]],
+                                expected_ids,
+                            )
+                            self.assertEqual(result, expected)
+                            self.assertEqual(broker_response, original)
 
     def test_unknown_domain_is_available_read_only(self):
         client = HomeAssistantClient("http://ha", "token")

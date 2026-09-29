@@ -949,4 +949,34 @@ class BrokerHomeAssistantClient(HomeAssistantClient):
             raise HomeAssistantError(
                 "Home Assistant broker returned invalid discovery data"
             )
-        return result
+        entities = [
+            entity for entity in result["entities"]
+            if self.entity_allowed(
+                entity["entity_id"], entity["domain"],
+                entity.get("device_class", ""), entity.get("area_id", ""),
+            )
+        ]
+        domain_counts = {}
+        for entity in entities:
+            domain_counts[entity["domain"]] = (
+                domain_counts.get(entity["domain"], 0) + 1
+            )
+        return {
+            **result,
+            "entities": entities,
+            "entity_count": len(entities),
+            "domain_count": len(domain_counts),
+            "domain_counts": domain_counts,
+            "allowed_domains": sorted(domain_counts),
+            "policy": {
+                "restricted": self.policy_restricted,
+                "include_areas": sorted(self.include_areas),
+                "include_domains": sorted(self.include_domains),
+                "include_device_classes": sorted(self.include_device_classes),
+                "include_entities": sorted(self.include_entities),
+                "exclude_areas": sorted(self.exclude_areas),
+                "exclude_domains": sorted(self.exclude_domains),
+                "exclude_device_classes": sorted(self.exclude_device_classes),
+                "exclude_entities": sorted(self.exclude_entities),
+            },
+        }
