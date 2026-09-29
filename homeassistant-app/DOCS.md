@@ -333,11 +333,24 @@ LayerV connection.
 
 ### `include_domains`
 
-Optional comma-separated allowlist of Home Assistant domains.
+Comma-separated Home Assistant domains enabled for selection in guest
+pages. Defaults to `light`; missing or empty values also use `light`.
+To enable additional categories, explicitly list them, for example
+`light,sensor,camera`. Save the App configuration and restart the App.
+Categories are configuration aids, not safety classifications: review
+what each entity controls before sharing it, including `light` entities.
+
+This setting limits entity discovery and page creation or updates. It
+does not remove controls from existing saved pages or revoke guest access.
+Installations with a previously empty setting now use lights only for
+selection; enable the domains used by an existing page before saving it
+again, or remove those controls from the page.
 
 ### `include_areas`
 
-Optional comma-separated list of Home Assistant area IDs.
+Optional comma-separated list of Home Assistant area IDs. When set,
+only entities in those areas and enabled domains appear in the picker.
+An area cannot enable a domain omitted from `include_domains`.
 
 ### `exclude_domains`
 

@@ -59,10 +59,12 @@ if not 1 <= QURL_MAX_LIFETIME_DAYS <= 30:
         "QURL_MAX_LIFETIME_DAYS must be between 1 and 30"
     )
 
-# Optional discovery policy. An empty include policy exposes every entity the
-# gateway supports. When any include set is populated, an entity must match at
-# least one include. Exclusions always win.
-HA_ENTITY_INCLUDE_DOMAINS = csv_env("HA_ENTITY_INCLUDE_DOMAINS")
+# Discovery starts with lights only, including when a saved setting is empty.
+# Domains must be explicitly enabled; other include filters narrow that set.
+# Exclusions always win.
+HA_ENTITY_INCLUDE_DOMAINS = (
+    csv_env("HA_ENTITY_INCLUDE_DOMAINS") or frozenset({"light"})
+)
 HA_ENTITY_INCLUDE_AREAS = csv_env("HA_ENTITY_INCLUDE_AREAS")
 HA_ENTITY_INCLUDE_DEVICE_CLASSES = csv_env(
     "HA_ENTITY_INCLUDE_DEVICE_CLASSES"

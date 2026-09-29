@@ -19,7 +19,7 @@ homeassistant_api: true
 hassio_role: default
 options:
   connector_id: ""
-  include_domains: ""
+  include_domains: "light"
   include_areas: ""
   exclude_domains: "alarm_control_panel"
   exclude_entities: ""

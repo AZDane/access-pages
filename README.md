@@ -129,11 +129,10 @@ Access Pages cannot determine whether an entity or action is safe for
 guest use. Owners must review what each entity actually controls, the
 actions they expose, and whether the available protections are appropriate.
 
-The intended conservative default is to enable only the Light category,
-with other supported categories requiring deliberate owner enablement
-before selection for guest pages. **This is not yet the software's
-default**: the App currently leaves `include_domains` empty and excludes
-`alarm_control_panel`, so other categories can appear in the picker.
+Only the Light category is enabled by default. The owner must explicitly
+enable additional supported categories in the App's `include_domains`
+setting before selecting them for guest pages. This is a conservative
+configuration default, not a guarantee that any entity is safe.
 Entity categories are configuration aids, not safety classifications;
 even a `light` entity is not inherently safe.
 

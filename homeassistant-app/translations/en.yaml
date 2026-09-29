@@ -12,10 +12,15 @@ configuration:
     description: Optional stable connector name. Leave empty to generate one, and do not change it after registration.
   include_domains:
     name: Included domains
-    description: Optional comma-separated Home Assistant domains to show in the entity picker.
+    description: >-
+      Comma-separated Home Assistant domains enabled in the entity picker.
+      Defaults to light, including when empty. Explicitly add other domains
+      before selecting their entities. Domains are not safety classifications.
   include_areas:
     name: Included areas
-    description: Optional comma-separated Home Assistant area IDs to show in the entity picker.
+    description: >-
+      Optional comma-separated Home Assistant area IDs. Narrows the picker to
+      those areas within the enabled domains; does not enable other domains.
   exclude_domains:
     name: Excluded domains
     description: Comma-separated domains hidden from the picker. Exclusions override inclusions.
