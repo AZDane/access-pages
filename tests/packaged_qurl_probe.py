@@ -24,7 +24,7 @@ assert subprocess.check_output(["/usr/local/bin/qurl", "--version"], text=True).
 
 def publisher_at(directory):
     publisher = ConnectorPublisher(
-        Path(directory) / "state", api_base_url="http://127.0.0.1:9",
+        Path(directory) / "shared-state", api_base_url="http://127.0.0.1:9",
         enrollment_key="unused-offline-fixture",
     )
     return publisher
@@ -69,6 +69,38 @@ with tempfile.TemporaryDirectory(prefix="qurl-probe-") as directory:
         assert 9 <= elapsed < 17, elapsed
         assert publisher._ipc()["pid"] == first_pid and publisher.healthy()
         print(f"contended ownership fails closed; predecessor remains healthy: {elapsed:.2f}s", flush=True)
+
+        # SIGTERM while the actual broker is restoring a contended daemon
+        # must reap that child, even before its HTTP listener is established.
+        broker = subprocess.Popen(["python", "/app/layerv_broker.py"], env={
+            **os.environ,
+            "ACCESS_PAGES_BROKER_DATA_DIR": directory,
+            "ACCESS_PAGES_BROKER_POLICY_DIR": str(Path(directory) / "policy"),
+            "ACCESS_PAGES_BROKER_TOKEN": "offline-fixture",
+            "ACCESS_PAGES_INSTALLATION_ID": "offline-fixture",
+            "LAYERV_API_BASE_URL": "http://127.0.0.1:9",
+            "LAYERV_API_TOKEN": "offline-fixture",
+            "LAYERV_RESOURCE_ID": "offline-fixture",
+        })
+        try:
+            children_file = Path(f"/proc/{broker.pid}/task/{broker.pid}/children")
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                children = children_file.read_text().split()
+                if children:
+                    break
+                time.sleep(0.05)
+            assert len(children) == 1, children
+            child_pid = children[0]
+            broker.terminate()
+            assert broker.wait(timeout=7) == 0
+            assert not Path(f"/proc/{child_pid}").exists(), "Broker left its qURL child alive"
+            assert publisher.healthy(), "Broker stopped the predecessor it did not own"
+            print("broker SIGTERM during lock wait reaps only its own child: passed", flush=True)
+        finally:
+            if broker.poll() is None:
+                broker.kill()
+                broker.wait(timeout=5)
 
         started = time.monotonic()
         publisher.close()

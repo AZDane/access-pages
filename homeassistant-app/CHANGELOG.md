@@ -8,7 +8,7 @@
   external supervision, and one daemon with isolated per-share sessions.
 - Require the exact daemon version, session mode, and supervised process ID;
   bound ownership-lock startup waits and finish daemon shutdown within the
-  App runner's stop budget.
+  App runner's stop budget, including cancellation during startup.
 - Assert that the final image contains a usable system CA trust store for
   tunnel TLS verification. Keep the enforced AppArmor allowlist unchanged.
 - Preserve saved Access Pages, Home Assistant settings, administrator

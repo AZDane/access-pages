@@ -1,5 +1,5 @@
 from datetime import timedelta
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hmac
@@ -493,31 +493,31 @@ def run():
         installation_id=os.environ["ACCESS_PAGES_INSTALLATION_ID"],
         publisher=publisher, management_client=CLIENT,
     )
-    try:
-        publisher.restore()
-    except AgentRecoveryRequired:
-        RECOVERY_REQUIRED = True
-        print("LayerV Agent recovery required; Admin reset remains available", flush=True)
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    server.daemon_threads = True
-    stopped = Event()
-    def reconcile_resources():
-        while not stopped.wait(5):
-            try:
-                reconcile_once(publisher)
-            except (LayerVError, OSError, sqlite3.Error, ValueError):
-                # No credentials or native logs are included in diagnostics.
-                print("Guest Connector reconciliation pending", flush=True)
-    Thread(target=reconcile_resources, daemon=True).start()
     def stop(_signum, _frame):
         raise SystemExit(0)
+    # Own shutdown before restore can spawn a daemon waiting on its lease.
     signal.signal(signal.SIGTERM, stop)
-    try:
+    with ExitStack() as shutdown:
+        shutdown.callback(publisher.close)
+        try:
+            publisher.restore()
+        except AgentRecoveryRequired:
+            RECOVERY_REQUIRED = True
+            print("LayerV Agent recovery required; Admin reset remains available", flush=True)
+        server = ThreadingHTTPServer((HOST, PORT), Handler)
+        shutdown.callback(server.server_close)
+        server.daemon_threads = True
+        stopped = Event()
+        shutdown.callback(stopped.set)
+        def reconcile_resources():
+            while not stopped.wait(5):
+                try:
+                    reconcile_once(publisher)
+                except (LayerVError, OSError, sqlite3.Error, ValueError):
+                    # No credentials or native logs are included in diagnostics.
+                    print("Guest Connector reconciliation pending", flush=True)
+        Thread(target=reconcile_resources, daemon=True).start()
         server.serve_forever()
-    finally:
-        stopped.set()
-        server.server_close()
-        publisher.close()
 
 
 if __name__ == "__main__":

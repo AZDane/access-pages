@@ -48,6 +48,8 @@ a 10-second monotonic readiness budget, rejects a predecessor's status, and
 cancels only its own waiting child on timeout. Each IPC attempt is limited to
 the remaining budget. Shutdown sends SIGINT, waits up to five seconds, then
 kills and reaps the child, leaving headroom in the runner's ten-second budget.
+The broker installs its stop handler and cleanup before restoring the daemon,
+so SIGTERM during a lock wait also reaps its own child.
 The lock is never removed to force ownership. A later retry can start once
 the previous owner has stopped.
 
@@ -72,9 +74,10 @@ credentials:
 
 | Coverage | Evidence |
 | --- | --- |
-| App behavior and recovery | 409 Python tests pass, including one-time enrollment handoff, publication, per-guest access, expiry, revocation, durable cleanup, reconnect, saved settings and fail-closed identity loss |
-| Actual packaged qURL | Offline probe as broker UID 2103: version, CA roots, startup/health, wrong-owner contention (~10 seconds), SIGINT exit 130, released-lock warm restart, brief lock overlap, killed-daemon restart, unchanged identity/registry files |
+| App behavior and recovery | 410 Python tests pass, including one-time enrollment handoff, publication, per-guest access, expiry, revocation, durable cleanup, reconnect, saved settings and fail-closed identity loss |
+| Actual packaged qURL | Offline probe as broker UID 2103: version, CA roots, startup/health, wrong-owner contention (~10 seconds), SIGINT exit 130, released-lock warm restart, brief lock overlap, broker SIGTERM during restoration, killed-daemon restart, unchanged identity/registry files |
 | Packaged application services | Existing security, startup and permission probes pass with real UIDs: guest access, sessions, expiry/revocation, service outages/restarts, retained settings, symlink/race rejection and queued retirement |
+| Tagged upstream fixtures | 49 tests pass for explicit enrollment, sealed-state warm reuse, external supervision, daemon lifecycle, per-share behavior, TLS configuration and lifetime locking (owner-only umask) |
 | Static validation | Pinned Ruff/Bandit, JavaScript syntax, Go endpoint tests, AppArmor parser and diff whitespace checks |
 | Architecture validation | AMD64 built and exercised locally; the existing native ARM64 CI job builds and exercises ARM64, including the same new qURL probe |
 | Required GitHub checks | Static analysis and tests; Secret scanning; Dependencies and repository configuration; Container image. PR results are authoritative for the final commit |
