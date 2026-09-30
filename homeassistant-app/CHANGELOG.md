@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.132
+
+- Enable only the Light category by default, including when a saved
+  `include_domains` setting is empty. Owners must explicitly enable other
+  categories before selecting their entities for guest pages.
+- Apply the configured policy to direct and brokered entity discovery and
+  page saves. Area, entity, and device-class filters narrow the enabled
+  domains; they cannot enable another category. Exclusions still take priority.
+- Preserve existing saved pages and guest access. Before saving an existing
+  page again, enable its non-light domains or remove those controls.
+- Clarify independent development, LayerV's connectivity role, owner
+  responsibility for physical controls and qURL sharing, and Guest page
+  examples. Entity categories are configuration aids, not safety classifications.
+- Remove unused guest ingress and verification paths and obsolete per-page
+  Connector registry metadata. Correct current qURL/Connector documentation
+  and describe callback and revocation boundaries.
+
 ## 0.1.131
 
 - Upgrade the supported qURL CLI to 3.0.0 with embedded LayerV Connector
