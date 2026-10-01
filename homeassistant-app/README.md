@@ -1,135 +1,98 @@
 # Access Pages for Home Assistant
 
-Access Pages gives temporary guests access to a small, explicitly
-approved part of Home Assistant without making Home Assistant or the
-home network publicly reachable.
+Access Pages gives temporary guests access to a small, explicitly approved part
+of Home Assistant without making Home Assistant or the home network publicly
+reachable. Guests receive a purpose-built page with only the devices,
+information, and controls they need, without a Home Assistant account, password,
+or VPN access. No inbound router port needs to be opened.
 
-A guest can be given a purpose-built page containing only the devices,
-information, and controls they need. They do not need a Home Assistant
-account, password, or VPN access, and no inbound router port needs to be
-opened.
+Home Assistant, its devices, and its administrative interface remain inside the
+home, preserving its local-first model.
 
-## The challenge
+## The protected path and guest capabilities
 
-Giving temporary guests access to Home Assistant creates a difficult set
-of requirements:
+Remote guest connectivity uses [LayerV](https://layerv.ai) and the
+**Network-Infrastructure Hiding Protocol (NHP)**. NHP follows an
+**authenticate-before-connect** model: the protected endpoint remains invisible
+and unreachable until access has been cryptographically verified. A valid qURL
+opens the protected NHP/FRP path.
 
--   Home Assistant and the home network should not become publicly
-    reachable.
--   No inbound router ports should need to be opened.
--   Temporary visitors should not require Home Assistant accounts,
-    passwords, or VPN access.
--   Guests should see only the devices and controls they need.
--   Access should expire automatically and remain revocable at any time.
--   Revoking one guest should not interrupt anyone else.
+NHP is the open-source network-hiding technology developed by OpenNHP. The
+LayerV team are core builders of OpenNHP, and its founding team co-authored the
+Cloud Security Alliance (CSA) NHP specification. LayerV provides the external
+managed NHP/qURL connectivity service and developer tools currently used by
+Access Pages. The protocol is also documented in an IETF Internet-Draft. See
+[LayerV's OpenNHP standards page](https://layerv.ai/standards/) for this history.
 
-AI-assisted reconnaissance and exploitation are rapidly shrinking the
-time between the discovery of a vulnerability and active attacks against
-it. As attacks move toward machine speed, protecting a publicly
-discoverable service becomes an increasingly difficult race.
+Access Pages is independently developed open-source software. Its Gateway
+independently determines and enforces the Home Assistant capabilities available
+after admission. The browser cannot obtain more capabilities by changing its
+requests. Guest pages do not expose the regular Home Assistant dashboard,
+configuration, history, or unrelated entities.
 
-**The safest endpoint is one an unauthorized attacker cannot discover or
-reach. You cannot attack what you cannot see.**
+Depending on the integrated devices and categories enabled by the owner, a
+page can offer selected lights, temperature readings and thermostat controls,
+music controls, or read-only camera stills. Additional supported actions, such
+as unlocking a selected door, require the owner's deliberate selection.
 
-## Local by design
+Each guest has an independent grant with expiration and individual revocation.
+Optional email-code verification, proximity requirements for actions, guest
+activity records, security events, and administrator alerts provide additional
+controls. Proximity is an accidental-action safeguard, not proof of physical
+presence.
 
-This approach aligns with Home Assistant's vision of the Open Home,
-which places privacy, choice, and sustainability at the heart of the
-smart home.
+## What it looks like
 
-Home Assistant states that devices should work locally and that cloud
-connections should be additional and opt-in. Access Pages preserves that
-local-first model: Home Assistant, its devices, and its administrative
-interface remain inside the home.
+The owner creates purpose-specific pages and selects the entities and actions
+each guest can use.
 
-The goal is not to move Home Assistant into the cloud. It is to let an
-authorized guest reach a small, explicitly approved part of it without
-exposing Home Assistant or the home network to the public internet.
+![Access Pages administration showing purpose-specific Home Assistant access pages](https://raw.githubusercontent.com/AZDane/access-pages/30ad2605ce7f4f0f4cc536fd1f4fb705041a991d/docs/images/admin.png)
 
-## An invisible path to the home
+The guest sees only the controls approved for that page.
 
-Access Pages uses the **Network-Infrastructure Hiding Protocol (NHP)**,
-a cryptography-powered Zero Trust protocol based on an
-**authenticate-before-connect** model.
+![Access Pages guest view showing limited vacation-rental controls](https://raw.githubusercontent.com/AZDane/access-pages/30ad2605ce7f4f0f4cc536fd1f4fb705041a991d/docs/images/guest.png)
 
-Traditional remote-access services expose an endpoint first and
-authenticate the visitor after a connection has been made. NHP reverses
-that order. The protected endpoint remains invisible and unreachable
-until access has been cryptographically verified.
+## Owner responsibility
 
-NHP is the open-source network-hiding technology developed by OpenNHP.
-The LayerV team are core builders of OpenNHP, and LayerV's founding team
-co-authored the Cloud Security Alliance (CSA) NHP specification. LayerV
-is the enterprise implementation of that foundation, providing the
-managed access service and developer tools used by Access Pages. The
-protocol is also documented in an IETF Internet-Draft.
+Home Assistant owners control what guests can access and are responsible
+for deciding what is appropriate and safe for their installation. Home
+Assistant is highly customizable: entities and actions can control
+physical equipment, locks, doors, gates, appliances, security equipment,
+or other systems where unintended operation has real-world consequences.
+Access Pages cannot determine whether an entity or action is safe for
+guest use. Owners must review what each entity actually controls, the
+actions they expose, and whether the available protections are appropriate.
 
-For more about the relationship between LayerV, OpenNHP, the CSA
-specification, and the IETF work, see
-[LayerV's OpenNHP standards page](https://layerv.ai/standards/).
+The App defaults to `include_domains: "light"`, enabling only the Light
+category. The owner must explicitly enable additional supported categories
+in this setting before selecting them for guest pages. This is a
+conservative configuration default, not a guarantee that any entity is safe.
+Entity categories are configuration aids, not safety classifications;
+even a `light` entity is not inherently safe.
 
-The Access Pages App establishes the protected NHP/FRP path. A guest
-reaches that path through a valid LayerV qURL rather than through a
-public Home Assistant or Gateway endpoint.
+Treat qURLs as access credentials. Once a qURL is provided for sharing,
+Access Pages cannot control how an owner or guest stores, transmits,
+forwards, screenshots, publishes, or otherwise distributes it. Someone
+who obtains a valid qURL may be able to reach the associated guest access,
+subject to any additional protections configured by the owner.
 
-## Purpose-limited guest access
-
-After the protected path is available, the Access Pages Gateway limits
-what the guest can actually use.
-
-Each guest receives an independent access grant. The grant determines
-how long access lasts and whether the invitation is renewable or
-single-use where supported.
-
-The guest-facing page is narrowly limited to the capabilities selected
-by the Home Assistant administrator.
-
-For example, a **Cat Sitter** page might allow someone to:
-
--   unlock a selected door;
--   turn selected lights on or off;
--   check the temperature in a room; and
--   view periodic still images from a selected camera.
-
-It does not expose the regular Home Assistant dashboard, configuration,
-history, or unrelated entities.
-
-The Gateway enforces the approved capabilities on the server. The
-browser cannot gain additional Home Assistant capabilities simply by
-changing what it submits.
-
-## More than a hidden URL
-
-Access Pages does not rely on the secrecy of a public web address.
-
-The NHP-controlled access path is kept out of reach until admission
-succeeds, while the Gateway independently limits the capabilities
-available after admission.
-
-The guest-facing runtime is also isolated from privileged Gateway
-functions. It is not given general Home Assistant administrative
-authority or the credentials used to manage LayerV access.
-
-Additional controls include expiration, individual revocation, optional
-email-code verification, optional proximity requirements for actions,
-guest activity records, security events, administrator alerts, and
-read-only camera stills.
+The owner is responsible for deciding who receives a qURL, how it is
+distributed, how long access remains valid, and whether protections such
+as email verification, proximity requirements for actions, expiration,
+or revocation are appropriate.
 
 ## Getting started
 
-Access Pages runs as a Home Assistant App. Remote guest access is
-provided through LayerV.
+1. Install and start **Access Pages**, then open its Web UI.
+2. [Create or sign in to a LayerV account](https://layerv.ai/qurl/dashboard/keys/)
+   and create a dedicated API key for this installation.
+3. Complete **Connect to LayerV**.
+4. Create an Access Page and select its entities and permitted actions.
+5. Create a guest, choose the lifetime and optional protections, then share the
+   generated qURL.
 
-1.  Install **Access Pages**.
-2.  Create or sign in to a LayerV account.
-3.  Create a dedicated LayerV API key for this installation.
-4.  Connect Access Pages to LayerV.
-5.  Create an Access Page and choose its Home Assistant entities and
-    permitted actions.
-6.  Create a guest, choose the access lifetime and optional protections,
-    and share the generated qURL.
-
-See [DOCS.md](DOCS.md) for complete setup and operating instructions.
+See [installation and operating documentation](https://github.com/AZDane/access-pages-app/blob/main/access_pages/DOCS.md)
+or Home Assistant's **Documentation** tab for setup, configuration, and recovery.
 
 ## License and branding
 
@@ -137,7 +100,7 @@ The Access Pages Gateway source code is licensed under the MIT License.
 
 The MIT License also covers the Gateway documentation. The App icon and logo
 are Access Pages artwork. The license does not grant permission to use the
-LayerV name, trademarks, wordmarks, logos, or other brand assets except as
+[LayerV](https://layerv.ai) name, trademarks, wordmarks, logos, or other brand assets except as
 necessary to identify an unmodified copy of this software.
 
 Files specifically covered by this exclusion include:
