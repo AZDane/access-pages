@@ -96,6 +96,47 @@ Home Assistant's enforced AppArmor audit logs must also be checked on the
 target appliance. No live TLS handshake, NHP admission, account plan/quota,
 target-device performance, or HA Supervisor update result is claimed here.
 
+## Future qURL/Connector upgrades
+
+Access Pages HA consumes a checksum-pinned qURL release binary, including its
+Connector and related dependencies; it does not patch OpenNHP source. It is
+not the Access Pages Online Gateway. Updating Online's OpenNHP source pin is
+a separate maintenance process; an Online Server/Gateway mixed-version matrix
+is not this App's compatibility test. Review the observable contracts below
+together for each candidate, changing expectations only after verification:
+
+- **Binary and inventory:** review the release provenance and both Linux
+  archives/checksums in [Dockerfile.ha-app](../Dockerfile.ha-app), alongside
+  [packaging assertions](../tests/test_packaging.py),
+  [third-party notices](../THIRD_PARTY_NOTICES.md) and `third_party_licenses/`
+  (both SPDX inventories, exact module licenses/NOTICEs and required source).
+- **CLI and responses:** review `ConnectorPublisher` and `GuestResources` in
+  [guest_resources.py](../guest_resources.py): command flags/environment,
+  `login`, `publish`, `delete`, JSON identity/target/serving fields, exit-code
+  mappings (4/6/9/11), and the successful-delete/local-cleanup warning contract.
+  Check [LayerVClient](../layerv.py) enrollment-token and management API contracts
+  against the bundled Connector and deployed backend's supported versions.
+- **Persisted identity:** verify compatibility of sealed Agent state,
+  `runtime_mode.json`, the owner-bound `local_shares.json` registry, bootstrap
+  and durable enrollment markers, and fresh inherited wrapping-key descriptors.
+  Preserve one-time enrollment and fail-closed recovery; use the backup/rollback
+  procedure below rather than deleting state or automatically reenrolling.
+- **Readiness and ownership:** review `ConnectorPublisher._ipc`, `_start`,
+  `ensure_ready` and `_stop_daemon`: owner-only Unix `/status` IPC, `job_version`
+  (currently `5/3.0.0/per-share`), launched PID, per-resource serving status,
+  external supervision, lifetime lock, startup budget and signal/kill/reap
+  behavior. Coordinate with [broker shutdown](../layerv_broker.py) and the
+  [runner's stop budget](../homeassistant-app/app_runner.py).
+- **Existing validation:** review [contract tests](../tests/test_guest_resources.py)
+  and [broker tests](../tests/test_layerv_broker.py), and update the binary-version
+  and lifecycle expectations in [the packaged probe](../tests/packaged_qurl_probe.py)
+  together with readiness expectations. For an actual upgrade, require both
+  AMD64 `Container image` and native `ARM64 package` lifecycle jobs in
+  [security.yml](../.github/workflows/security.yml); image builds alone are insufficient.
+- **Acceptance:** use the live enrollment/tunnel checks and their limits above
+  for the candidate where appropriate, including retained real sealed state on
+  warm restart. The synthetic offline probe cannot establish that compatibility.
+
 ## Installation and recovery
 
 Follow [the App upgrade instructions](../homeassistant-app/DOCS.md#upgrading-to-qurl-300)
