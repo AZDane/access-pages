@@ -35,7 +35,7 @@ RUN dpkg-query -W ca-certificates \
     && python -c 'import ssl; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
 
 ARG BUILD_ARCH
-ARG BUILD_VERSION=0.1.131
+ARG BUILD_VERSION=0.1.133
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

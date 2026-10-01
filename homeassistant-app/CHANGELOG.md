@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.133
+
+- Match the enforced AppArmor executable allowlist to the Python 3.14 runtime
+  so the App can start under Home Assistant's protection.
+- Detect future Python runtime and AppArmor mismatches in existing CI tests.
+- Use cold Home Assistant App backups to keep SQLite and Connector state
+  consistent. The App stops briefly during a backup and restarts afterward.
+- Update the runtime images to Python 3.14 and Go 1.27.1 and clarify
+  coordinated qURL upgrade review guidance.
+
 ## 0.1.132
 
 - Enable only the Light category by default, including when a saved
