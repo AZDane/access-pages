@@ -127,6 +127,12 @@ class PackagingTests(unittest.TestCase):
         )
         self.assertNotIn("8080/tcp", config)
 
+    def test_home_assistant_backup_stops_mutable_state_writers(self):
+        config = (ROOT / "homeassistant-app" / "config.yaml").read_text(
+            encoding="utf-8"
+        )
+        self.assertRegex(config, r"(?m)^backup: cold$")
+
 
 if __name__ == "__main__":
     unittest.main()
