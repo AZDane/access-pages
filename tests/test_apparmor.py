@@ -1,4 +1,5 @@
 import unittest
+import re
 from pathlib import Path
 
 
@@ -20,6 +21,20 @@ class AppArmorProfileTests(unittest.TestCase):
     def test_only_embedded_qurl_binary_is_executable(self):
         self.assertIn("/usr/local/bin/qurl rix,", self.profile)
         self.assertNotIn("/usr/local/bin/qurl-connector", self.profile)
+
+    def test_final_python_runtime_is_allowlisted(self):
+        dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
+        stages = re.findall(r"^FROM\s+(.+)$", dockerfile, re.MULTILINE)
+        runtime = re.fullmatch(
+            r"python:(\d+\.\d+)[^\s]*(?:\s+AS\s+\S+)?", stages[-1], re.IGNORECASE
+        )
+        self.assertIsNotNone(runtime, "Final image must identify its Python version")
+        executable = f"/usr/local/bin/python{runtime.group(1)}"
+        self.assertRegex(
+            self.profile,
+            rf"(?m)^\s*{re.escape(executable)}\s+rix,\s*$",
+            f"AppArmor must permit the final runtime executable {executable}",
+        )
 
     def test_qurl_system_trust_and_lifetime_lock_remain_confined(self):
         self.assertIn("/etc/ssl/certs/{,**} r,", self.profile)

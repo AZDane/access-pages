@@ -9,6 +9,7 @@ arch:
   - aarch64
 startup: application
 boot: auto
+backup: cold
 init: false
 apparmor: true
 ingress: true
