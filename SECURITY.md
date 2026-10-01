@@ -40,7 +40,7 @@ guest session remains mandatory in both modes. See the
 - Local revocation takes effect before remote qURL cleanup is attempted.
 - The LayerV API key and connector identity are installation-specific secrets.
 
-The App packages qURL 2.6.0 with embedded Connector v0.14.0 and supervises one
+The App packages qURL 3.0.0 with embedded Connector v0.14.1 and supervises one
 Connector runtime per installation. The retained management API key can read
 and write qURLs and mint a one-shot Agent enrollment token; CRID/headless
 resolve scope is not required. On the first publication of a genuinely fresh
@@ -63,7 +63,7 @@ The implemented request and credential boundaries are:
 | --- | --- | --- | --- |
 | Admin | Admin token in `X-Admin-Token`; short-lived signed token for page preview | Page, grant, email, preview, qURL, activity, and connection administration | `admin.py` and `access.py` |
 | Guest | Individual grant-bound session and page capability | Saved page metadata, state, camera resources, and saved actions | Packaged `guest_service.py` and HA broker guest interface |
-| Internal | Exact HA broker token | Configured guest-verification email delivery | `internal.py` |
+| Internal | Exact HA broker token | Verification-email delivery, typed guest activity/security events, and configured notifications | `internal.py` |
 | Home Assistant | Direct gateway credential or isolated HA broker credential | Server-resolved discovery, reads, proximity checks, and operations | `ha.py` and `ha_broker.py` |
 
 Credentials are deliberately non-interchangeable. An admin token is not guest
@@ -100,12 +100,15 @@ cannot replace the other page's individual guest session.
 
 ### Revocation locking
 
-The Gateway preview action path uses a page action lock through Home Assistant
-dispatch. In the packaged guest path, the broker independently rechecks the
-current grant, session, and published policy immediately before dispatch. An
-already-dispatched action may finish after revocation; a later action cannot
-use the revoked grant. Grant creation reloads current page state before
-committing so it cannot restore a concurrently revoked grant.
+Gateway page locks serialize the operations they govern, including preview
+through HA dispatch; they do not span the separate guest broker process.
+The broker rechecks current grant, session, and published policy immediately
+before dispatch. If that check observes revocation, the action is denied.
+An action that passes the final check may still complete if revocation occurs
+concurrently before or during transmission to Home Assistant. Once HA may have
+received a service request, Access Pages cannot guarantee its cancellation.
+Grant creation reloads current page state before committing so it cannot
+restore a concurrently revoked grant.
 
 Local access is removed before LayerV qURL cleanup. Remote cleanup failure is
 reported and never restores the local grant. Durable Admin and LayerV broker
@@ -167,7 +170,7 @@ supervisor, which revalidates and atomically stores the credential for the
 Connector. The onboarding process cannot open the protected key path, and
 initial Connector registration runs under the Connector identity.
 
-The App pins architecture-specific qURL 2.6.0 release archives by SHA-256.
+The App pins architecture-specific qURL 3.0.0 release archives by SHA-256.
 Repository, static-analysis, test, Git-history secret, and built-image scans
 remain release gates. Findings must be reviewed against the actual current
 binary and its embedded Connector module; historical findings for an older

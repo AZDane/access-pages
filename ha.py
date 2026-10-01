@@ -374,7 +374,8 @@ class HomeAssistantClient:
         area_id: str = "",
     ) -> bool:
         if (
-            entity_id in self.exclude_entities
+            (self.include_domains and domain not in self.include_domains)
+            or entity_id in self.exclude_entities
             or domain in self.exclude_domains
             or (area_id and area_id in self.exclude_areas)
             or (
@@ -384,12 +385,17 @@ class HomeAssistantClient:
         ):
             return False
 
-        if not self.policy_restricted:
+        # Area, entity, and device-class filters narrow the enabled domains;
+        # none can enable another domain implicitly.
+        if not (
+            self.include_areas
+            or self.include_device_classes
+            or self.include_entities
+        ):
             return True
 
         return bool(
             entity_id in self.include_entities
-            or domain in self.include_domains
             or (area_id and area_id in self.include_areas)
             or (
                 device_class
@@ -949,4 +955,34 @@ class BrokerHomeAssistantClient(HomeAssistantClient):
             raise HomeAssistantError(
                 "Home Assistant broker returned invalid discovery data"
             )
-        return result
+        entities = [
+            entity for entity in result["entities"]
+            if self.entity_allowed(
+                entity["entity_id"], entity["domain"],
+                entity.get("device_class", ""), entity.get("area_id", ""),
+            )
+        ]
+        domain_counts = {}
+        for entity in entities:
+            domain_counts[entity["domain"]] = (
+                domain_counts.get(entity["domain"], 0) + 1
+            )
+        return {
+            **result,
+            "entities": entities,
+            "entity_count": len(entities),
+            "domain_count": len(domain_counts),
+            "domain_counts": domain_counts,
+            "allowed_domains": sorted(domain_counts),
+            "policy": {
+                "restricted": self.policy_restricted,
+                "include_areas": sorted(self.include_areas),
+                "include_domains": sorted(self.include_domains),
+                "include_device_classes": sorted(self.include_device_classes),
+                "include_entities": sorted(self.include_entities),
+                "exclude_areas": sorted(self.exclude_areas),
+                "exclude_domains": sorted(self.exclude_domains),
+                "exclude_device_classes": sorted(self.exclude_device_classes),
+                "exclude_entities": sorted(self.exclude_entities),
+            },
+        }

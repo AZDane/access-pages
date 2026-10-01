@@ -1,12 +1,14 @@
 import importlib.util
 import json
 import os
+import runpy
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
 from guest_resources import ConnectorPublisher
+from ha import BrokerHomeAssistantClient
 
 
 MODULE_PATH = (
@@ -20,6 +22,48 @@ SPEC.loader.exec_module(app_runner)
 
 
 class AppRunnerTests(unittest.TestCase):
+    def test_gateway_discovery_defaults_and_owner_domain_opt_in(self):
+        for configured, expected_domains in (
+            (None, {"light"}),
+            ("", {"light"}),
+            (" \t", {"light"}),
+            (", ,", {"light"}),
+            (" light, sensor,camera ", {"light", "sensor", "camera"}),
+            ("lock", {"lock"}),
+        ):
+            for app_mode in (False, True):
+                with self.subTest(configured=configured, app_mode=app_mode):
+                    policy_environment = (
+                        {} if configured is None
+                        else {"HA_ENTITY_INCLUDE_DOMAINS": configured}
+                    )
+                    if app_mode:
+                        options = (
+                            {} if configured is None
+                            else {"include_domains": configured}
+                        )
+                        policy_environment = app_runner._policy_options(options)
+                    with patch.dict(os.environ, {
+                        "HA_BASE_URL": "http://ha.invalid",
+                        "HA_TOKEN": "synthetic-ha-token",
+                        "ADMIN_TOKEN": "synthetic-admin-token",
+                        **policy_environment,
+                    }, clear=True):
+                        config = runpy.run_path(str(MODULE_PATH.parents[1] / "config.py"))
+                    client = BrokerHomeAssistantClient(
+                        "http://broker.invalid", "synthetic-broker-token",
+                        broker_role="admin",
+                        include_domains=config["HA_ENTITY_INCLUDE_DOMAINS"],
+                    )
+                    with patch.object(client, "_request", return_value={
+                        "entities": [
+                            {"entity_id": f"{domain}.example", "domain": domain}
+                            for domain in ("light", "sensor", "camera", "lock")
+                        ],
+                    }):
+                        result = client.discover_entities()
+                    self.assertEqual(set(result["allowed_domains"]), expected_domains)
+
     def test_resource_isolation_configuration_is_validated_and_explicit(self):
         default = app_runner._resource_isolation_environment({})
         self.assertEqual(default["ACCESS_PAGES_RESOURCE_ISOLATION"], "guest")
@@ -617,7 +661,7 @@ class AppRunnerTests(unittest.TestCase):
             },
             clear=True,
         ):
-            environment = app_runner._gateway_environment({}, config)
+            environment = app_runner._admin_gateway_environment({}, config)
 
         self.assertNotIn("UNRELATED_SECRET", environment)
         self.assertNotIn("QURL_API_KEY", environment)
@@ -706,7 +750,7 @@ class AppRunnerTests(unittest.TestCase):
             {"SUPERVISOR_TOKEN": "supervisor-synthetic"},
             clear=True,
         ):
-            environment = app_runner._gateway_environment(options, config)
+            environment = app_runner._admin_gateway_environment(options, config)
 
         self.assertEqual(environment["QURL_MAX_LIFETIME_DAYS"], "30")
 
@@ -724,22 +768,25 @@ class AppRunnerTests(unittest.TestCase):
                     {"connector_id": invalid}, installation_id
                 )
 
-    def test_page_connector_ids_are_stable_distinct_and_bounded(self):
-        first = app_runner._page_connector_id("ha-installation", "cat-sitter")
-        second = app_runner._page_connector_id("ha-installation", "pool-guy")
-        self.assertEqual(
-            first,
-            app_runner._page_connector_id("ha-installation", "cat-sitter"),
-        )
-        self.assertNotEqual(first, second)
-        self.assertLessEqual(len(first), 64)
-        self.assertRegex(first, r"^[a-z][a-z0-9-]+[a-z0-9]$")
-        self.assertNotEqual(
-            first,
-            app_runner._page_connector_id(
-                "ha-installation", "cat-sitter", generation=1
-            ),
-        )
+    def test_0131_registry_extra_fields_preserve_endpoint_identity(self):
+        app_runner.PageStore(self.paths["DATA_DIR"] / "pages").create({
+            "id": "cat-sitter", "title": "Cat sitter", "description": "",
+            "resources": [], "access_grants": [],
+        })
+        identity = {"runtime_uid": 22004, "runtime_gid": 22004,
+                    "target_ip": "127.77.0.5"}
+        old_entries = {"cat-sitter": {
+            **identity, "connector_id": "ha-installation-p-250fccbf89",
+            "resource_id": "", "generation": 0,
+        }}
+        with patch.object(app_runner.os, "chown"):
+            app_runner._write_page_connector_registry(old_entries)
+            self.assertEqual(app_runner._read_page_connector_registry(), old_entries)
+            for _ in range(2):
+                self.assertEqual(app_runner._reconcile_page_connectors(),
+                                 {"cat-sitter": identity})
+                self.assertEqual(app_runner._read_page_connector_registry(),
+                                 {"cat-sitter": identity})
 
 
 
@@ -803,16 +850,8 @@ class AppRunnerTests(unittest.TestCase):
             0o640,
         )
 
-    def test_endpoint_capability_cannot_authenticate_to_ha_broker_after_reconcile(self):
+    def test_reconcile_clears_legacy_registry_and_preserves_endpoint_capability(self):
         from hashlib import sha256
-        with patch.dict(os.environ, {
-            "HA_BROKER_TOKEN": "synthetic-guest-broker",
-            "HA_BROKER_ADMIN_TOKEN": "synthetic-admin-broker",
-            "HA_BASE_URL": "http://ha.invalid",
-            "HA_TOKEN": "synthetic-ha",
-        }):
-            import ha_broker
-
         # Model an existing installation that issued the same credential to
         # both boundaries; reconciliation must remove that old authority too.
         secret = "synthetic-old-endpoint-capability"
@@ -824,10 +863,7 @@ class AppRunnerTests(unittest.TestCase):
         with patch.object(app_runner.os, "chown"):
             capabilities = app_runner._page_capabilities({"cat-sitter"})
         self.assertEqual(capabilities["cat-sitter"], secret)
-        handler = object.__new__(ha_broker.Handler)
-        handler.headers = {"X-Broker-Token": secret}
-        with patch.object(ha_broker, "PAGE_CAPABILITY_REGISTRY", self.paths["HA_CAPABILITY_REGISTRY"]):
-            self.assertEqual(handler._authorized_page(), "")
+        self.assertEqual(json.loads(self.paths["HA_CAPABILITY_REGISTRY"].read_text()), {})
         self.assertEqual(
             json.loads(self.paths["HA_GUEST_CAPABILITY_REGISTRY"].read_text())["cat-sitter"],
             sha256(secret.encode()).hexdigest(),
@@ -842,7 +878,7 @@ class AppRunnerTests(unittest.TestCase):
         })
         with patch.object(app_runner.os, "chown"):
             for _ in range(2):
-                app_runner._reconcile_page_connectors({"connector_id": "ha-installation"})
+                app_runner._reconcile_page_connectors()
         self.assertEqual(
             json.loads(self.paths["CONNECTOR_STATUS_FILE"].read_text()),
             {"total": 1, "active": 0, "mode": "shared", "page_endpoints": 1},

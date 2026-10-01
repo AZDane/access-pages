@@ -79,60 +79,31 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
         self.assertEqual(dict(headers).get("Cache-Control"), "no-store")
         self.assertNotIn(secret.encode(), body)
 
-    def test_ha_broker_rejects_missing_and_wrong_guest_credentials(self):
+    def test_tcp_ha_broker_requires_explicit_admin_role_and_credential(self):
         client = Mock()
-        secret = "synthetic-ha-broker-secret"
+        secret = "synthetic-admin-secret"
         with (
-            patch("ha_broker.TOKEN", secret),
-            patch("ha_broker.ADMIN_TOKEN", "synthetic-admin-secret"),
+            patch("ha_broker.ADMIN_TOKEN", secret),
             patch("ha_broker.HA_CLIENT", client),
             running_server(ha_broker.Handler) as port,
         ):
-            for headers in ({}, {"X-Broker-Token": "wrong"}):
-                self.assert_unauthorized(
-                    request(port, "POST", "/v1/states", headers=headers, payload=None),
-                    secret,
-                )
-        client.assert_not_called()
+            for route in ("/v1/states", "/v1/camera-image", "/v1/discovery"):
+                for headers in (
+                    {},
+                    {"X-Broker-Token": secret},
+                    {"X-Broker-Role": "guest", "X-Broker-Token": secret},
+                    {"X-Broker-Role": "owner", "X-Broker-Token": secret},
+                    {"X-Broker-Role": "admin"},
+                    {"X-Broker-Role": "admin", "X-Broker-Token": "wrong"},
+                ):
+                    with self.subTest(route=route, headers=headers):
+                        self.assert_unauthorized(
+                            request(port, "POST", route, headers=headers, payload=None),
+                            secret,
+                        )
+        self.assertEqual(client.mock_calls, [])
 
-    def test_camera_image_broker_rejects_missing_and_wrong_credentials(self):
-        client = Mock()
-        secret = "synthetic-ha-broker-secret"
-        with (
-            patch("ha_broker.TOKEN", secret),
-            patch("ha_broker.HA_CLIENT", client),
-            running_server(ha_broker.Handler) as port,
-        ):
-            for headers in ({}, {"X-Broker-Token": "wrong"}):
-                self.assert_unauthorized(
-                    request(port, "POST", "/v1/camera-image", headers=headers,
-                            payload=None),
-                    secret,
-                )
-        client.assert_not_called()
-
-    def test_ha_discovery_rejects_guest_credential(self):
-        client = Mock()
-        guest_secret = "synthetic-guest-secret"
-        with (
-            patch("ha_broker.TOKEN", guest_secret),
-            patch("ha_broker.ADMIN_TOKEN", "synthetic-admin-secret"),
-            patch("ha_broker.HA_CLIENT", client),
-            running_server(ha_broker.Handler) as port,
-        ):
-            self.assert_unauthorized(
-                request(
-                    port,
-                    "POST",
-                    "/v1/discovery",
-                    headers={"X-Broker-Token": guest_secret},
-                    payload=None,
-                ),
-                guest_secret,
-            )
-        client.assert_not_called()
-
-    def test_page_capability_cannot_cross_into_another_page(self):
+    def test_page_capability_cannot_obtain_tcp_guest_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             store = PageStore(root / "policy")
@@ -162,27 +133,28 @@ class InternalListenerAuthenticationTests(unittest.TestCase):
             client = Mock()
             with (
                 patch("ha_broker.PAGE_STORE", store),
-                patch("ha_broker.PAGE_CAPABILITY_REGISTRY", registry),
+                patch("ha_broker.GUEST_CAPABILITY_REGISTRY", registry),
                 patch("ha_broker.HA_CLIENT", client),
                 running_server(ha_broker.Handler) as port,
             ):
-                status, _headers, _body = request(
-                    port,
-                    "POST",
-                    "/v1/page-action",
-                    headers={
-                        "X-Broker-Token": capability,
-                        "X-Broker-Role": "guest",
-                        "Content-Type": "application/json",
-                    },
-                    payload=json.dumps({
-                        "page_id": "page-b",
-                        "resource_id": "light-b",
-                        "action_id": "turn_on",
-                        "parameters": {},
-                    }).encode(),
-                )
-            self.assertEqual(status, 404)
+                self.assertEqual(ha_broker._guest_page_identity(capability), "page-a")
+                for page_id, resource_id in (("page-a", "light-a"), ("page-b", "light-b")):
+                    self.assert_unauthorized(request(
+                        port,
+                        "POST",
+                        "/v1/page-action",
+                        headers={
+                            "X-Broker-Token": capability,
+                            "X-Broker-Role": "guest",
+                            "Content-Type": "application/json",
+                        },
+                        payload=json.dumps({
+                            "page_id": page_id,
+                            "resource_id": resource_id,
+                            "action_id": "turn_on",
+                            "parameters": {},
+                        }).encode(),
+                    ), capability)
             client.call_service.assert_not_called()
 
     def test_layerv_broker_rejects_missing_and_wrong_credentials(self):

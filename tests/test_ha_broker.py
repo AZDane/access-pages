@@ -587,36 +587,6 @@ class HomeAssistantBrokerPolicyTests(unittest.TestCase):
             "guest", reading, 750
         )
 
-    def test_admin_discovery_uses_separate_credential(self):
-        handler = object.__new__(ha_broker.Handler)
-        handler.headers = {"X-Broker-Token": "guest-token"}
-        with (
-            patch("ha_broker.TOKEN", "guest-token"),
-            patch("ha_broker.ADMIN_TOKEN", "admin-token"),
-        ):
-            self.assertTrue(handler._authorized())
-            self.assertFalse(handler._authorized(admin=True))
-            handler.headers = {"X-Broker-Token": "admin-token"}
-            self.assertTrue(handler._authorized(admin=True))
-            self.assertFalse(handler._authorized())
-
-    def test_request_role_selects_non_interchangeable_credential(self):
-        handler = object.__new__(ha_broker.Handler)
-        handler.path = "/v1/states"
-        handler.headers = {
-            "X-Broker-Token": "admin-token",
-            "X-Broker-Role": "admin",
-        }
-        with (
-            patch("ha_broker.TOKEN", "guest-token"),
-            patch("ha_broker.ADMIN_TOKEN", "admin-token"),
-        ):
-            self.assertTrue(handler._admin_request())
-            self.assertTrue(handler._authorized(admin=handler._admin_request()))
-            handler.headers = {"X-Broker-Token": "admin-token"}
-            self.assertFalse(handler._admin_request())
-            self.assertFalse(handler._authorized(admin=handler._admin_request()))
-
 
 if __name__ == "__main__":
     unittest.main()

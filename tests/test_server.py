@@ -13,6 +13,7 @@ os.environ.setdefault("HA_TOKEN", "test-ha-token")
 os.environ.setdefault("ADMIN_TOKEN", "test-admin-token")
 
 from layerv import LayerVError
+from ha import BrokerHomeAssistantClient
 from pages import PageConfigError
 from pages import PageStore
 import server as gateway_server
@@ -388,6 +389,52 @@ class EntityPolicyValidationTests(unittest.TestCase):
         with patch("server.HA_CLIENT", client):
             with self.assertRaises(PageConfigError):
                 object.__new__(Handler)._validate_entity_policy(payload)
+
+    def test_save_rejects_excluded_entity_even_if_discovery_returns_it(self):
+        client = BrokerHomeAssistantClient(
+            "http://broker", "admin-secret", broker_role="admin",
+            exclude_entities=frozenset({"light.kitchen"}),
+        )
+        with (
+            patch("server.HA_CLIENT", client),
+            patch.object(client, "discover_entities", return_value=(
+                self.discovered_client().discover_entities.return_value
+            )),
+            self.assertRaisesRegex(PageConfigError, "Entity is unavailable"),
+        ):
+            object.__new__(Handler)._validate_entity_policy({
+                "resources": [{"entity_id": "light.kitchen", "domain": "light"}],
+            })
+
+    def test_save_requires_domain_opt_in_even_in_included_area(self):
+        payload = {"resources": [{
+            "entity_id": "lock.front_door",
+            "domain": "lock",
+            "actions": [{"id": "unlock", "service": "unlock", "name": "Unlock"}],
+        }]}
+        discovered = {"entities": [{
+            "entity_id": "lock.front_door",
+            "domain": "lock",
+            "area_id": "hall",
+            "actions": [{"service": "unlock", "name": "Unlock"}],
+        }]}
+        for domains in ({"light"}, {"light", "lock"}):
+            with self.subTest(domains=domains):
+                client = BrokerHomeAssistantClient(
+                    "http://broker", "admin-secret", broker_role="admin",
+                    include_domains=frozenset(domains),
+                    include_areas=frozenset({"hall"}),
+                )
+                with (
+                    patch("server.HA_CLIENT", client),
+                    patch.object(client, "discover_entities", return_value=discovered),
+                ):
+                    handler = object.__new__(Handler)
+                    if "lock" in domains:
+                        handler._validate_entity_policy(payload)
+                    else:
+                        with self.assertRaisesRegex(PageConfigError, "Entity is unavailable"):
+                            handler._validate_entity_policy(payload)
 
     def test_accepts_exact_curated_entity_action(self):
         payload = {
