@@ -11,13 +11,14 @@ The guest receives a purpose-built page containing only the devices,
 information, and controls selected by the administrator. Guests do not
 need Home Assistant accounts, passwords, or VPN access.
 
-The remote path is provided through LayerV using the
+The remote path is provided through [LayerV](https://layerv.ai) using the
 **Network-Infrastructure Hiding Protocol (NHP)** and qURL technology.
 NHP follows an **authenticate-before-connect** model: instead of
 exposing the protected endpoint first and authenticating after a
 connection arrives, the protected path remains invisible and unreachable
 until access has been cryptographically verified.
 
+Access Pages is independently developed open-source software.
 After admission, the Access Pages Gateway provides the purpose-limited
 page and enforces the capabilities assigned to the guest.
 
@@ -28,7 +29,7 @@ Assistant, its devices, and its administrative interface remain inside
 the home.
 
 The App runs the Access Pages Gateway and one shared qURL runtime with its
-embedded LayerV Connector.
+embedded [LayerV](https://layerv.ai) Connector.
 Remote guests do not reach the Gateway through a separately exposed
 public Home Assistant or Access Pages endpoint. Their remote path is
 established through LayerV/NHP.
@@ -53,7 +54,7 @@ limited.
 
 The public guest-facing process is not given general Home Assistant
 administrative authority and does not receive the privileged credentials
-used to administer Home Assistant or manage LayerV lifecycle operations.
+used to administer Home Assistant or manage [LayerV](https://layerv.ai) lifecycle operations.
 
 Page endpoints receive only the capability required for their page.
 Privileged Home Assistant and LayerV operations are handled through
@@ -82,15 +83,15 @@ open an inbound router port.
 
 ## Set up LayerV
 
-Access Pages uses LayerV to provide the protected NHP/qURL path for
+Access Pages uses [LayerV](https://layerv.ai) to provide the protected NHP/qURL path for
 remote guest access.
 
 NHP is the open-source network-hiding technology developed by OpenNHP.
 The LayerV team are core builders of OpenNHP, and LayerV's founding team
 co-authored the Cloud Security Alliance (CSA) NHP specification. LayerV
-is the enterprise implementation of that foundation, providing the
-managed access service and developer tools used by Access Pages. The
-protocol is also documented in an IETF Internet-Draft.
+provides the external managed NHP/qURL connectivity service and developer
+tools currently used by Access Pages. The protocol is also documented in
+an IETF Internet-Draft.
 
 For more about the relationship between LayerV, OpenNHP, the CSA
 specification, and the IETF work, see
@@ -115,6 +116,35 @@ qURL persists the resulting Agent/device identity. Subsequent guests and
 normal restarts reuse that identity. If an established identity is lost or
 rejected, Access Pages does not automatically re-enroll; explicit
 administrator recovery through **Reset LayerV connection** is required.
+
+## Owner responsibility
+
+Home Assistant owners control what guests can access and are responsible
+for deciding what is appropriate and safe for their installation. Home
+Assistant is highly customizable: entities and actions can control
+physical equipment, locks, doors, gates, appliances, security equipment,
+or other systems where unintended operation has real-world consequences.
+Access Pages cannot determine whether an entity or action is safe for
+guest use. Owners must review what each entity actually controls, the
+actions they expose, and whether the available protections are appropriate.
+
+The App defaults to `include_domains: "light"`, enabling only the Light
+category. The owner must explicitly enable additional supported categories
+in this setting before selecting them for guest pages. This is a
+conservative configuration default, not a guarantee that any entity is safe.
+Entity categories are configuration aids, not safety classifications;
+even a `light` entity is not inherently safe.
+
+Treat qURLs as access credentials. Once a qURL is provided for sharing,
+Access Pages cannot control how an owner or guest stores, transmits,
+forwards, screenshots, publishes, or otherwise distributes it. Someone
+who obtains a valid qURL may be able to reach the associated guest access,
+subject to any additional protections configured by the owner.
+
+The owner is responsible for deciding who receives a qURL, how it is
+distributed, how long access remains valid, and whether protections such
+as email verification, proximity requirements for actions, expiration,
+or revocation are appropriate.
 
 ## Create an Access Page
 
@@ -151,7 +181,7 @@ Choose:
 Page security options such as proximity requirements are configured in the
 page editor, rather than when creating a guest.
 
-Access Pages creates the guest grant and the LayerV qURL required to
+Access Pages creates the guest grant and the [LayerV](https://layerv.ai) qURL required to
 reach it.
 
 Each guest receives an independent grant, so one guest can be revoked
@@ -182,12 +212,13 @@ Until you confirm, the link remains available across browser and App
 restarts. Closing the dialog, copying, sharing, displaying a QR code, or
 sending an email does not remove it automatically.
 
-Treat the invitation as sensitive. Anyone who obtains it may attempt to
-use it. Revoke the guest if delivery is uncertain.
+Treat qURLs as access credentials and review the owner responsibilities above
+before sharing. Anyone who obtains an invitation may attempt to use it, subject
+to its configured protections. Revoke the guest if delivery is uncertain.
 
 ## Invitation lifetime
 
-The guest grant, LayerV qURL, and LayerV admission have separate
+The guest grant, [LayerV](https://layerv.ai) qURL, and LayerV admission have separate
 lifetimes.
 
 Access Pages supports renewable invitations and, for eligible shorter
@@ -195,7 +226,7 @@ grants, LayerV-native single-use invitations.
 
 ### Renewable invitations
 
-Renewable invitations use the same qURL when LayerV admission needs to
+Renewable invitations use the same qURL when [LayerV](https://layerv.ai) admission needs to
 be renewed and can be opened on another device or browser while the grant
 is active. Each browser receives its own guest session. If email verification
 is required, each browser must verify separately. All sessions end when the
@@ -203,7 +234,7 @@ grant expires or is revoked.
 
 ### Single-use invitations
 
-Single-use invitations use LayerV's native one-time-use behavior. After
+Single-use invitations use [LayerV](https://layerv.ai)'s native one-time-use behavior. After
 the qURL has been redeemed, a fresh browser cannot redeem that same qURL
 again.
 
@@ -217,7 +248,7 @@ Configure email under **Gateway health → Configure email & alerts**.
 When **Require guest verification** is enabled, the guest must enter a
 six-digit code before protected state or actions are released.
 
-This verification occurs at the Gateway after LayerV admission. It
+This verification occurs at the Gateway after [LayerV](https://layerv.ai) admission. It
 proves access to the invited mailbox; it does not establish legal
 identity or prove possession of a unique physical device.
 
@@ -287,7 +318,7 @@ Access expires at the guest deadline even if later cleanup has not yet
 run.
 
 When a guest is revoked, Access Pages saves the local revocation first
-and denies subsequent protected operations. The corresponding LayerV
+and denies subsequent protected operations. The corresponding [LayerV](https://layerv.ai)
 cleanup is then performed and retried if necessary.
 
 This allows the Gateway's local access decision to take effect without
@@ -304,7 +335,7 @@ are retained for 30 days unless deleted earlier.
 
 Values: `guest` (default) or `page`.
 
-`guest` allocates one LayerV resource for each new guest grant. Each
+`guest` allocates one [LayerV](https://layerv.ai) resource for each new guest grant. Each
 guest has its own resource and qURL.
 
 `page` uses one LayerV resource/CRID per Access Page while retaining
@@ -324,7 +355,7 @@ recorded when they were created.
 
 ### `connector_id`
 
-Optional stable name for this Home Assistant installation's LayerV
+Optional stable name for this Home Assistant installation's [LayerV](https://layerv.ai)
 Connector.
 
 Leave it empty to generate one automatically. After successful
@@ -366,14 +397,14 @@ Optional comma-separated entity IDs that must not appear in the picker.
 Sets the maximum qURL lifetime Access Pages will offer for new
 invitations.
 
-Configure this to match the LayerV plan. LayerV remains authoritative
+Configure this to match the [LayerV](https://layerv.ai) plan. LayerV remains authoritative
 and may reject a duration outside the account's limits.
 
 Restart the App after changing App configuration.
 
 ## Persistence and backups
 
-Access Page definitions, guest grant information, token hashes, LayerV
+Access Page definitions, guest grant information, token hashes, [LayerV](https://layerv.ai)
 revocation identifiers, Connector identity, and required secrets persist
 under `/data`.
 
@@ -390,7 +421,7 @@ private state. Protect backups accordingly.
 
 ## Upgrading to qURL 3.0.0
 
-App 0.1.131 packages qURL CLI 3.0.0 with LayerV Connector 0.14.1. Upgrade
+App 0.1.131 packages qURL CLI 3.0.0 with [LayerV](https://layerv.ai) Connector 0.14.1. Upgrade
 the App normally after that version is published, taking a Home Assistant
 App backup first. Stop the old App completely before starting the updated
 version; only one daemon may own its persisted state.
@@ -416,7 +447,7 @@ Use **Reset LayerV connection** only when this installation must
 register as a new Connector.
 
 The reset revokes local guest access, retires or queues cleanup of old
-LayerV resources and qURLs, removes the existing LayerV credential and
+[LayerV](https://layerv.ai) resources and qURLs, removes the existing LayerV credential and
 Connector/Agent identity, and preserves the Access Page definitions.
 The Admin UI immediately returns to the setup-required API-key form.
 
@@ -441,7 +472,7 @@ visible. State and camera image refresh pause while the page is hidden.
 Returning to the visible page triggers an immediate state refresh, then
 normal polling and configured camera refresh resume.
 
-A LayerV HTTP `429` or Connector rate-limit result means the request has
+A [LayerV](https://layerv.ai) HTTP `429` or Connector rate-limit result means the request has
 been rate limited. Wait before retrying. A plan-quota
 rejection is separate from rate limiting.
 
@@ -460,7 +491,7 @@ The Access Pages Gateway source code is licensed under the MIT License.
 
 The MIT License also covers the Gateway documentation. The App icon and logo
 are Access Pages artwork. The license does not grant permission to use the
-LayerV name, trademarks, wordmarks, logos, or other brand assets except as
+[LayerV](https://layerv.ai) name, trademarks, wordmarks, logos, or other brand assets except as
 necessary to identify an unmodified copy of this software.
 
 Files specifically covered by this exclusion include:
@@ -486,7 +517,7 @@ For a recurring problem, open the App's **Configuration** and set
 `1 hour`, or `4 hours`, then save and restart
 the App. The default is `off`. Timing observations include successful requests
 while this temporary mode is active. It observes existing traffic; it does not
-add polls, probes, HA calls, uploads, or LayerV requests.
+add polls, probes, HA calls, uploads, or [LayerV](https://layerv.ai) requests.
 
 Completed requests normally produce one final Gateway summary with the fixed
 timing vector. To retain some evidence for requests that never finish, one in

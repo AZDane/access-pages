@@ -72,7 +72,7 @@ that order. The protected endpoint remains invisible and unreachable
 until access has been cryptographically verified.
 
 NHP is the open-source network-hiding technology developed by OpenNHP.
-The LayerV team are core builders of OpenNHP, and LayerV's founding team
+The [LayerV](https://layerv.ai) team are core builders of OpenNHP, and LayerV's founding team
 co-authored the Cloud Security Alliance (CSA) NHP specification. LayerV
 provides the external managed NHP/qURL connectivity service and developer
 tools currently used by Access Pages. The protocol is also documented in
@@ -161,7 +161,7 @@ available after admission.
 
 The guest-facing runtime is also isolated from privileged Gateway
 functions. It is not given general Home Assistant administrative
-authority or the credentials used to manage LayerV access.
+authority or the credentials used to manage [LayerV](https://layerv.ai) access.
 
 Additional controls include expiration, individual revocation, optional
 email-code verification, optional proximity requirements for actions,
@@ -171,10 +171,10 @@ read-only camera stills.
 ## Getting started
 
 Access Pages runs as a Home Assistant App. Remote guest access is
-provided through LayerV.
+provided through [LayerV](https://layerv.ai).
 
 1.  Install **Access Pages**.
-2.  Create or sign in to a LayerV account.
+2.  [Create or sign in to a LayerV account](https://layerv.ai/qurl/dashboard/keys/).
 3.  Create a dedicated LayerV API key for this installation.
 4.  Connect Access Pages to LayerV.
 5.  Create an Access Page and choose its Home Assistant entities and
@@ -190,7 +190,7 @@ The Access Pages Gateway source code is licensed under the MIT License.
 
 The MIT License also covers the Gateway documentation. The App icon and logo
 are Access Pages artwork. The license does not grant permission to use the
-LayerV name, trademarks, wordmarks, logos, or other brand assets except as
+[LayerV](https://layerv.ai) name, trademarks, wordmarks, logos, or other brand assets except as
 necessary to identify an unmodified copy of this software.
 
 Files specifically covered by this exclusion include:
