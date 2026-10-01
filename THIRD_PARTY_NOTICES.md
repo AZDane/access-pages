@@ -1,7 +1,7 @@
 # Third-party notices
 
 This distribution includes qURL 3.0.0 (embedded Connector 0.14.1),
-the Access Pages Go guest endpoint, the Go standard library, Python 3.12,
+the Access Pages Go guest endpoint, the Go standard library, Python 3.14,
 the local QR code library, and base-image operating-system packages.
 
 The complete license text shipped in the qURL release archive is
@@ -23,9 +23,11 @@ Its exact pinned Source Code Form, including the license, is supplied in
 `third_party_licenses/yamux-source/` in both the source distribution and
 container image. Access Pages has not modified that source.
 
-The final Python base image is Python 3.12.14. Its exact license is retained
-at `/usr/local/lib/python3.12/LICENSE.txt` in the image and copied to
-`third_party_licenses/Python-3.12.14-LICENSE` in this source distribution.
+The final Python base image is Python 3.14.7. Its exact license is retained
+at `/usr/local/lib/python3.14/LICENSE.txt` in the image and copied to
+`third_party_licenses/Python-3.14.7-LICENSE` in this source distribution.
+The runtime removes pip and ensurepip, including their vendored dependencies;
+the application uses only the Python standard library.
 Debian base-image package license/copyright records remain under
 `/usr/share/doc` in the final image. The locally served
 `static/vendor/qrcodegen.js` retains its complete MIT notice in its header.

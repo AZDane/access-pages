@@ -33,7 +33,7 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("Copyright 2009 The Go Authors", go_license)
         self.assertIn("Redistributions in binary form must reproduce", go_license)
         self.assertIn("LayerV", (directory / "qurl-3.0.0-LICENSE").read_text(encoding="utf-8"))
-        self.assertIn("PYTHON SOFTWARE FOUNDATION", (directory / "Python-3.12.14-LICENSE").read_text(encoding="utf-8"))
+        self.assertIn("PYTHON SOFTWARE FOUNDATION", (directory / "Python-3.14.7-LICENSE").read_text(encoding="utf-8"))
         self.assertTrue((directory / "yamux-source" / "session.go").is_file())
         for arch in ("amd64", "arm64"):
             packages = json.loads((directory / f"qurl-3.0.0-linux-{arch}.spdx.json").read_text())["packages"]
