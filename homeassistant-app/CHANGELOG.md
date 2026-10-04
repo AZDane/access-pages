@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.134
+
+- Show Require guest verification whenever SMTP is configured, independently
+  of the Email guest invitation checkbox.
+- Refresh the page's guest count immediately after adding a guest.
+- Install Debian's patched PCRE2 runtime package to address CVE-2026-103111.
+
 ## 0.1.133
 
 - Match the enforced AppArmor executable allowlist to the Python 3.14 runtime
