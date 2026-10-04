@@ -70,13 +70,15 @@ const sendInvitationInput = document.getElementById("send-invitation");
 function configureInvitationEmail() {
   sendInvitationInput.disabled = !emailConfigured;
   if (!emailConfigured) sendInvitationInput.checked = false;
-  if (!sendInvitationInput.checked) verificationRequiredInput.checked = false;
-  verificationEmailField.classList.toggle("hidden", !sendInvitationInput.checked);
-  document.getElementById("verification-option").classList.toggle("hidden", !sendInvitationInput.checked);
-  verificationRequiredInput.disabled = !sendInvitationInput.checked || !scopedGuestSupported;
+  if (!emailConfigured || !scopedGuestSupported) verificationRequiredInput.checked = false;
+  verificationEmailField.classList.toggle(
+    "hidden", !sendInvitationInput.checked && !verificationRequiredInput.checked,
+  );
+  document.getElementById("verification-option").classList.toggle("hidden", !emailConfigured);
+  verificationRequiredInput.disabled = !emailConfigured || !scopedGuestSupported;
   document.getElementById("invitation-email-help").textContent = !emailConfigured
     ? "Configure SMTP to send guest invitations."
-    : "Send the guest a link by email. You can also require email verification below.";
+    : "Send the guest a link by email.";
 }
 const verificationHelp = document.getElementById("verification-help");
 const customLifetime = document.getElementById("custom-lifetime");
@@ -2032,6 +2034,7 @@ async function generateQurl() {
       data.grant,
       ...(currentPage.access_grants || []),
     ];
+    setGuestCountStatus(currentPage);
 
     qurlResult.replaceChildren();
     qurlResult.dataset.pageId = currentPage.id;
@@ -2274,6 +2277,14 @@ function prepareEditor(page, existing) {
   );
 }
 
+function setGuestCountStatus(page) {
+  const count = (page.access_grants || []).length;
+  setStatus(
+    `${count} ${count === 1 ? "guest" : "guests"} configured for “${page.title}”.`,
+    "success",
+  );
+}
+
 async function manageUsers(pageId) {
   setStatus("Loading guests…");
 
@@ -2298,10 +2309,7 @@ async function manageUsers(pageId) {
     await loadGuestActivitySummaries(data.id);
     renderAccessGrants(data);
     showUsers();
-    setStatus(
-      `${data.access_grants.length} ${data.access_grants.length === 1 ? "guest" : "guests"} configured for “${data.title}”.`,
-      "success",
-    );
+    setGuestCountStatus(data);
   } catch (error) {
     setStatus(`Error: ${error.message}`, "error");
   }

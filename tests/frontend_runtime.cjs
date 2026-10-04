@@ -48,8 +48,16 @@ class Element {
     this.style = {};
     this.listeners = new Map();
     this.attributes = new Map();
+    const classes = new Set();
     this.classList = {
-      add() {}, remove() {}, toggle() {}, contains() { return false; },
+      add(...names) { names.forEach(name => classes.add(name)); },
+      remove(...names) { names.forEach(name => classes.delete(name)); },
+      toggle(name, force = !classes.has(name)) {
+        if (force) classes.add(name);
+        else classes.delete(name);
+        return force;
+      },
+      contains(name) { return classes.has(name); },
     };
     this.value = "";
     this.open = false;
@@ -563,6 +571,65 @@ async function testInvitationAndRevocationFeedback() {
   }
 }
 
+async function testVerificationOptionAvailability() {
+  let payload;
+  const fixture = harness("admin", {async fetch(route, options) {
+    payload = JSON.parse(options.body);
+    return jsonResponse(400, {error: "Rejected invitation"});
+  }});
+  const invitation = fixture.elements.get("send-invitation");
+  const verification = fixture.elements.get("verification-required");
+  const emailField = fixture.elements.get("verification-email-field");
+  vm.runInContext("scopedGuestSupported = true; openUserDialog();", fixture.context);
+  const option = fixture.elements.get("verification-option");
+  assert.equal(option.classList.contains("hidden"), true);
+  assert.equal(verification.disabled, true);
+
+  vm.runInContext("emailConfigured = true; openUserDialog();", fixture.context);
+  assert.equal(invitation.checked, false);
+  assert.equal(option.classList.contains("hidden"), false);
+  assert.equal(verification.disabled, false);
+  assert.equal(emailField.classList.contains("hidden"), true);
+  verification.checked = true;
+  verification.listeners.get("change")();
+  assert.equal(verification.checked, true);
+  assert.equal(emailField.classList.contains("hidden"), false);
+  invitation.checked = true;
+  invitation.listeners.get("change")();
+  invitation.checked = false;
+  invitation.listeners.get("change")();
+  assert.equal(verification.checked, true, "Invitation toggle must preserve verification");
+  assert.equal(emailField.classList.contains("hidden"), false);
+
+  vm.runInContext("currentPage = {id: 'fixture'}; editingExisting = true; layerVApiConfigured = true; selectedLifetime = () => '1h';", fixture.context);
+  fixture.elements.get("qurl-label").value = "Guest";
+  await vm.runInContext("generateQurl()", fixture.context);
+  assert.match(fixture.elements.get("user-dialog-status").textContent, /valid email/);
+  assert.equal(payload, undefined);
+  fixture.elements.get("verification-email").value = "guest@example.test";
+  await vm.runInContext("generateQurl()", fixture.context);
+  assert.equal(payload.verification_required, true);
+  assert.equal(payload.verification_email, "guest@example.test");
+  assert.equal(payload.send_invitation, true);
+
+  verification.checked = false;
+  verification.listeners.get("change")();
+  assert.equal(emailField.classList.contains("hidden"), true);
+  assert.equal(option.classList.contains("hidden"), false);
+  invitation.checked = true;
+  invitation.listeners.get("change")();
+  assert.equal(emailField.classList.contains("hidden"), false);
+  vm.runInContext("scopedGuestSupported = false; configureGuestOptions();", fixture.context);
+  assert.equal(option.classList.contains("hidden"), false);
+  assert.equal(verification.disabled, true);
+  verification.checked = true;
+  vm.runInContext("emailConfigured = false; configureGuestOptions();", fixture.context);
+  assert.equal(option.classList.contains("hidden"), true);
+  assert.equal(verification.checked, false);
+  assert.equal(invitation.checked, false);
+  assert.equal(emailField.classList.contains("hidden"), true);
+}
+
 function descendants(element) {
   return [element, ...element.children.flatMap(descendants)];
 }
@@ -572,13 +639,15 @@ async function testExplicitFinishedSharing() {
     const link = "https://qurl.invalid/#retained-invitation";
     const grant = {id: "grant_aaaaaaaaaaaaaaaa", label: "Guest", qurl_link: link,
       access_url: link, expires_at: "2099-01-01T00:00:00Z", verification_required: true};
-    const persisted = {id: "fixture", title: "Fixture", access_grants: []};
+    const persisted = {id: "fixture", title: "Fixture", access_grants: smtpSent ? [{
+      id: "existing", label: "Existing guest", expires_at: "2099-01-01T00:00:00Z",
+    }] : []};
     const requests = [];
     let failRemoval = false;
     const fixture = harness("admin", {async fetch(route, options = {}) {
       requests.push([route, options.method || "GET"]);
       if (route.endsWith("/qurls")) {
-        persisted.access_grants = [structuredClone(grant)];
+        persisted.access_grants.unshift(structuredClone(grant));
         return jsonResponse(201, {grant: structuredClone(grant), email_delivery: {sent: smtpSent}});
       }
       if (route.endsWith("/finish-sharing")) {
@@ -603,10 +672,15 @@ async function testExplicitFinishedSharing() {
       legacyCopyText = value => { copies.push(value); return true; };
       openUserDialog();
     `, fixture.context);
+    await vm.runInContext("manageUsers('fixture')", fixture.context);
+    assert.equal(fixture.elements.get("status").textContent,
+      smtpSent ? '1 guest configured for “Fixture”.' : '0 guests configured for “Fixture”.');
     fixture.elements.get("qurl-label").value = "Guest";
     fixture.elements.get("send-invitation").checked = true;
     fixture.elements.get("verification-email").value = "guest@example.test";
     await vm.runInContext("generateQurl()", fixture.context);
+    assert.equal(fixture.elements.get("status").textContent,
+      smtpSent ? '2 guests configured for “Fixture”.' : '1 guest configured for “Fixture”.');
     const result = fixture.elements.get("qurl-result");
     const findResult = text => descendants(result).find(element => element.textContent === text);
     assert.ok(descendants(result).some(element => element.value === link));
@@ -628,7 +702,7 @@ async function testExplicitFinishedSharing() {
     const native = vm.runInContext("buildSharePanel('Guest', currentPage.access_grants[0].qurl_link)", fixture.context);
     await descendants(native).find(element => element.textContent === "Share…").listeners.get("click")();
     assert.ok(shares[0].text.includes(link));
-    assert.equal(requests.length, 1, "Copy/share/QR/email must not finalize");
+    assert.equal(requests.length, 2, "Copy/share/QR/email must not finalize");
 
     const cancelled = findResult("Finished Sharing").listeners.get("click")();
     assert.equal(fixture.elements.get("confirm-title").textContent, "Finished sharing this invitation?");
@@ -676,6 +750,7 @@ async function testExplicitFinishedSharing() {
 }
 
 (async () => {
+  await testVerificationOptionAvailability();
   await testExplicitFinishedSharing();
   await testActionFreshState();
   await testPrecommandReadCannotFinalizeAction();
