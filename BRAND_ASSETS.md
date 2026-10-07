@@ -1,6 +1,7 @@
 # Brand assets
 
-The Access Pages icon and logo are Access Pages application artwork.
+The Access Pages icon and logo are Access Pages application artwork owned by
+Access Pages LLC.
 LayerV's name, trademarks, wordmarks, and logos remain LayerV assets used for the
 "Powered by LayerV" attribution.
 
