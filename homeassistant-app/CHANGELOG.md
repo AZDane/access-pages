@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.135
+
+- Update project copyright and ownership attribution to Access Pages LLC.
+- Include the previously merged Python base-image refresh and Debian Perl
+  security fix from PR #42. No application functionality changes.
+
 ## 0.1.134
 
 - Show Require guest verification whenever SMTP is configured, independently
