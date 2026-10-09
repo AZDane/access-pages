@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.136
 
 - Allow all domains when `include_domains` is empty, while retaining other
   configured filters and exclusions.
