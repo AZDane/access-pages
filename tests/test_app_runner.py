@@ -2,6 +2,8 @@ import importlib.util
 import json
 import os
 import runpy
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +24,25 @@ SPEC.loader.exec_module(app_runner)
 
 
 class AppRunnerTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node is required")
+    def test_home_assistant_form_save_keeps_cleared_domains_after_reload(self):
+        result = subprocess.run(
+            ["node", str(MODULE_PATH.parents[1] / "tests" / "ha_domain_options.cjs")],
+            capture_output=True, text=True, check=True,
+        )
+        options = json.loads(result.stdout)
+        self.assertEqual(options["include_domains"], "")
+        policy_environment = app_runner._policy_options(options)
+        self.assertEqual(policy_environment["HA_ENTITY_INCLUDE_DOMAINS"], "")
+        with patch.dict(os.environ, {
+            "HA_BASE_URL": "http://ha.invalid",
+            "HA_TOKEN": "synthetic-ha-token",
+            "ADMIN_TOKEN": "synthetic-admin-token",
+            **policy_environment,
+        }, clear=True):
+            config = runpy.run_path(str(MODULE_PATH.parents[1] / "config.py"))
+        self.assertEqual(config["HA_ENTITY_INCLUDE_DOMAINS"], frozenset())
+
     def test_gateway_discovery_defaults_and_empty_domain_list(self):
         default_domains = {
             "light", "switch", "fan", "media_player", "climate", "vacuum", "sensor",
