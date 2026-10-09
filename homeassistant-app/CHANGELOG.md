@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Allow all domains when `include_domains` is empty, while retaining other
+  configured filters and exclusions.
+- Default new installations and missing domain settings to
+  `light,switch,fan,media_player,climate,vacuum,sensor`.
+
 ## 0.1.135
 
 - Update project copyright and ownership attribution to Access Pages LLC.

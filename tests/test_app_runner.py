@@ -22,12 +22,16 @@ SPEC.loader.exec_module(app_runner)
 
 
 class AppRunnerTests(unittest.TestCase):
-    def test_gateway_discovery_defaults_and_owner_domain_opt_in(self):
+    def test_gateway_discovery_defaults_and_empty_domain_list(self):
+        default_domains = {
+            "light", "switch", "fan", "media_player", "climate", "vacuum", "sensor",
+        }
+        all_domains = default_domains | {"camera", "lock", "alarm_control_panel"}
         for configured, expected_domains in (
-            (None, {"light"}),
-            ("", {"light"}),
-            (" \t", {"light"}),
-            (", ,", {"light"}),
+            (None, default_domains),
+            ("", all_domains),
+            (" \t", all_domains),
+            (", ,", all_domains),
             (" light, sensor,camera ", {"light", "sensor", "camera"}),
             ("lock", {"lock"}),
         ):
@@ -50,19 +54,24 @@ class AppRunnerTests(unittest.TestCase):
                         **policy_environment,
                     }, clear=True):
                         config = runpy.run_path(str(MODULE_PATH.parents[1] / "config.py"))
-                    client = BrokerHomeAssistantClient(
-                        "http://broker.invalid", "synthetic-broker-token",
-                        broker_role="admin",
-                        include_domains=config["HA_ENTITY_INCLUDE_DOMAINS"],
-                    )
-                    with patch.object(client, "_request", return_value={
-                        "entities": [
-                            {"entity_id": f"{domain}.example", "domain": domain}
-                            for domain in ("light", "sensor", "camera", "lock")
-                        ],
-                    }):
-                        result = client.discover_entities()
-                    self.assertEqual(set(result["allowed_domains"]), expected_domains)
+                    for excluded in (frozenset(), frozenset({"sensor", "alarm_control_panel"})):
+                        with self.subTest(excluded=excluded):
+                            client = BrokerHomeAssistantClient(
+                                "http://broker.invalid", "synthetic-broker-token",
+                                broker_role="admin",
+                                include_domains=config["HA_ENTITY_INCLUDE_DOMAINS"],
+                                exclude_domains=excluded,
+                            )
+                            with patch.object(client, "_request", return_value={
+                                "entities": [
+                                    {"entity_id": f"{domain}.example", "domain": domain}
+                                    for domain in sorted(all_domains)
+                                ],
+                            }):
+                                result = client.discover_entities()
+                            self.assertEqual(
+                                set(result["allowed_domains"]), expected_domains - excluded,
+                            )
 
     def test_resource_isolation_configuration_is_validated_and_explicit(self):
         default = app_runner._resource_isolation_environment({})

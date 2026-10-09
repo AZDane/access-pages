@@ -14,8 +14,9 @@ configuration:
     name: Included domains
     description: >-
       Comma-separated Home Assistant domains enabled in the entity picker.
-      Defaults to light, including when empty. Explicitly add other domains
-      before selecting their entities. Domains are not safety classifications.
+      Defaults to light,switch,fan,media_player,climate,vacuum,sensor.
+      Leave empty to allow all domains, subject to other filters and exclusions.
+      Domains are not safety classifications.
   include_areas:
     name: Included areas
     description: >-
