@@ -2,10 +2,10 @@ import os
 from pathlib import Path
 
 
-def csv_env(name: str) -> frozenset[str]:
+def csv_env(name: str, default: str = "") -> frozenset[str]:
     return frozenset(
         item.strip()
-        for item in os.getenv(name, "").split(",")
+        for item in os.getenv(name, default).split(",")
         if item.strip()
     )
 
@@ -59,11 +59,11 @@ if not 1 <= QURL_MAX_LIFETIME_DAYS <= 30:
         "QURL_MAX_LIFETIME_DAYS must be between 1 and 30"
     )
 
-# Discovery starts with lights only, including when a saved setting is empty.
-# Domains must be explicitly enabled; other include filters narrow that set.
-# Exclusions always win.
-HA_ENTITY_INCLUDE_DOMAINS = (
-    csv_env("HA_ENTITY_INCLUDE_DOMAINS") or frozenset({"light"})
+# Missing settings use the default domains; an explicitly empty list allows
+# all domains. Other configured filters still apply, and exclusions always win.
+HA_ENTITY_INCLUDE_DOMAINS = csv_env(
+    "HA_ENTITY_INCLUDE_DOMAINS",
+    "light,switch,fan,media_player,climate,vacuum,sensor",
 )
 HA_ENTITY_INCLUDE_AREAS = csv_env("HA_ENTITY_INCLUDE_AREAS")
 HA_ENTITY_INCLUDE_DEVICE_CLASSES = csv_env(

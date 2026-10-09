@@ -382,7 +382,10 @@ def _load_or_register(
 def _policy_options(options: dict) -> dict:
     return {
         "HA_ENTITY_INCLUDE_DOMAINS": str(
-            options.get("include_domains") or "light"
+            options.get(
+                "include_domains",
+                "light,switch,fan,media_player,climate,vacuum,sensor",
+            )
         ),
         "HA_ENTITY_INCLUDE_AREAS": str(options.get("include_areas", "")),
         "HA_ENTITY_EXCLUDE_DOMAINS": str(

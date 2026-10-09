@@ -128,12 +128,12 @@ Access Pages cannot determine whether an entity or action is safe for
 guest use. Owners must review what each entity actually controls, the
 actions they expose, and whether the available protections are appropriate.
 
-The App defaults to `include_domains: "light"`, enabling only the Light
-category. The owner must explicitly enable additional supported categories
-in this setting before selecting them for guest pages. This is a
-conservative configuration default, not a guarantee that any entity is safe.
-Entity categories are configuration aids, not safety classifications;
-even a `light` entity is not inherently safe.
+The App defaults to
+`include_domains: "light,switch,fan,media_player,climate,vacuum,sensor"`.
+Edit this setting to choose domains, or leave it empty to allow all domains,
+subject to other configured filters and exclusions. Entity categories are
+configuration aids, not safety classifications; even a `light` entity is
+not inherently safe.
 
 Treat qURLs as access credentials. Once a qURL is provided for sharing,
 Access Pages cannot control how an owner or guest stores, transmits,
@@ -365,17 +365,17 @@ LayerV connection.
 ### `include_domains`
 
 Comma-separated Home Assistant domains enabled for selection in guest
-pages. Defaults to `light`; missing or empty values also use `light`.
-To enable additional categories, explicitly list them, for example
-`light,sensor,camera`. Save the App configuration and restart the App.
-Categories are configuration aids, not safety classifications: review
-what each entity controls before sharing it, including `light` entities.
+pages. Defaults to `light,switch,fan,media_player,climate,vacuum,sensor`
+when the setting is missing. Leave the setting empty to allow all domains,
+subject to other configured filters and exclusions. To choose specific
+categories, list them, for example `light,sensor,camera`. Save the App
+configuration and restart the App. Categories are configuration aids, not
+safety classifications: review what each entity controls before sharing it.
 
 This setting limits entity discovery and page creation or updates. It
 does not remove controls from existing saved pages or revoke guest access.
-Installations with a previously empty setting now use lights only for
-selection; enable the domains used by an existing page before saving it
-again, or remove those controls from the page.
+Before saving an existing page, allow the domains it uses or remove those
+controls from the page.
 
 ### `include_areas`
 
