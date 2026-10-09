@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.137
+
+- Preserve a cleared Included domains field when saving Home Assistant's
+  configuration form, so the default domains do not return. Keep the option
+  key present with an empty string to allow all domains.
+
 ## 0.1.136
 
 - Allow all domains when `include_domains` is empty, while retaining other
