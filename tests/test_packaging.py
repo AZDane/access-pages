@@ -9,11 +9,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingTests(unittest.TestCase):
-    def test_ha_image_pins_qurl_300_without_standalone_connector(self):
+    def test_ha_image_pins_qurl_350_without_standalone_connector(self):
         dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
-        self.assertIn("qurl_3.0.0_linux_${TARGETARCH}.tar.gz", dockerfile)
-        self.assertIn("c6ce79a75c84d2ed378793028c51aab83a12780bb9d5580400caba258fc836f6", dockerfile)
-        self.assertIn("30972dd3804a8bf02a4f948451e37ecb6d482872ac44fc017e44bd554158dd6f", dockerfile)
+        self.assertIn("qurl_3.5.0_linux_${TARGETARCH}.tar.gz", dockerfile)
+        self.assertIn("ccd38c9a5558e8a9a16a1a646ea933dc280bf0651cb80f8600083bd4ac5f8df7", dockerfile)
+        self.assertIn("0d59e98b9623e3c5c2aa335f6e223755724017a84565f59f15b0090f0cb78dbf", dockerfile)
         self.assertNotIn("qurl-connector", dockerfile)
         self.assertNotIn("2.5.4", dockerfile)
 
@@ -29,17 +29,17 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("COPY third_party_licenses ./third_party_licenses", dockerfile)
         notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
         directory = ROOT / "third_party_licenses"
-        go_license = (directory / "Go-1.26.6-and-1.27.0-LICENSE").read_text(encoding="utf-8")
+        go_license = (directory / "Go-1.26.9-and-1.27.2-LICENSE").read_text(encoding="utf-8")
         self.assertIn("Copyright 2009 The Go Authors", go_license)
         self.assertIn("Redistributions in binary form must reproduce", go_license)
-        self.assertIn("LayerV", (directory / "qurl-3.0.0-LICENSE").read_text(encoding="utf-8"))
+        self.assertIn("LayerV", (directory / "qurl-3.5.0-LICENSE").read_text(encoding="utf-8"))
         self.assertIn("PYTHON SOFTWARE FOUNDATION", (directory / "Python-3.14.7-LICENSE").read_text(encoding="utf-8"))
         self.assertTrue((directory / "yamux-source" / "session.go").is_file())
         for arch in ("amd64", "arm64"):
-            packages = json.loads((directory / f"qurl-3.0.0-linux-{arch}.spdx.json").read_text())["packages"]
+            packages = json.loads((directory / f"qurl-3.5.0-linux-{arch}.spdx.json").read_text())["packages"]
             for package in packages:
                 name = package["name"]
-                if name == "stdlib" or name.startswith("qurl_3.0.0_"):
+                if name == "stdlib" or name.startswith("qurl_3.5.0_"):
                     continue
                 module = directory / "qurl-modules" / f"{name}@{package['versionInfo']}"
                 self.assertTrue(module.is_dir(), name)

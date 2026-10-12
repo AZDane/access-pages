@@ -47,7 +47,7 @@ GRANT = re.compile(r"grant_[A-Za-z0-9_-]{16}")
 class ConnectorPublisher:
     """Run all guest routes in one pinned CLI daemon owned by the broker.
 
-    qURL 3.0.0 reloads this externally supervised daemon. The broker owns its
+    qURL 3.5.0 reloads this externally supervised daemon. The broker owns its
     lifecycle; CLI commands must never install a native background job.
     """
 
@@ -290,7 +290,7 @@ class ConnectorPublisher:
             if response.status != 200:
                 raise OSError("Connector status unavailable")
             data = json.load(response)
-            expected = "5/3.0.0" + ("/per-share" if self.mode == "per-share" else "")
+            expected = "5/3.5.0" + ("/per-share" if self.mode == "per-share" else "")
             if data.get("job_version") != expected:
                 raise OSError("Connector version or session mode mismatch")
             # A new daemon can wait behind another process's lifetime lock.
@@ -340,7 +340,9 @@ class ConnectorPublisher:
             self._require_enrolled()
             self._start()
             self._ipc()
-            return self._run(["publish", target_url, "--id", connector_id])
+            # Preserve qURL 3.0's resource visibility: 3.5 defaults new resources
+            # to private. Guest authorization remains enforced by Access Pages.
+            return self._run(["publish", target_url, "--id", connector_id, "--public"])
 
     def close(self):
         with self.lock:
