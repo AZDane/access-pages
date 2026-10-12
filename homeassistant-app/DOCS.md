@@ -419,6 +419,16 @@ Activity history is stored in an administrator-only SQLite database.
 Home Assistant App backups can contain LayerV credentials and Connector
 private state. Protect backups accordingly.
 
+## Security update in App 0.1.138
+
+App 0.1.138 packages qURL CLI 3.5.0 with LayerV Connector 0.14.2 and patched
+Go dependencies. Back up the App, stop the previous version, then update and
+start it. Saved pages, settings, and sealed Agent identity remain in place;
+no account reset or reenrollment is required. Resource visibility and Access
+Pages guest verification, expiry, and revocation behavior are preserved.
+The ownership-lock and backup recovery guidance below also applies to this
+update.
+
 ## Upgrading to qURL 3.0.0
 
 App 0.1.131 packages qURL CLI 3.0.0 with [LayerV](https://layerv.ai) Connector 0.14.1. Upgrade
