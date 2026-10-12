@@ -1,18 +1,18 @@
 # Third-party notices
 
-This distribution includes qURL 3.0.0 (embedded Connector 0.14.1),
+This distribution includes qURL 3.5.0 (embedded Connector 0.14.2),
 the Access Pages Go guest endpoint, the Go standard library, Python 3.14,
 the local QR code library, and base-image operating-system packages.
 
 The complete license text shipped in the qURL release archive is
-`third_party_licenses/qurl-3.0.0-LICENSE` (MIT). The Go 1.26.6 and
-1.27.0 standard-library/toolchain license text is
-`third_party_licenses/Go-1.26.6-and-1.27.0-LICENSE` (BSD-3-Clause).
+`third_party_licenses/qurl-3.5.0-LICENSE` (MIT). The Go 1.26.9 and
+1.27.2 standard-library/toolchain license text is
+`third_party_licenses/Go-1.26.9-and-1.27.2-LICENSE` (BSD-3-Clause).
 The two Go versions have byte-identical license files. The qURL binary
-uses Go 1.26.6; our guest endpoint uses Go 1.27.0.
+uses Go 1.26.9; our guest endpoint uses Go 1.27.2.
 
 The qURL release SPDX inventories for both shipped architectures are in
-`third_party_licenses/qurl-3.0.0-linux-{amd64,arm64}.spdx.json`.
+`third_party_licenses/qurl-3.5.0-linux-{amd64,arm64}.spdx.json`.
 Their module/version/license sets are identical. The exact license and
 NOTICE files from the corresponding pinned module archives follow below.
 These files preserve each dependency's copyright, conditions, disclaimers,
@@ -67,6 +67,7 @@ Debian base-image package license/copyright records remain under
 | `github.com/go-logr/logr` | `v1.4.3` | `Apache-2.0` | `LICENSE` |
 | `github.com/go-logr/stdr` | `v1.2.2` | `Apache-2.0` | `LICENSE` |
 | `github.com/golang/snappy` | `v1.0.0` | `BSD-3-Clause` | `LICENSE` |
+| `github.com/google/go-tpm` | `v0.9.8` | `Apache-2.0` | `LICENSE` |
 | `github.com/google/s2a-go` | `v0.1.9` | `Apache-2.0` | `LICENSE.md` |
 | `github.com/googleapis/enterprise-certificate-proxy` | `v0.3.17` | `Apache-2.0` | `LICENSE` |
 | `github.com/googleapis/gax-go/v2` | `v2.24.1` | `BSD-3-Clause` | `LICENSE` |
@@ -74,9 +75,9 @@ Debian base-image package license/copyright records remain under
 | `github.com/klauspost/cpuid/v2` | `v2.3.0` | `MIT` | `LICENSE` |
 | `github.com/klauspost/reedsolomon` | `v1.12.0` | `MIT` | `LICENSE` |
 | `github.com/layervai/frp` | `v1.0.5-0.20260926021043-5570a4205458` | `Apache-2.0` | `LICENSE` |
-| `github.com/layervai/qurl-connector` | `v0.14.1` | `Apache-2.0` | `LICENSE` |
-| `github.com/layervai/qurl-go` | `v0.19.0` | `MIT` | `LICENSE` |
-| `github.com/layervai/qurl-integrations` | `v1.8.1-0.20260928183439-b640cb8f4fbd` | `MIT` | `LICENSE` |
+| `github.com/layervai/qurl-connector` | `v0.14.2` | `Apache-2.0` | `LICENSE` |
+| `github.com/layervai/qurl-go` | `v0.23.0` | `MIT` | `LICENSE` |
+| `github.com/layervai/qurl-integrations` | `v1.8.1-0.20261010045418-3da4ba34df02` | `MIT` | `LICENSE` |
 | `github.com/pelletier/go-toml/v2` | `v2.4.3` | `MIT` | `LICENSE` |
 | `github.com/pires/go-proxyproto` | `v0.15.0` | `Apache-2.0` | `LICENSE` |
 | `github.com/pkg/errors` | `v0.9.1` | `BSD-2-Clause` | `LICENSE` |
@@ -100,7 +101,7 @@ Debian base-image package license/copyright records remain under
 | `go.opentelemetry.io/otel/trace` | `v1.44.0` | `Apache-2.0 AND BSD-3-Clause` | `LICENSE` |
 | `go.yaml.in/yaml/v3` | `v3.0.4` | `Apache-2.0 AND MIT` | `LICENSE`, `NOTICE` |
 | `golang.org/x/crypto` | `v0.57.0` | `BSD-3-Clause` | `LICENSE` |
-| `golang.org/x/net` | `v0.58.0` | `BSD-3-Clause` | `LICENSE` |
+| `golang.org/x/net` | `v0.60.0` | `BSD-3-Clause` | `LICENSE` |
 | `golang.org/x/oauth2` | `v0.36.0` | `BSD-3-Clause` | `LICENSE` |
 | `golang.org/x/sync` | `v0.23.0` | `BSD-3-Clause` | `LICENSE` |
 | `golang.org/x/sys` | `v0.48.0` | `BSD-3-Clause` | `LICENSE` |

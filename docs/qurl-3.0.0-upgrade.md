@@ -1,5 +1,37 @@
 # qURL 3.0.0 upgrade review
 
+## Security follow-up: qURL 3.5.0 (2026-10-12)
+
+The container now pins [qURL 3.5.0](https://github.com/layervai/qurl-integrations/releases/tag/v3.5.0)
+at source commit `3da4ba34df029c31e86dc2ed00997d015b1bac8d`.
+Its Go 1.26.9 runtime and `golang.org/x/net` 0.60.0 fix the reported
+CVE-2026-78667, CVE-2026-78669, and CVE-2026-97031 findings. The guest
+endpoint builder is pinned to Go 1.27.2 and its multi-architecture digest.
+Both upstream Linux archives and unmodified SPDX inventories were verified
+against `checksums.txt`; Cosign 3.0.6 verified its signed bundle with the
+release workflow identity and issuer documented below. The module notices
+and Go licenses now match the shipped versions, including Connector 0.14.2.
+
+The broker requires `5/3.5.0/per-share` and its own daemon PID. qURL 3.5
+defaults newly published resources to private; Access Pages now passes
+`--public` explicitly to preserve its existing resource visibility. Guest
+grants, verification, expiry and revocation remain enforced by Access Pages.
+The App continues to select external supervision and the sealed `local-key`
+provider explicitly; qURL's new anonymous enrollment and automatic TPM
+selection do not change the App's enrollment path.
+
+Local validation passed: Trivy 0.70.0 with the CI scanners and HIGH/CRITICAL
+threshold (zero findings for both binaries and both inventories), the Python
+suite and guest-resource regression tests, Go endpoint tests with Go 1.27.2,
+and all three packaged lifecycle/startup/service-isolation probes. The 24
+selected upstream external-supervision/enrollment tests passed with the
+owner-only umask required by sealed state. The final PR also runs the native
+ARM64 packaging and lifecycle job. These offline checks do not establish live
+Home Assistant enrollment or hosted tunnel acceptance. This change prepares
+a security fix; it does not publish an App release.
+
+## Original 3.0.0 review
+
 Prepared App version: **0.1.131**. This change ends at the tested PR stage;
 it does not publish images, create a release, or update the public App Store.
 

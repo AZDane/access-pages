@@ -2,17 +2,17 @@ FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS qurl
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && case "${TARGETARCH}" in \
-        amd64) QURL_CHECKSUM=c6ce79a75c84d2ed378793028c51aab83a12780bb9d5580400caba258fc836f6 ;; \
-        arm64) QURL_CHECKSUM=30972dd3804a8bf02a4f948451e37ecb6d482872ac44fc017e44bd554158dd6f ;; \
+        amd64) QURL_CHECKSUM=ccd38c9a5558e8a9a16a1a646ea933dc280bf0651cb80f8600083bd4ac5f8df7 ;; \
+        arm64) QURL_CHECKSUM=0d59e98b9623e3c5c2aa335f6e223755724017a84565f59f15b0090f0cb78dbf ;; \
         *) exit 1 ;; \
        esac \
-    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v3.0.0/qurl_3.0.0_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
+    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v3.5.0/qurl_3.5.0_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
     && printf '%s  /tmp/qurl.tar.gz\n' "${QURL_CHECKSUM}" | sha256sum -c - \
     && mkdir /out \
     && tar -xzf /tmp/qurl.tar.gz -C /out qurl \
     && chmod 0755 /out/qurl
 
-FROM --platform=$BUILDPLATFORM golang:1.27.1-bookworm@sha256:69a7b9788769bec032d238959b61854e9ae87f57be9029ec04e9885fabf99195 AS guest-endpoint
+FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS guest-endpoint
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/guest-endpoint ./cmd/guest-endpoint
