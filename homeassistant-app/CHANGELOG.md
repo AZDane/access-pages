@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.138
+
+- Upgrade qURL to 3.5.0 with LayerV Connector 0.14.2, Go 1.26.9, and
+  golang.org/x/net 0.60.0, and build the guest endpoint with Go 1.27.2.
+  These updates fix CVE-2026-78667, CVE-2026-78669, and CVE-2026-97031.
+- Preserve resource visibility, external supervision, and sealed Agent
+  identity across the qURL upgrade; require the updated daemon version.
+- Refresh both architecture SBOMs and bundled third-party licenses.
+
 ## 0.1.137
 
 - Preserve a cleared Included domains field when saving Home Assistant's
