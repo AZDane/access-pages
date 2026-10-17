@@ -9,13 +9,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingTests(unittest.TestCase):
-    def test_ha_image_pins_qurl_350_without_standalone_connector(self):
+    def test_ha_image_pins_patched_qurl_source_and_toolchain(self):
         dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
-        self.assertIn("qurl_3.5.0_linux_${TARGETARCH}.tar.gz", dockerfile)
-        self.assertIn("ccd38c9a5558e8a9a16a1a646ea933dc280bf0651cb80f8600083bd4ac5f8df7", dockerfile)
-        self.assertIn("0d59e98b9623e3c5c2aa335f6e223755724017a84565f59f15b0090f0cb78dbf", dockerfile)
-        self.assertNotIn("qurl-connector", dockerfile)
-        self.assertNotIn("2.5.4", dockerfile)
+        self.assertIn("3da4ba34df029c31e86dc2ed00997d015b1bac8d", dockerfile)
+        self.assertIn("1741ed95a34c5665849d492b94d9dc1798f0379f1cfaefbf1e601f29a72db318", dockerfile)
+        self.assertIn("GOTOOLCHAIN=go1.26.9", dockerfile)
+        self.assertIn("patch --batch --fuzz=0", dockerfile)
+        self.assertIn("main.version=3.5.0-access-pages.1", dockerfile)
+        self.assertIn("go test ./apps/cli/cmd", dockerfile)
 
     def test_final_image_asserts_system_tunnel_trust_store(self):
         runtime = (ROOT / "Dockerfile.ha-app").read_text().split("FROM python:", 1)[1]

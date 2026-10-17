@@ -135,6 +135,7 @@ class ConnectorPublisher:
             "HOME": str(home),
             "QURL_CONNECTOR_STATE_DIR": str(self.state),
             "QURL_SHARE_GROUP_MODE": mode,
+            "ACCESS_PAGES_LEGACY_PUBLIC_PUBLISH": "1",
         }
         self.command = [binary, "--endpoint", api_base_url, "--supervision", "external", "-o", "json"]
         self.management = LayerVClient(api_base_url, enrollment_key, "enrollment")
@@ -359,7 +360,7 @@ class ConnectorPublisher:
             if response.status != 200:
                 raise OSError("Connector status unavailable")
             data = json.load(response)
-            expected = "5/3.5.0" + ("/per-share" if self.mode == "per-share" else "")
+            expected = "5/3.5.0-access-pages.1" + ("/per-share" if self.mode == "per-share" else "")
             if data.get("job_version") != expected:
                 raise OSError("Connector version or session mode mismatch")
             # A new daemon can wait behind another process's lifetime lock.
