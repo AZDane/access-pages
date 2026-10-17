@@ -2,6 +2,7 @@
 
 ## 0.1.139
 
+- List the required LayerV API-key permission checkboxes in Getting started.
 - Explain Connector exit 8 with known enrollment, recovery, resource-request,
   or API validation details instead of the generic operation-failed message.
 - Record safe Connector failure messages in the Home Assistant App log,
