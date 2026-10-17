@@ -22,6 +22,7 @@ import time
 from pathlib import Path
 from threading import RLock
 
+from audit import audit
 from layerv import LayerVClient, LayerVError
 
 
@@ -42,6 +43,66 @@ def _present(path: Path) -> bool:
 
 PAGE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 GRANT = re.compile(r"grant_[A-Za-z0-9_-]{16}")
+
+
+def _invalid_connector_request(stderr):
+    """Translate only pinned qURL 3.5.0 diagnostics, never arbitrary detail.
+
+    The native enrollment/recovery headlines come from apps/cli/internal/
+    output/messages.go; REST validation uses errors.go's Invalid fields block.
+    Field values, unknown names, request IDs and free-form prose stay private.
+    """
+    reason = "LayerV rejected the Connector request as invalid"
+    headlines = {
+        "The qURL platform refused this Connector's device enrollment request.":
+            "LayerV rejected the Connector device enrollment request",
+        "The qURL platform refused this Connector's enrollment request.":
+            "LayerV rejected the Connector enrollment request",
+        "The qURL platform and this CLI did not agree on the registered-device recovery response, so qURL stopped safely.":
+            "LayerV rejected the registered-device recovery request",
+        "This Connector's saved resource request is invalid, so it stopped instead of sending or changing it.":
+            "The Connector resource request is invalid",
+    }
+    allowed_fields = {
+        "type", "slug", "target_url", "private", "allowed_device_keys",
+        "access_requests", "find_or_create", "connector_id",
+    }
+    http_status = None
+    native_code = None
+    invalid_fields = set()
+    in_fields = False
+    # Inspect a bounded prefix. No part of a line is copied into the message
+    # except numeric status/support codes; field names use our allowlist.
+    for line in stderr[:16384].splitlines():
+        if line.startswith("Error: "):
+            reason = headlines.get(line[7:], reason)
+            match = re.fullmatch(r"Error: [^\r\n]{1,160} \(HTTP ([45][0-9]{2})\)", line)
+            if match:
+                http_status = int(match[1])
+        # qURL's renderConnectorResourcePosture exposes only a non-secret,
+        # five-digit support code here, excluding native identity details.
+        match = re.fullmatch(r"  Error code: ([0-9]{5})", line)
+        if match:
+            native_code = match[1]
+        if line == "  Invalid fields:":
+            in_fields = True
+        elif in_fields:
+            if line.startswith("    "):
+                field = line[4:].partition(":")[0]
+                if field in allowed_fields:
+                    invalid_fields.add(field)
+            else:
+                in_fields = False
+    details = []
+    if http_status is not None:
+        details.append(f"LayerV HTTP {http_status}")
+    if native_code is not None:
+        details.append(f"LayerV code {native_code}")
+    if invalid_fields:
+        details.append("invalid fields: " + ", ".join(sorted(invalid_fields)))
+    if details:
+        reason += "; " + "; ".join(details)
+    return reason
 
 
 class ConnectorPublisher:
@@ -196,12 +257,15 @@ class ConnectorPublisher:
                     "LayerV rejected the persisted Agent/device credential; explicit administrator recovery is required"
                 ),
                 6: "LayerV denied permission; check the API key's agent, read, and write scopes",
+                8: "LayerV rejected the Connector request as invalid",
                 9: "LayerV rate limit reached; wait before retrying",
                 11: "LayerV or the Connector is unavailable",
             }.get(result.returncode, "Connector operation failed")
             # Only recognize fixed vendor headlines; never return raw stderr,
             # which can contain private credentials or resource information.
             stderr = result.stderr if isinstance(result.stderr, str) else ""
+            if result.returncode == 8:
+                reason = _invalid_connector_request(stderr)
             if any(headline in stderr for headline in (
                 "Your qURL account has reached a plan limit.",
                 "This qURL account has reached its limit on active device credentials",
@@ -211,8 +275,13 @@ class ConnectorPublisher:
             error_type = AgentRecoveryRequired if result.returncode == 4 and operation != "login" else LayerVError
             if error_type is AgentRecoveryRequired:
                 self.recovery_required = True
+            message = f"{reason} during {operation} (Connector exit {result.returncode})"
+            # Home Assistant's App log otherwise shows only the HTTP 503.
+            # This contains only our fixed vocabulary, never argv or raw output.
+            audit("connector_operation_failed", operation=operation,
+                  exit_code=result.returncode, error=message)
             raise error_type(
-                f"{reason} during {operation} (Connector exit {result.returncode})",
+                message,
                 **({} if error_type is AgentRecoveryRequired else {
                     "status": 429 if result.returncode == 9 else 503,
                     "retry_after": 60 if result.returncode == 9 else 2,

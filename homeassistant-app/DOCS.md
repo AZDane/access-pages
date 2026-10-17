@@ -519,6 +519,22 @@ official status without prior written permission from LayerV.
 See [BRAND_ASSETS.md](https://github.com/AZDane/access-pages/blob/main/BRAND_ASSETS.md)
 for the full notice. For brand-use questions, visit [LayerV](https://layerv.ai).
 
+## Guest link publishing errors
+
+If creating a guest link reports `Connector exit 8`, qURL rejected a request
+as invalid. This code alone does not establish that the API key is wrong.
+The error identifies a known enrollment, recovery, or resource-request failure
+when qURL supplies one. For API validation failures it includes the upstream
+HTTP status and recognized invalid field names, without their values. Native
+resource failures can also include a numeric LayerV support code.
+
+The Home Assistant App log records the same safe message in a
+`connector_operation_failed` event, even with temporary diagnostic logging off.
+For support, provide that event and the installed App version. Unknown vendor
+details remain hidden, so some failures still need investigation by LayerV.
+Do not repeatedly reset the connection solely because of this exit code:
+a connection reset revokes guest access and replaces the Connector identity.
+
 ## Temporary diagnostic logging
 
 Normal operation emits no diagnostic records for healthy, fast guest requests.

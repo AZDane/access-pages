@@ -175,7 +175,10 @@ provided through [LayerV](https://layerv.ai).
 
 1.  Install **Access Pages**.
 2.  [Create or sign in to a LayerV account](https://layerv.ai/qurl/dashboard/keys/).
-3.  Create a dedicated LayerV API key for this installation.
+3.  Create a dedicated LayerV API key for this installation. Check
+    **Read qURLs**, **Create, update & delete qURLs**, and
+    **Mint qURL Connector enrollment tokens**. Leave
+    **Redeem tokens and share by CRID (headless access)** unchecked.
 4.  Connect Access Pages to LayerV.
 5.  Create an Access Page and choose its Home Assistant entities and
     permitted actions.
