@@ -145,6 +145,99 @@ class DeviceRecoveryTests(unittest.TestCase):
             self.assertNotIn(private, str(raised.exception))
 
     @patch("guest_resources.subprocess.run")
+    def test_invalid_publish_reports_safe_validation_in_ui_and_app_log(self, run):
+        secret = "lv_live_" + "k" * 43
+        run.return_value = Mock(returncode=8, stdout="private-output", stderr=(
+            "Error: Private account title (HTTP 422)\n\n"
+            f"  Rejected credential {secret}\n\n"
+            "  Invalid fields:\n"
+            "    slug: private-binding is unavailable\n"
+            "    target_url: http://private.invalid/secret\n"
+            "    person@example.com: private detail\n\n"
+            "  Request ID: private-request\n"
+        ))
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key=secret)
+            self._enroll_fixture(publisher)
+            state_before = publisher.agent_state.read_bytes()
+            with self.assertLogs("access_pages.audit", level="INFO") as logs:
+                with self.assertRaises(LayerVError) as raised:
+                    publisher._run(["publish", "http://127.0.0.2:8080", "--id", "private-binding"])
+            self.assertEqual(publisher.agent_state.read_bytes(), state_before)
+            self.assertFalse(publisher.recovery_required)
+        message = str(raised.exception)
+        self.assertEqual(message, "LayerV rejected the Connector request as invalid; LayerV HTTP 422; invalid fields: slug, target_url during publish (Connector exit 8)")
+        record = json.loads(logs.records[0].getMessage())
+        self.assertEqual(record["event"], "connector_operation_failed")
+        self.assertEqual(record["error"], message)
+        self.assertEqual(record["operation"], "publish")
+        self.assertEqual(record["exit_code"], 8)
+        for private in (secret, "private", "person@example.com", "Rejected credential"):
+            self.assertNotIn(private, message + logs.records[0].getMessage())
+        self.assertLess(len(message), 512)
+        run.assert_called_once()
+
+    @patch("guest_resources.subprocess.run")
+    def test_invalid_native_request_distinguishes_enrollment_and_recovery(self, run):
+        cases = (
+            ("The qURL platform refused this Connector's device enrollment request.", "LayerV rejected the Connector device enrollment request"),
+            ("The qURL platform refused this Connector's enrollment request.", "LayerV rejected the Connector enrollment request"),
+            ("The qURL platform and this CLI did not agree on the registered-device recovery response, so qURL stopped safely.", "LayerV rejected the registered-device recovery request"),
+            ("This Connector's saved resource request is invalid, so it stopped instead of sending or changing it.", "The Connector resource request is invalid"),
+            ("unknown private error with credential", "LayerV rejected the Connector request as invalid"),
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="isolated-key")
+            self._enroll_fixture(publisher)
+            for headline, reason in cases:
+                run.return_value = Mock(returncode=8, stdout="private-output", stderr=(
+                    f"Error: {headline}\n\n  private protocol detail\n  Hint: qurl login private-key\n"
+                ))
+                with self.subTest(headline=headline), self.assertLogs("access_pages.audit") as logs:
+                    with self.assertRaises(LayerVError) as raised:
+                        publisher._run(["publish", "http://127.0.0.2:8080", "--id", "private-binding"])
+                self.assertEqual(str(raised.exception), f"{reason} during publish (Connector exit 8)")
+                self.assertNotIn("private", logs.records[0].getMessage())
+                self.assertFalse(publisher.recovery_required)
+            self.assertEqual(run.call_count, len(cases))
+            self.assertTrue(all("login" not in call.args[0] for call in run.call_args_list))
+
+    @patch("guest_resources.subprocess.run")
+    def test_native_resource_support_code_excludes_other_protocol_detail(self, run):
+        run.return_value = Mock(returncode=8, stdout="private-output", stderr=(
+            "Error: This Connector's saved resource request is invalid, so it stopped instead of sending or changing it.\n\n"
+            "  Error code: 52205\n\n"
+            "  Hint: private identity detail\n"
+        ))
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="isolated-key")
+            self._enroll_fixture(publisher)
+            with self.assertLogs("access_pages.audit") as logs:
+                with self.assertRaises(LayerVError) as raised:
+                    publisher._run(["publish", "http://127.0.0.2:8080", "--id", "private-binding"])
+        self.assertEqual(str(raised.exception), "The Connector resource request is invalid; LayerV code 52205 during publish (Connector exit 8)")
+        self.assertNotIn("private", logs.records[0].getMessage())
+
+    @patch("guest_resources.subprocess.run")
+    def test_invalid_input_unknown_output_stays_bounded_and_private(self, run):
+        outputs = (
+            None,
+            "Error: " + "x" * 20000 + "\n  Invalid fields:\n    slug: hidden\n",
+            "Error: unknown\n    slug: outside field block\n  Invalid fields:\n\n    target_url: outside field block\n",
+            "Error: credential (HTTP 422) injected-secret\n  Invalid fields:\n    slug-secret: hidden\n",
+            "Error: unknown\n  Error code: 52205-private\n  Error code: 123456\n",
+        )
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="isolated-key")
+            self._enroll_fixture(publisher)
+            for stderr in outputs:
+                run.return_value = Mock(returncode=8, stdout="private-output", stderr=stderr)
+                with self.subTest(stderr_length=len(stderr or "")), self.assertLogs("access_pages.audit"):
+                    with self.assertRaises(LayerVError) as raised:
+                        publisher._run(["publish", "http://127.0.0.2:8080", "--id", "private-binding"])
+                self.assertEqual(str(raised.exception), "LayerV rejected the Connector request as invalid during publish (Connector exit 8)")
+
+    @patch("guest_resources.subprocess.run")
     def test_remote_delete_success_with_failed_local_cleanup_remains_pending(self, run):
         run.return_value = Mock(returncode=0, stdout='{"deleted":true}', stderr='Warning: The resource was deleted, but local sharing cleanup did not finish: reload unavailable')
         with tempfile.TemporaryDirectory() as temp:

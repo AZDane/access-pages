@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.139
+
+- Explain Connector exit 8 with known enrollment, recovery, resource-request,
+  or API validation details instead of the generic operation-failed message.
+- Record safe Connector failure messages in the Home Assistant App log,
+  including recognized invalid field names and numeric support codes when
+  available. Keep credentials, field values, and raw Connector output private.
+- This improves troubleshooting; it does not automatically reset the
+  connection or resolve an upstream publish rejection.
+
 ## 0.1.138
 
 - Upgrade qURL to 3.5.0 with LayerV Connector 0.14.2, Go 1.26.9, and
