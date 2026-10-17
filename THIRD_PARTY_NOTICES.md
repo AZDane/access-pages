@@ -1,6 +1,6 @@
 # Third-party notices
 
-This distribution includes qURL 3.5.0 (embedded Connector 0.14.2),
+This distribution includes qURL 3.5.0-access-pages.1 (embedded Connector 0.14.2),
 the Access Pages Go guest endpoint, the Go standard library, Python 3.14,
 the local QR code library, and base-image operating-system packages.
 
@@ -11,9 +11,16 @@ The complete license text shipped in the qURL release archive is
 The two Go versions have byte-identical license files. The qURL binary
 uses Go 1.26.9; our guest endpoint uses Go 1.27.2.
 
-The qURL release SPDX inventories for both shipped architectures are in
+Access Pages builds the pinned upstream source with a scoped publication
+compatibility patch. Its source, tests, and build notes are in `packaging/qurl/`
+and in the image under `third_party_licenses/access-pages-qurl-compatibility/`.
+The dependency versions and Go toolchain remain those of upstream 3.5.0.
+
+The upstream qURL release SPDX inventories for both architectures are in
 `third_party_licenses/qurl-3.5.0-linux-{amd64,arm64}.spdx.json`.
-Their module/version/license sets are identical. The exact license and
+They describe the unmodified upstream binaries, not checksums of our rebuilt
+binaries; our image build generates its own SBOM. Their module/version/license
+sets are identical. The exact license and
 NOTICE files from the corresponding pinned module archives follow below.
 These files preserve each dependency's copyright, conditions, disclaimers,
 and any upstream NOTICE material without substituting a generic license.

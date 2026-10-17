@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.140
+
+- Fix new-page and new-guest publication against LayerV deployments that reject the Connector's newer resource privacy field.
+- Include a scoped compatibility build of qURL 3.5.0 with unchanged security dependencies. Confirm resource identity and reject known restricted resources before serving.
+- Preserve existing guest protections, connection state, and resource identities. No connection reset is required to install this update.
+
 ## 0.1.139
 
 - List the required LayerV API-key permission checkboxes in Getting started.

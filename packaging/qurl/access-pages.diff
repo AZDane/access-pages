@@ -1,0 +1,14 @@
+diff --git a/apps/cli/cmd/publish.go b/apps/cli/cmd/publish.go
+index c4c6e81..c1ade25 100644
+--- a/apps/cli/cmd/publish.go
++++ b/apps/cli/cmd/publish.go
+@@ -473,6 +473,9 @@ func prepareLocalPublishResource(
+ 		RecoveryCredentialProvider:   enrollment.recoveryCredential,
+ 		RefreshMode:                  connectorRefreshModeAuto,
+ 	}
++	if compat, _ := opts.lookupEnv("ACCESS_PAGES_LEGACY_PUBLIC_PUBLISH"); compat == "1" {
++		return prepareAccessPagesPublicResource(ctx, opts, enrollment, stateDir, cfg)
++	}
+ 	// The Connector resource request that follows cannot say who may open the
+ 	// resource, so the service would decide. The resource is therefore created
+ 	// first, over the API, with its privacy stated and confirmed, for a public
