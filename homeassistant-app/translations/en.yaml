@@ -1,4 +1,10 @@
 configuration:
+  theme:
+    name: Theme
+    description: >-
+      Appearance for the admin interface and all guest pages. Midnight keeps
+      the original look; Aurora is teal, Ember is copper, Amethyst is violet,
+      and Daylight is light. Save and restart the App to apply.
   diagnostic_logging:
     name: Temporary diagnostic capture request
     description: >-

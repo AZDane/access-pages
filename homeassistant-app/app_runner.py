@@ -22,6 +22,7 @@ from contextlib import contextmanager
 from pages import PageNotFoundError, PageStore
 from guest_resources import GuestResources
 from guest_request import clock_ns
+from themes import DEFAULT_THEME, THEMES
 
 
 DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/data"))
@@ -409,11 +410,19 @@ def _resource_isolation_environment(options: dict) -> dict:
     }
 
 
+def _theme_environment(options: dict) -> dict[str, str]:
+    theme = options.get("theme", DEFAULT_THEME)
+    if not isinstance(theme, str) or theme not in THEMES:
+        raise SetupError("theme must be " + ", ".join(THEMES))
+    return {"ACCESS_PAGES_THEME": theme}
+
+
 def _admin_gateway_environment(options: dict, config: dict) -> dict:
     return {
         **RUNTIME_ENVIRONMENT,
         **_policy_options(options),
         **_resource_isolation_environment(options),
+        **_theme_environment(options),
         "HOST": "127.0.0.1",
         "PORT": "8081",
         "HA_BASE_URL": "",
@@ -457,9 +466,10 @@ def _page_endpoint_environment(
     }
 
 
-def _guest_service_environment() -> dict[str, str]:
+def _guest_service_environment(options: dict | None = None) -> dict[str, str]:
     return {
         **DIAGNOSTIC_ENVIRONMENT,
+        **_theme_environment(options or {}),
         "PATH": RUNTIME_ENVIRONMENT["PATH"],
         "LANG": RUNTIME_ENVIRONMENT["LANG"],
         "PYTHONDONTWRITEBYTECODE": "1",
@@ -1141,7 +1151,7 @@ def main() -> int:
             )
             guest_service = _spawn(
                 [sys.executable, "/app/guest_service.py"],
-                _guest_service_environment(),
+                _guest_service_environment(options),
                 "guest_service",
             )
             if ingress is None:

@@ -10,6 +10,7 @@ COPY upstream_cleanup.py .
 COPY guest_resources.py .
 COPY internal.py .
 COPY config.py .
+COPY themes.py .
 COPY ha.py .
 COPY guest_diagnostics.py .
 COPY guest_request.py .

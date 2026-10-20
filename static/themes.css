@@ -1,0 +1,114 @@
+/* Midnight intentionally uses the original styles and their fallback values. */
+:root[data-theme="aurora"] {
+  --background: #081f24;
+  --panel: #102e33;
+  --panel-2: #173d42;
+  --text: #effcf8;
+  --muted: #a6c9c5;
+  --accent: #6ce5cb;
+  --accent-rgb: 108, 229, 203;
+  --gradient-start: #05191e;
+  --gradient-end: #133a40;
+  --primary-fill: linear-gradient(115deg, #126a65, #30558b);
+}
+
+:root[data-theme="ember"] {
+  --background: #261713;
+  --panel: #35231e;
+  --panel-2: #493028;
+  --text: #fff6ed;
+  --muted: #d4b8a7;
+  --accent: #ffb47e;
+  --accent-rgb: 255, 180, 126;
+  --gradient-start: #1c110f;
+  --gradient-end: #48252a;
+  --primary-fill: linear-gradient(115deg, #934129, #88364d);
+}
+
+:root[data-theme="amethyst"] {
+  --background: #1c1530;
+  --panel: #2a2042;
+  --panel-2: #3b2c58;
+  --text: #faf4ff;
+  --muted: #c8b5df;
+  --accent: #d3adff;
+  --accent-rgb: 211, 173, 255;
+  --gradient-start: #140f23;
+  --gradient-end: #372048;
+  --primary-fill: linear-gradient(115deg, #6f42a9, #a03375);
+}
+
+:root[data-theme="daylight"] {
+  --background: #f1f5fa;
+  --panel: #ffffff;
+  --panel-2: #e5edf7;
+  --text: #182b45;
+  --muted: #50637d;
+  --accent: #185aab;
+  --accent-rgb: 24, 90, 171;
+  --gradient-start: #f8fbff;
+  --gradient-end: #e3edf9;
+  --primary-fill: linear-gradient(115deg, #125bbe, #5145ab);
+}
+
+:root:is([data-theme="aurora"], [data-theme="ember"],
+         [data-theme="amethyst"], [data-theme="daylight"]) {
+  color-scheme: dark;
+  --line: rgba(var(--accent-rgb), .24);
+  --theme-line: var(--line);
+  --theme-accent: var(--accent);
+  --secondary-text: var(--muted);
+  --link: var(--accent);
+  --surface-low: var(--background);
+  --surface-panel: var(--panel);
+  --surface-raised: var(--panel-2);
+  --control: var(--background);
+  --control-text: var(--text);
+  --subtle-fill: var(--panel-2);
+  --card-fill: linear-gradient(145deg, var(--panel-2), var(--panel));
+  --primary-text: #ffffff;
+  --accent-fill: rgba(var(--accent-rgb), .10);
+  --accent-line: rgba(var(--accent-rgb), .65);
+  --accent-ring: rgba(var(--accent-rgb), .24);
+  --success: #7be4ae;
+  --success-fill: rgba(123, 228, 174, .10);
+  --success-line: rgba(123, 228, 174, .45);
+  --warning: #f5cd79;
+  --warning-fill: rgba(245, 205, 121, .10);
+  --warning-line: rgba(245, 205, 121, .55);
+  --danger: #ffa2b1;
+  --danger-text: var(--danger);
+  --danger-fill: rgba(255, 162, 177, .10);
+  --danger-line: rgba(255, 162, 177, .45);
+  --state-neutral: var(--muted);
+  --state-resting: var(--accent);
+  accent-color: var(--accent);
+}
+
+:root[data-theme="daylight"] {
+  color-scheme: light;
+  --card-shadow: 0 8px 26px rgba(24, 43, 69, .08);
+  --floating-shadow: 0 10px 30px rgba(24, 43, 69, .14);
+  --success: #176840;
+  --success-fill: rgba(23, 104, 64, .07);
+  --success-line: rgba(23, 104, 64, .4);
+  --warning: #835000;
+  --warning-fill: rgba(131, 80, 0, .07);
+  --warning-line: rgba(131, 80, 0, .4);
+  --danger: #ad2943;
+  --danger-fill: rgba(173, 41, 67, .07);
+  --danger-line: rgba(173, 41, 67, .4);
+}
+
+/* The supplied wordmarks contain light lettering on a transparent background. */
+:root[data-theme="daylight"] .access-pages-wordmark,
+:root[data-theme="daylight"] .app-footer img,
+:root[data-theme="daylight"] .powered-by img {
+  filter: brightness(.3);
+}
+
+:root:is([data-theme="aurora"], [data-theme="ember"],
+         [data-theme="amethyst"], [data-theme="daylight"]) :focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
