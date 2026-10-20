@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import guest_diagnostics as diagnostics
 import guest_request as lifetime
+from themes import render_theme
 
 
 SOCKET_PATH = Path(os.environ.get(
@@ -34,7 +35,7 @@ BROKER_SOCKET = Path(os.environ.get(
 STATIC_DIR = Path("/app/static")
 GUEST_ROUTE = re.compile(r"/g/([a-z0-9][a-z0-9_-]{0,63})/(grant_[A-Za-z0-9_-]{16})/(.*)")
 ASSETS = frozenset({
-    "access.css", "access.js", "access-api.js", "home-assistant.png",
+    "access.css", "themes.css", "access.js", "access-api.js", "home-assistant.png",
     "access-pages-mark.png", "access-pages-wordmark.png",
     "guest-access-lockup.png", "guest-access-mark-transparent.png",
     "layerv.png", "layerv-wordmark.png",
@@ -332,7 +333,7 @@ class GuestHandler(HealthHandler):
                 body = body.replace('src="/static/', f'src="{prefix}static/')
                 body = body.replace('href="/static/', f'href="{prefix}static/')
                 body = body.replace('<head>', f'<head><base href="{prefix}">', 1)
-                self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
+                self._send(200, render_theme(body).encode("utf-8"), "text/html; charset=utf-8")
             else:
                 self._asset(suffix.removeprefix("static/"))
             return

@@ -331,6 +331,24 @@ are retained for 30 days unless deleted earlier.
 
 ## Configuration reference
 
+### `theme`
+
+Choose a theme from **Configuration → Theme**, save, and restart the App.
+The selection applies to the admin interface, previews, and all guest pages,
+including existing guest links when reopened or refreshed.
+
+| Theme | Appearance |
+| --- | --- |
+| `midnight` (default) | The original navy background with blue and violet accents. |
+| `aurora` | Deep teal surfaces with mint accents and ocean-blue buttons. |
+| `ember` | Warm charcoal and copper with rose-tinted buttons. |
+| `amethyst` | Plum surfaces with lavender accents and violet-to-berry buttons. |
+| `daylight` | Pale blue and white surfaces, dark text, and indigo buttons. |
+
+Existing installations keep Midnight until a different theme is selected.
+For a standalone deployment, set `ACCESS_PAGES_THEME` to one of these values.
+An unrecognized standalone value falls back to Midnight.
+
 ### `resource_isolation`
 
 Values: `guest` (default) or `page`.

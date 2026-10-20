@@ -19,6 +19,7 @@ panel_title: Access Pages
 homeassistant_api: true
 hassio_role: default
 options:
+  theme: midnight
   connector_id: ""
   include_domains: "light,switch,fan,media_player,climate,vacuum,sensor"
   include_areas: ""
@@ -28,6 +29,7 @@ options:
   diagnostic_logging: "off"
   resource_isolation: guest
 schema:
+  theme: "list(midnight|aurora|ember|amethyst|daylight)"
   connector_id: "str?"
   include_domains: "str"
   include_areas: "str?"

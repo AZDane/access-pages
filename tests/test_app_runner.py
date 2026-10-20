@@ -24,6 +24,27 @@ SPEC.loader.exec_module(app_runner)
 
 
 class AppRunnerTests(unittest.TestCase):
+    def test_theme_reaches_both_services_and_defaults_for_existing_installs(self):
+        config = {
+            "ha_broker_admin_token": "test-broker",
+            "admin_token": "test-admin",
+            "resource_id": "test-resource",
+            "access_pages_broker_token": "test-layer",
+            "policy_store_token": "test-policy",
+        }
+        cases = [({}, "midnight")] + [
+            ({"theme": theme}, theme) for theme in app_runner.THEMES
+        ]
+        for options, expected in cases:
+            with self.subTest(options=options):
+                admin = app_runner._admin_gateway_environment(options, config)
+                guest = app_runner._guest_service_environment(options)
+                self.assertEqual(admin["ACCESS_PAGES_THEME"], expected)
+                self.assertEqual(guest["ACCESS_PAGES_THEME"], expected)
+        for invalid in ("unknown", None, ["daylight"]):
+            with self.subTest(invalid=invalid), self.assertRaises(app_runner.SetupError):
+                app_runner._theme_environment({"theme": invalid})
+
     @unittest.skipUnless(shutil.which("node"), "Node is required")
     def test_home_assistant_form_save_keeps_cleared_domains_after_reload(self):
         result = subprocess.run(
@@ -727,6 +748,7 @@ class AppRunnerTests(unittest.TestCase):
             "PATH", "LANG", "PYTHONDONTWRITEBYTECODE",
             "PYTHONUNBUFFERED", "GUEST_SERVICE_SOCKET",
             "HA_BROKER_GUEST_SOCKET",
+            "ACCESS_PAGES_THEME",
         })
         self.assertEqual(
             environment["GUEST_SERVICE_SOCKET"],

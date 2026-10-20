@@ -24,6 +24,7 @@ import internal as internal_routes
 from activity import GuestActivityStore
 from actions import execute_public_action
 from audit import audit
+from themes import render_theme
 from rate_limit import MinimumIntervalRateLimiter, SlidingWindowRateLimiter
 from config import (
     ADMIN_TOKEN,
@@ -434,7 +435,10 @@ class Handler(BaseHTTPRequestHandler):
             mimetypes.guess_type(target.name)[0]
             or "application/octet-stream"
         )
-        self._send_bytes(200, target.read_bytes(), content_type)
+        body = target.read_bytes()
+        if target.name in {"admin.html", "access.html"}:
+            body = render_theme(body.decode("utf-8")).encode("utf-8")
+        self._send_bytes(200, body, content_type)
 
     def _send_access_shell(self, page_id):
         target = STATIC_DIR / "access.html"
@@ -443,7 +447,7 @@ class Handler(BaseHTTPRequestHandler):
             f'<html lang="en" data-page-id="{page_id}">',
             1,
         )
-        self._send_bytes(200, body.encode("utf-8"), "text/html; charset=utf-8")
+        self._send_bytes(200, render_theme(body).encode("utf-8"), "text/html; charset=utf-8")
 
     def _read_json(self, max_bytes=512_000):
         try:
