@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.141
+
+- Add a Theme dropdown in App Configuration for the admin interface, previews,
+  and all guest pages. Save and restart the App to apply the selected theme.
+- Keep the original appearance as Midnight, the default for existing installs.
+  Add Aurora (teal), Ember (copper), Amethyst (violet), and Daylight (light).
+- Document the available themes and standalone ACCESS_PAGES_THEME setting.
+
 ## 0.1.140
 
 - Fix new-page and new-guest publication against LayerV deployments that reject the Connector's newer resource privacy field.
