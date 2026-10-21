@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.143
+
+- Explain when guest access is still connecting after an update or restart,
+  and ask users to wait a few seconds before trying to create the link again.
+
 ## 0.1.142
 
 - Limit new guest sessions to 12 attempts per minute per valid invitation.
