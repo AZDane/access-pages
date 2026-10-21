@@ -123,6 +123,8 @@ class BrokerGuestSessionTests(unittest.TestCase):
             patch("ha_broker.GUEST_PEER_UID", os.getuid()),
             patch("ha_broker.GUEST_ACTION_RATE_LIMITER",
                   SlidingWindowRateLimiter(12, 60)),
+            patch("ha_broker.GUEST_SESSION_RATE_LIMITER",
+                  SlidingWindowRateLimiter(12, 60, max_keys=1024)),
             patch("ha_broker.GUEST_CAMERA_RATE_LIMITER",
                   SlidingWindowRateLimiter(10, 60)),
             patch("ha_broker.GUEST_CAMERA_REFRESH_LIMITER",

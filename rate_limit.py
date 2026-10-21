@@ -5,9 +5,10 @@ from time import monotonic
 
 
 class SlidingWindowRateLimiter:
-    def __init__(self, limit: int, window_seconds: float):
+    def __init__(self, limit: int, window_seconds: float, *, max_keys=None):
         self.limit = limit
         self.window_seconds = window_seconds
+        self.max_keys = max_keys
         self._events = defaultdict(deque)
         self._lock = Lock()
         self._last_cleanup = monotonic()
@@ -26,6 +27,10 @@ class SlidingWindowRateLimiter:
             if now - self._last_cleanup >= self.window_seconds:
                 self._cleanup(cutoff)
                 self._last_cleanup = now
+            if self.max_keys is not None and key not in self._events and len(self._events) >= self.max_keys:
+                self._cleanup(cutoff)
+                if len(self._events) >= self.max_keys:
+                    return False
             events = self._events[key]
             while events and events[0] <= cutoff:
                 events.popleft()

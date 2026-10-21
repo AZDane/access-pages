@@ -53,6 +53,9 @@ GUEST_SESSION_STORE = VerificationStore(Path(os.getenv(
     "HA_GUEST_SESSION_DB", "/data/ha-broker-runtime/guest-auth/sessions.sqlite3"
 )))
 GUEST_ACTION_RATE_LIMITER = SlidingWindowRateLimiter(12, 60)
+# Only current, correctly authenticated invitations can spend this budget.
+# Browser cookies, IPs, and candidate secrets cannot create additional keys.
+GUEST_SESSION_RATE_LIMITER = SlidingWindowRateLimiter(12, 60, max_keys=1024)
 GUEST_CAMERA_RATE_LIMITER = SlidingWindowRateLimiter(10, 60)
 GUEST_CAMERA_REFRESH_LIMITER = MinimumIntervalRateLimiter()
 HA_CLIENT = HomeAssistantClient(
@@ -77,6 +80,7 @@ PUBLIC_DENIALS = {
     "Camera image is not ready to refresh": "camera_refresh_wait",
     "Camera image refresh limit reached": "camera_refresh_limit",
     "Too many action requests": "action_rate_limit",
+    "Too many new guest sessions": "session_rate_limit",
     "Resource not found": "action_unavailable",
     "Action not permitted": "action_unavailable",
     "Resource is read-only": "action_unavailable",
@@ -496,6 +500,10 @@ class Handler(BaseHTTPRequestHandler):
 class GuestHandler(BaseHTTPRequestHandler):
     """Separate guest authority; never dispatch to the TCP broker handler."""
 
+    def send_error(self, code, message=None, explain=None):
+        # Parser/method/credential errors also carry the private-response policy.
+        self._send_denial(code, "invalid_request")
+
     def send_response(self, code, message=None):
         self._response_status = int(code)
         super().send_response(code, message)
@@ -536,7 +544,8 @@ class GuestHandler(BaseHTTPRequestHandler):
         if retry_after is not None:
             self.send_header("Retry-After", str(retry_after))
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _send_image(self, body, content_type):
         self.send_response(HTTPStatus.OK)
@@ -862,6 +871,14 @@ def _exchange_guest_bootstrap(page_id, grant_id, bootstrap):
     if not current:
         return None
     grant, expiry = current
+    # Reject guesses before charging a grant or opening a session transaction.
+    if not bootstrap or not hmac.compare_digest(
+        sha256(bootstrap.encode()).hexdigest(), grant["token_hash"],
+    ):
+        return None
+    if not GUEST_SESSION_RATE_LIMITER.allow(f"{page_id}:{grant_id}"):
+        raise BrokerPolicyError("Too many new guest sessions", HTTPStatus.TOO_MANY_REQUESTS,
+                                retry_after=60)
     try:
         session, stored_expiry = GUEST_SESSION_STORE.consume_bootstrap(
             page_id, grant_id, bootstrap, grant["token_hash"],

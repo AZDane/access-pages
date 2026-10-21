@@ -28,13 +28,18 @@ class VerificationStore:
         self._initialize_lock = Lock()
 
     @contextmanager
-    def _connect(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.path, timeout=10)
-        self.path.chmod(0o600)
+    def _connect(self, *, read_only=False):
+        if read_only:
+            connection = sqlite3.connect(
+                self.path.resolve().as_uri() + "?mode=ro", uri=True, timeout=10,
+            )
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(self.path, timeout=10)
+            self.path.chmod(0o600)
         try:
             deadline = monotonic() + 10
-            while True:
+            while not read_only:
                 try:
                     connection.execute("PRAGMA journal_mode=WAL")
                     break
@@ -139,7 +144,7 @@ class VerificationStore:
         if not token:
             return None
         self._initialize()
-        with self._connect() as db:
+        with self._connect(read_only=True) as db:
             row = db.execute(
                 "SELECT s.grant_id, s.expires_at, g.grant_hash "
                 "FROM guest_sessions s JOIN guest_session_grants g "
@@ -223,7 +228,7 @@ class VerificationStore:
 
     def guest_verified_until(self, token, page_id, grant_id):
         self._initialize()
-        with self._connect() as db:
+        with self._connect(read_only=True) as db:
             row = db.execute(
                 "SELECT expires_at FROM guest_verifications WHERE token_hash=? "
                 "AND page_id=? AND grant_id=? AND expires_at>?",

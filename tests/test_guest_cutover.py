@@ -165,7 +165,7 @@ class GuestCutoverTests(unittest.TestCase):
             self.assertEqual(headers["Location"], self.prefix)
             self.assertIn("Secure; HttpOnly; SameSite=Lax", headers["Set-Cookie"])
             self.assertNotIn("Server", headers)
-            self.assertNotIn("Cache-Control", headers)
+            self.assertEqual(headers["Cache-Control"], "no-store")
             self.assertNotIn("Content-Security-Policy", headers)
             session = "session-token-1234567890"
             status, _, body = self.request("GET", self.prefix, cookie=session)

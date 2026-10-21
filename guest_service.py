@@ -41,6 +41,7 @@ ASSETS = frozenset({
     "layerv.png", "layerv-wordmark.png",
 })
 PUBLIC_GUEST_ERRORS = {
+    "session_rate_limit": "Too many new guest sessions; try again in a minute",
     "verification_required": "Email verification is required",
     "verification_invalid": "The verification code is invalid or expired",
     "access_ended": "This access link has expired or been revoked",
@@ -130,10 +131,11 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 class GuestHandler(HealthHandler):
     def send_response(self, code, message=None) -> None:
-        # The public Go endpoint owns fixed guest response headers. Avoid
-        # BaseHTTPRequestHandler's version-bearing Server header upstream.
+        # The public Go endpoint owns fixed guest response headers. Retain
+        # no-store locally too, without a version-bearing Server header.
         self.send_response_only(code, message)
         self.send_header("Date", self.date_time_string())
+        self.send_header("Cache-Control", "no-store")
 
     def send_error(self, code, message=None, explain=None) -> None:
         self._json(code, {"error": "Guest request denied"})
@@ -156,7 +158,7 @@ class GuestHandler(HealthHandler):
             for name, value in (headers or {}).items():
                 self.send_header(name, value)
             self.end_headers()
-            if body:
+            if body and self.command != "HEAD":
                 self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
             # The peer has gone away; a second response cannot reach it.
@@ -302,7 +304,12 @@ class GuestHandler(HealthHandler):
                 "grant_id": grant_id, "bootstrap": query["bootstrap"][0],
             })
             if status != 200:
-                self._json(status, {"error": "Invitation unavailable"})
+                headers = ({"Retry-After": str(result["retry_after"])}
+                           if result.get("retry_after") else None)
+                message = (PUBLIC_GUEST_ERRORS["session_rate_limit"]
+                           if result.get("code") == "session_rate_limit"
+                           else "Invitation unavailable")
+                self._json(status, {"error": message}, headers)
                 return
             max_age = max(0, result["expires_at"] - int(time.time()))
             self._send(303, b"", "text/plain", {

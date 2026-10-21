@@ -57,6 +57,34 @@ func probe(handler http.Handler, path string, headers http.Header) *httptest.Res
 	return response
 }
 
+func TestPrivateCachePolicyAcrossGuestResponses(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "http.sock")
+	var status atomic.Int32
+	stop := testUnixServer(t, path, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Even conflicting upstream policy cannot weaken the public endpoint.
+		w.Header().Add("Cache-Control", "no-store")
+		w.Header().Add("Cache-Control", "public, max-age=3600")
+		code := int(status.Load())
+		if code == http.StatusTooManyRequests {
+			w.Header().Set("Retry-After", "60")
+		}
+		w.WriteHeader(code)
+	}))
+	defer stop()
+	handler := unixEndpoint(path, uint32(os.Getuid()), uint32(os.Getgid()))
+	for _, code := range []int{200, 303, 400, 401, 403, 404, 429, 501, 503} {
+		status.Store(int32(code))
+		response := probe(handler, "/g/airbnb/grant_mmmmmmmmmmmmmmmm/", nil)
+		values := response.Header().Values("Cache-Control")
+		if response.Code != code || len(values) != 1 || values[0] != "no-store" {
+			t.Fatalf("status %d: response %d, cache headers %v", code, response.Code, values)
+		}
+		if code == 429 && response.Header().Get("Retry-After") != "60" {
+			t.Fatal("retry guidance was lost")
+		}
+	}
+}
+
 func TestGuestServiceRoutesAndHeaders(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "http.sock")
 	got := make(chan *http.Request, 2)

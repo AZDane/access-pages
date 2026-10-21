@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import tempfile
+import sqlite3
 import unittest
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
+from unittest.mock import patch
 
 from verification import VerificationStore
 
@@ -16,6 +18,24 @@ class VerificationStoreTests(unittest.TestCase):
 
     def tearDown(self):
         self.temporary.cleanup()
+
+    def test_guest_credential_reads_do_not_reconfigure_or_recreate_database(self):
+        expiry = datetime.now(timezone.utc) + timedelta(hours=1)
+        secret = "synthetic-invitation-secret"
+        token, _ = self.store.consume_bootstrap(
+            "page-a", "grant-a", secret, sha256(secret.encode()).hexdigest(), expiry,
+        )
+        with patch.object(Path, "chmod", side_effect=AssertionError("read changed permissions")):
+            self.assertIsNotNone(self.store.guest_session_info(token, "page-a"))
+            self.assertIsNone(self.store.guest_session_info("invalid-session", "page-a"))
+            self.assertIsNone(self.store.guest_verified_until(token, "page-a", "grant-a"))
+        with self.store._connect(read_only=True) as db:
+            with self.assertRaises(sqlite3.OperationalError):
+                db.execute("DELETE FROM guest_sessions")
+        self.store.path.unlink()
+        with self.assertRaises(sqlite3.OperationalError):
+            self.store.guest_session_info(token, "page-a")
+        self.assertFalse(self.store.path.exists())
 
     def test_bootstrap_reuse_policy_is_atomic_and_survives_restart(self):
         expiry = datetime.now(timezone.utc) + timedelta(hours=1)
