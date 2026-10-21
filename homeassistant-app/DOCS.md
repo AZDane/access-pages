@@ -232,6 +232,12 @@ is active. Each browser receives its own guest session. If email verification
 is required, each browser must verify separately. All sessions end when the
 grant expires or is revoked.
 
+The Gateway permits up to 12 new-session attempts per minute for each valid
+invitation. If opening the invitation in another browser reaches this limit,
+wait one minute and retry. Existing sessions and normal page refreshes continue
+to work. Invalid credentials do not spend this allowance. The limit resets
+when the broker restarts; it does not change invitation expiry or revocation.
+
 ### Single-use invitations
 
 Single-use invitations use [LayerV](https://layerv.ai)'s native one-time-use behavior. After
