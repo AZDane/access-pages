@@ -259,7 +259,11 @@ func newGuestServiceProxy(socketPath string, uid, gid, socketGID uint32) *httput
 	upstream := &url.URL{Scheme: "http", Host: "guest-service"}
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
 	proxy.ErrorLog = log.New(io.Discard, "", 0)
-	proxy.ModifyResponse = captureDiagnosticStages
+	proxy.ModifyResponse = func(response *http.Response) error {
+		// The public endpoint owns this header, including local error responses.
+		response.Header.Del("Cache-Control")
+		return captureDiagnosticStages(response)
+	}
 	originalDirector := proxy.Director
 	proxy.Director = func(request *http.Request) {
 		originalDirector(request)

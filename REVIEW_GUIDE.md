@@ -39,6 +39,8 @@ small transport adapters rather than sources of authorization policy.
 | --- | --- | --- |
 | Admin Gateway rejects ordinary guest routes and endpoint capability | `server.py`, `access.py`, `internal.py` | `tests/test_gateway_roles.py` |
 | Guest session is bound to one page and current grant | `guest_service.py`, `ha_broker.py` | `tests/test_guest_cutover.py`, `tests/test_broker_guest_sessions.py` |
+| New sessions are bounded per authenticated grant without locking out existing sessions | `ha_broker.py`, `rate_limit.py` | `tests/test_guest_auth_hardening.py`, `tests/test_rate_limit.py` |
+| Invalid credentials do not spend a valid grant's issuance budget or write session state | `ha_broker.py`, `verification.py` | `tests/test_guest_auth_hardening.py`, `tests/test_verification.py` |
 | Broker resolves actions from saved policy and bounds parameters | `ha_broker.py` | `tests/test_broker_guest_sessions.py`, `tests/test_ha_broker.py` |
 | Guest Service cannot mutate HA directly | `guest_service.py`, `ha_broker.py` | `tests/test_guest_service.py`, `tests/test_action_boundary.py` |
 | Revocation and policy changes deny subsequent guest operations | `ha_broker.py`, `pages.py` | `tests/test_broker_guest_sessions.py`, `tests/test_server.py::IndividualRevokeTests` |
@@ -118,6 +120,67 @@ LayerV. End-to-end acceptance testing requires an explicitly authorized,
 isolated environment with synthetic or disposable test data.
 
 ## Review completion record
+
+### Targeted authentication review (2026-10-20)
+
+Baseline: `e7a6174` (App 0.1.141). Tests use temporary Unix sockets, synthetic
+grants, real Guest Service/broker/store implementations, mocked Connector
+health, and mocked HA/email calls. They intentionally bypass LayerV admission
+and production socket ownership. Peer-identity enforcement has separate
+coverage in `test_guest_service.py` and `test_broker_guest_sessions.py`.
+
+Confirmed findings and disposition:
+
+- Direct local HEAD did not consume an invitation; a Slackbot-labelled GET
+  consumed a single-use bootstrap and a fresh browser then received `401`.
+  Retained as a characterization test, not a demonstrated public qURL flaw.
+  The implementation is `GuestHandler._serve_guest` in `guest_service.py` and
+  `VerificationStore.consume_bootstrap` in `verification.py`.
+- One hundred rotating invalid bootstrap credentials and 100 rotating session
+  credentials were rejected without a failed-attempt throttle. The new tests
+  also verify that these attempts do not spend valid guests' issuance budgets
+  or write session state. See the rationale and remaining lookup costs in
+  [local authentication abuse controls](SECURITY.md#local-authentication-abuse-controls).
+- A valid reusable invitation previously created 24 sessions and triggered 24
+  mocked verification sends in one burst. `ha_broker._exchange_guest_bootstrap`
+  now limits authenticated creation before database writes. The regression
+  demonstrates 12 sessions/sends, then `429`, without suppressing existing
+  sessions, sibling grants, or recovery after the window.
+- `VerificationStore._connect` previously changed file permissions and set
+  journal mode for each session lookup. Authentication reads now use read-only
+  connections; absent/corrupt stores still fail closed.
+- The public Go endpoint already provided `no-store`; Guest Service responses
+  and some broker parser/method errors relied on that outer layer. Both now
+  provide local `no-store` too. Go tests verify one authoritative public cache
+  header across successful, redirect, denial, overload, and error responses.
+
+Existing regression evidence remains authoritative for current-grant checks,
+expiry, revocation on subsequent requests (including when upstream admission
+remains open), verification replay/attempt limits, independent action policy,
+and single-use transaction concurrency across store instances. No authorization
+results are cached by this change; no live HA or LayerV configuration changes
+are required. Revocation cannot cancel an action already dispatched to HA.
+
+LayerV boundaries still needing separately authorized end-to-end validation:
+
+1. Use disposable qURLs in an isolated installation to observe HEAD, plain GET,
+   and JavaScript-capable passive previews before the intended recipient opens
+   the invitation. Observe both LayerV consumption and Gateway consumption.
+2. Determine which client identity, if any, the Connector reliably conveys,
+   including shared-IP guests, both resource-isolation modes, and already
+   admitted connections. Do not trust a forwarded header merely because it exists.
+3. Establish upstream abuse-control scope and recovery using a vendor-approved,
+   bounded test plan. No such traffic was sent as part of this local review.
+
+An additional confirmation screen, POST redemption, or crawler filtering was
+not implemented. Any proposed redemption change needs evidence, a description
+of the guest-experience impact, and separate approval.
+
+Local validation: all 428 Python tests passed, including the new request-path
+regressions; the final seven hardening tests also passed after preserving the
+existing invitation-error wording. Go endpoint tests passed with `-race`.
+Ruff, Bandit (zero findings), JavaScript syntax checks, and `git diff --check`
+passed. GitHub's container/package and security checks are tracked on the PR.
 
 A review report should state:
 

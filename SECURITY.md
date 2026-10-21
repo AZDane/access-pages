@@ -130,6 +130,66 @@ token, or connector state is exposed, revoke or rotate it immediately. Revoke
 affected guest grants in the Gateway UI. Do not rely on deleting a message,
 browser history entry, screenshot, backup, or log as revocation.
 
+## Local authentication abuse controls
+
+The remote guest path is LayerV/NHP admission, then the per-page Go endpoint,
+Guest Service, and HA broker. The Go endpoint strips caller-supplied identity
+and forwarding headers and supplies its own page capability. Unix peer checks
+protect the service/broker boundary. The broker independently checks the
+individual session, current grant, verification, and saved policy; LayerV
+admission alone is not permission to operate Home Assistant.
+
+New session creation has a broker-local sliding-window budget of **12 attempts
+per 60 seconds per current page/grant**, charged only after its bootstrap hash
+matches. It bounds session database writes and rapid creation of fresh sessions
+with fresh verification challenges. Excess attempts return `429` with
+`Retry-After: 60` before opening the session transaction. Failed transactions
+and attempts to reuse a consumed single-use secret also spend this budget.
+Invalid secrets and nonexistent/expired grants do not spend it.
+
+The limiter retains at most 1,024 page/grant keys with at most 12 timestamps
+each. It never evicts an active key to admit another. If all keys are occupied,
+new keys receive the same `429` until expired entries can be reclaimed.
+Checking and charging are atomic. State is in memory, expires after 60 seconds
+without accepted attempts, and resets on broker restart. Rejected attempts
+do not extend the window. Existing session polling, authenticated actions,
+verification, and a valid session/bootstrap resume do not use this budget.
+Separate browsers on one grant share its creation budget; other grants have
+independent budgets, subject to the fixed key capacity. No IP or untrusted
+forwarding header is used as an identity.
+
+Possession of a valid reusable invitation can still exhaust that invitation's
+new-session budget temporarily; established sessions continue to work. This
+does not cap total stored sessions or aggregate email sends from previously
+established sessions. Existing per-session verification resend delays and
+attempt limits remain in force. This is an issuance-abuse control, not a
+claim to stop arbitrary authentication traffic or a replacement for LayerV.
+
+Random invalid bootstrap/session attempts continue to receive `401`, without
+a new failed-guess lockout. Bootstrap guesses are rejected before opening a
+session transaction; session and verification lookups use read-only SQLite
+connections after store initialization, avoiding repeated permission changes
+and journal-mode setup. They still incur bounded request parsing, policy reads,
+hashing, and database lookups. Existing request/concurrency limits apply.
+A shared unauthenticated page/IP lockout would let a caller deny valid guests;
+the current transport does not supply a verified per-browser identity suitable
+for that purpose. Returning `429` only after doing the same validation would
+not reduce that work. A more selective failed-attempt limiter requires evidence
+about trustworthy LayerV client identity and admission behavior first.
+
+All Guest Service responses and broker guest errors now carry `no-store`.
+The public Go endpoint remains authoritative for its single-valued `no-store`
+header even if an upstream response supplies conflicting cache policy.
+
+GET invitation redemption remains unchanged. HEAD does not redeem a Gateway
+invitation; a GET with a valid bootstrap redeems it regardless of User-Agent.
+LayerV's one-time qURL admission and the Gateway's transactional bootstrap
+consumption are separate operations. Local tests bypass admission and cannot
+establish that a passive public-link crawler reaches either consumption point.
+Public preview behavior and upstream guessing/abuse limits remain unverified
+by this review. Changing redemption to require a new user action is deferred
+pending end-to-end evidence and separate approval.
+
 ## Automated security checks
 
 Every pull request and push to `main`, plus a weekly scheduled run, performs:
