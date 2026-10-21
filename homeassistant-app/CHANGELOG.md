@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.142
+
+- Limit new guest sessions to 12 attempts per minute per valid invitation.
+  Existing sessions and normal polling continue during this limit; invalid
+  credentials cannot consume another guest's session-creation allowance.
+- Reduce database work on guest authentication reads and prevent caching of
+  internal guest responses and errors as well as public responses.
+- Preserve LayerV admission, single-use invitation behavior, email verification,
+  and the existing guest opening flow. No connection reset is required.
+
 ## 0.1.141
 
 - Add a Theme dropdown in App Configuration for the admin interface, previews,
