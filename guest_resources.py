@@ -455,7 +455,9 @@ class ConnectorPublisher:
             diagnostics = self._ipc().get("resources", {}).get(public_key, {})
             if diagnostics.get("state") != "serving":
                 raise LayerVError(
-                    "Guest resource route is not serving", status=503, retry_after=2
+                    "Guest access is still connecting. This can happen after an update "
+                    "or restart. Please wait a few seconds and try creating the link again.",
+                    status=503, retry_after=2,
                 )
 
     def healthy(self):
