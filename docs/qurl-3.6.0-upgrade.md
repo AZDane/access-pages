@@ -49,6 +49,17 @@ contention, shutdown, warm restart, and preservation of identity and registry
 files. The application suite covers guest authorization and recovery behavior.
 CI additionally builds and exercises both architectures and scans the image.
 
+A separate live migration probe used the released 0.1.143 publisher and binary,
+sealed anonymous state, and explicit existing public resource fixtures. It
+published and fetched with the old binary, stopped it, then restored the same
+state with 3.6.0. Both page/guest CRIDs remained stable, privacy was confirmed,
+content retrieval passed, and resources were deleted without re-enrollment.
+The public fixtures model resources created before the service correction;
+new resources through the legacy native path are now reported as restricted
+and are correctly refused by the old compatibility patch.
+
+This migration test covers anonymous sealed state, not a customer's account key.
+
 The release notes identify an upstream Linux diagnostic limitation: an
 unauthorized private-access attempt can report unavailable rather than not found.
 Access Pages publishes public transport and independently enforces guest access;
