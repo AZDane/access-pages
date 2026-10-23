@@ -1,29 +1,22 @@
 # Third-party notices
 
-This distribution includes qURL 3.5.0-access-pages.1 (embedded Connector 0.14.2),
-the Access Pages Go guest endpoint, the Go standard library, Python 3.14,
-the local QR code library, and base-image operating-system packages.
+This distribution includes the official qURL 3.6.0 binary (embedded Connector
+0.14.2), the Access Pages Go guest endpoint, the Go standard library, Python
+3.14, the local QR code library, and base-image operating-system packages.
 
 The complete license text shipped in the qURL release archive is
-`third_party_licenses/qurl-3.5.0-LICENSE` (MIT). The Go 1.26.9 and
-1.27.2 standard-library/toolchain license text is
-`third_party_licenses/Go-1.26.9-and-1.27.2-LICENSE` (BSD-3-Clause).
-The two Go versions have byte-identical license files. The qURL binary
-uses Go 1.26.9; our guest endpoint uses Go 1.27.2.
+`third_party_licenses/qurl-3.6.0-LICENSE` (MIT). The Go 1.26.10 and 1.27.2
+standard-library/toolchain license text is
+`third_party_licenses/Go-1.26.10-and-1.27.2-LICENSE` (BSD-3-Clause).
+The two Go versions have byte-identical license files. The qURL binary uses
+Go 1.26.10; our guest endpoint uses Go 1.27.2.
 
-Access Pages builds the pinned upstream source with a scoped publication
-compatibility patch. Its source, tests, and build notes are in `packaging/qurl/`
-and in the image under `third_party_licenses/access-pages-qurl-compatibility/`.
-The dependency versions and Go toolchain remain those of upstream 3.5.0.
-
-The upstream qURL release SPDX inventories for both architectures are in
-`third_party_licenses/qurl-3.5.0-linux-{amd64,arm64}.spdx.json`.
-They describe the unmodified upstream binaries, not checksums of our rebuilt
-binaries; our image build generates its own SBOM. Their module/version/license
-sets are identical. The exact license and
-NOTICE files from the corresponding pinned module archives follow below.
-These files preserve each dependency's copyright, conditions, disclaimers,
-and any upstream NOTICE material without substituting a generic license.
+The unmodified upstream SPDX inventories for both shipped architectures are
+`third_party_licenses/qurl-3.6.0-linux-{amd64,arm64}.spdx.json`. Their
+module/version/license sets are identical. The archives and inventories were
+checked against the release's signed checksums. The exact license and NOTICE
+files from the corresponding pinned module archives follow below. These files
+preserve each dependency's copyright, conditions, disclaimers, and notices.
 
 `github.com/fatedier/yamux` is the MPL-2.0 component in the qURL binary.
 Its exact pinned Source Code Form, including the license, is supplied in
@@ -83,8 +76,8 @@ Debian base-image package license/copyright records remain under
 | `github.com/klauspost/reedsolomon` | `v1.12.0` | `MIT` | `LICENSE` |
 | `github.com/layervai/frp` | `v1.0.5-0.20260926021043-5570a4205458` | `Apache-2.0` | `LICENSE` |
 | `github.com/layervai/qurl-connector` | `v0.14.2` | `Apache-2.0` | `LICENSE` |
-| `github.com/layervai/qurl-go` | `v0.23.0` | `MIT` | `LICENSE` |
-| `github.com/layervai/qurl-integrations` | `v1.8.1-0.20261010045418-3da4ba34df02` | `MIT` | `LICENSE` |
+| `github.com/layervai/qurl-go` | `v0.26.3` | `NOASSERTION` | `LICENSE` |
+| `github.com/layervai/qurl-integrations` | `v1.8.1-0.20261022194756-dab9399a9297` | `NOASSERTION` | `LICENSE` |
 | `github.com/pelletier/go-toml/v2` | `v2.4.3` | `MIT` | `LICENSE` |
 | `github.com/pires/go-proxyproto` | `v0.15.0` | `Apache-2.0` | `LICENSE` |
 | `github.com/pkg/errors` | `v0.9.1` | `BSD-2-Clause` | `LICENSE` |
@@ -107,13 +100,13 @@ Debian base-image package license/copyright records remain under
 | `go.opentelemetry.io/otel/metric` | `v1.44.0` | `Apache-2.0 AND BSD-3-Clause` | `LICENSE` |
 | `go.opentelemetry.io/otel/trace` | `v1.44.0` | `Apache-2.0 AND BSD-3-Clause` | `LICENSE` |
 | `go.yaml.in/yaml/v3` | `v3.0.4` | `Apache-2.0 AND MIT` | `LICENSE`, `NOTICE` |
-| `golang.org/x/crypto` | `v0.57.0` | `BSD-3-Clause` | `LICENSE` |
+| `golang.org/x/crypto` | `v0.58.0` | `NOASSERTION` | `LICENSE` |
 | `golang.org/x/net` | `v0.60.0` | `BSD-3-Clause` | `LICENSE` |
 | `golang.org/x/oauth2` | `v0.36.0` | `BSD-3-Clause` | `LICENSE` |
-| `golang.org/x/sync` | `v0.23.0` | `BSD-3-Clause` | `LICENSE` |
-| `golang.org/x/sys` | `v0.48.0` | `BSD-3-Clause` | `LICENSE` |
-| `golang.org/x/term` | `v0.46.0` | `BSD-3-Clause` | `LICENSE` |
-| `golang.org/x/text` | `v0.42.0` | `BSD-3-Clause` | `LICENSE` |
+| `golang.org/x/sync` | `v0.24.0` | `NOASSERTION` | `LICENSE` |
+| `golang.org/x/sys` | `v0.49.0` | `NOASSERTION` | `LICENSE` |
+| `golang.org/x/term` | `v0.47.0` | `NOASSERTION` | `LICENSE` |
+| `golang.org/x/text` | `v0.43.0` | `NOASSERTION` | `LICENSE` |
 | `golang.org/x/time` | `v0.15.0` | `BSD-3-Clause` | `LICENSE` |
 | `golang.zx2c4.com/wireguard` | `v0.0.0-20231211153847-12269c276173` | `MIT` | `LICENSE` |
 | `google.golang.org/api` | `v0.288.0` | `BSD-3-Clause` | `LICENSE`, `internal/third_party/uritemplates/LICENSE` |

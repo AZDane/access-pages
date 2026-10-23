@@ -9,14 +9,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingTests(unittest.TestCase):
-    def test_ha_image_pins_patched_qurl_source_and_toolchain(self):
+    def test_ha_image_pins_official_qurl_archives(self):
         dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
-        self.assertIn("3da4ba34df029c31e86dc2ed00997d015b1bac8d", dockerfile)
-        self.assertIn("1741ed95a34c5665849d492b94d9dc1798f0379f1cfaefbf1e601f29a72db318", dockerfile)
-        self.assertIn("GOTOOLCHAIN=go1.26.9", dockerfile)
-        self.assertIn("patch --batch --fuzz=0", dockerfile)
-        self.assertIn("main.version=3.5.0-access-pages.1", dockerfile)
-        self.assertIn("go test ./apps/cli/cmd", dockerfile)
+        self.assertIn("qurl_3.6.0_linux_${TARGETARCH}.tar.gz", dockerfile)
+        self.assertIn("b28e995228d9e3fdc8944b590587d3e9a06b41a43dfe9797d424576ef5c77967", dockerfile)
+        self.assertIn("19521dde36007363281c8c6f36fd7303d46bf9243d1c3ba6ce504193889f7932", dockerfile)
+        self.assertNotIn("packaging/qurl", dockerfile)
+        self.assertNotIn("LEGACY_PUBLIC_PUBLISH", (ROOT / "guest_resources.py").read_text())
 
     def test_final_image_asserts_system_tunnel_trust_store(self):
         runtime = (ROOT / "Dockerfile.ha-app").read_text().split("FROM python:", 1)[1]
@@ -30,17 +29,17 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("COPY third_party_licenses ./third_party_licenses", dockerfile)
         notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
         directory = ROOT / "third_party_licenses"
-        go_license = (directory / "Go-1.26.9-and-1.27.2-LICENSE").read_text(encoding="utf-8")
+        go_license = (directory / "Go-1.26.10-and-1.27.2-LICENSE").read_text(encoding="utf-8")
         self.assertIn("Copyright 2009 The Go Authors", go_license)
         self.assertIn("Redistributions in binary form must reproduce", go_license)
-        self.assertIn("LayerV", (directory / "qurl-3.5.0-LICENSE").read_text(encoding="utf-8"))
+        self.assertIn("LayerV", (directory / "qurl-3.6.0-LICENSE").read_text(encoding="utf-8"))
         self.assertIn("PYTHON SOFTWARE FOUNDATION", (directory / "Python-3.14.7-LICENSE").read_text(encoding="utf-8"))
         self.assertTrue((directory / "yamux-source" / "session.go").is_file())
         for arch in ("amd64", "arm64"):
-            packages = json.loads((directory / f"qurl-3.5.0-linux-{arch}.spdx.json").read_text())["packages"]
+            packages = json.loads((directory / f"qurl-3.6.0-linux-{arch}.spdx.json").read_text())["packages"]
             for package in packages:
                 name = package["name"]
-                if name == "stdlib" or name.startswith("qurl_3.5.0_"):
+                if name == "stdlib" or name.startswith("qurl_3.6.0_"):
                     continue
                 module = directory / "qurl-modules" / f"{name}@{package['versionInfo']}"
                 self.assertTrue(module.is_dir(), name)

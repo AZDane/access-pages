@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.144
+
+- Upgrade to the official qURL 3.6.0 Connector after LayerV corrected its production privacy API contract.
+- Remove the temporary public-resource compatibility patch and restore upstream privacy confirmation for new resources.
+- Retain externally supervised, sealed connector state and explicit public transport for Access Pages guest authorization. No connection reset is required.
+
 ## 0.1.143
 
 - Explain when guest access is still connecting after an update or restart,
