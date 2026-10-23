@@ -2,6 +2,8 @@
 
 ## 0.1.144
 
+- Rebuild the guest endpoint with Go 1.27.3 to fix the certificate-verification vulnerability CVE-2026-111943.
+
 - Upgrade to the official qURL 3.6.0 Connector after LayerV corrected its production privacy API contract.
 - Remove the temporary public-resource compatibility patch and restore upstream privacy confirmation for new resources.
 - Retain externally supervised, sealed connector state and explicit public transport for Access Pages guest authorization. No connection reset is required.

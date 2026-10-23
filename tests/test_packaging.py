@@ -29,7 +29,7 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("COPY third_party_licenses ./third_party_licenses", dockerfile)
         notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
         directory = ROOT / "third_party_licenses"
-        go_license = (directory / "Go-1.26.10-and-1.27.2-LICENSE").read_text(encoding="utf-8")
+        go_license = (directory / "Go-1.26.10-and-1.27.3-LICENSE").read_text(encoding="utf-8")
         self.assertIn("Copyright 2009 The Go Authors", go_license)
         self.assertIn("Redistributions in binary form must reproduce", go_license)
         self.assertIn("LayerV", (directory / "qurl-3.6.0-LICENSE").read_text(encoding="utf-8"))

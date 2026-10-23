@@ -5,11 +5,11 @@ This distribution includes the official qURL 3.6.0 binary (embedded Connector
 3.14, the local QR code library, and base-image operating-system packages.
 
 The complete license text shipped in the qURL release archive is
-`third_party_licenses/qurl-3.6.0-LICENSE` (MIT). The Go 1.26.10 and 1.27.2
+`third_party_licenses/qurl-3.6.0-LICENSE` (MIT). The Go 1.26.10 and 1.27.3
 standard-library/toolchain license text is
-`third_party_licenses/Go-1.26.10-and-1.27.2-LICENSE` (BSD-3-Clause).
+`third_party_licenses/Go-1.26.10-and-1.27.3-LICENSE` (BSD-3-Clause).
 The two Go versions have byte-identical license files. The qURL binary uses
-Go 1.26.10; our guest endpoint uses Go 1.27.2.
+Go 1.26.10; our guest endpoint uses Go 1.27.3.
 
 The unmodified upstream SPDX inventories for both shipped architectures are
 `third_party_licenses/qurl-3.6.0-linux-{amd64,arm64}.spdx.json`. Their

@@ -40,7 +40,7 @@ assert Path("/app/THIRD_PARTY_NOTICES.md").is_file()
 assert Path("/app/LICENSE").is_file()
 for license_file in (
     notices / "qurl-3.6.0-LICENSE",
-    notices / "Go-1.26.10-and-1.27.2-LICENSE",
+    notices / "Go-1.26.10-and-1.27.3-LICENSE",
     notices / "Python-3.14.7-LICENSE",
     notices / "qurl-modules/github.com/layervai/qurl-connector@v0.14.2/LICENSE",
     notices / "qurl-modules/github.com/fatedier/yamux@v0.0.0-20250825093530-d0154be01cd6/LICENSE",

@@ -18,6 +18,12 @@ The temporary source patch, custom binary build, and broker opt-in are removed.
   notices come from the exact pinned Go module archives. The unchanged yamux
   MPL source remains included. Both architecture inventories are retained.
 
+The existing guest endpoint is also rebuilt with Go 1.27.3, pinned to the
+builder manifest `sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5`.
+The required image scan identified CVE-2026-111943 in its old Go 1.27.2 runtime;
+this updates to the fixed version without weakening the scan. The official Go
+1.27.3 license was verified byte-identical to the bundled Go license.
+
 ## App integration
 
 The broker still explicitly publishes public transport resources. Access Pages
