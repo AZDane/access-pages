@@ -115,6 +115,12 @@ jobs:
           --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
           access-pages-app:security-scan /tmp/probe.py
 
+      - name: Verify runtime permission repair with service identities
+        run: >-
+          docker run --rm --network none --user root --entrypoint python
+          --volume "$PWD/tests/packaged_permission_probe.py:/tmp/probe.py:ro"
+          access-pages-app:security-scan /tmp/probe.py
+
       - name: Verify packaged qURL supervision and lifetime lock
         run: >-
           docker run --rm --network none --user 2103:2103 --entrypoint python
@@ -140,6 +146,12 @@ jobs:
         run: >-
           docker run --rm --network none --user root --entrypoint python
           --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
+          access-pages-app:arm64-test /tmp/probe.py
+
+      - name: Verify runtime permission repair with service identities on ARM64
+        run: >-
+          docker run --rm --network none --user root --entrypoint python
+          --volume "$PWD/tests/packaged_permission_probe.py:/tmp/probe.py:ro"
           access-pages-app:arm64-test /tmp/probe.py
 
       - name: Verify packaged qURL supervision and lifetime lock on ARM64
