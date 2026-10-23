@@ -26,7 +26,7 @@ class DeviceRecoveryTests(unittest.TestCase):
 
     def test_status_requires_exact_protocol_binary_mode_and_owned_pid(self):
         with tempfile.TemporaryDirectory() as temp:
-            for mode, expected in (("per-share", "5/3.5.0-access-pages.1/per-share"), ("single", "5/3.5.0-access-pages.1")):
+            for mode, expected in (("per-share", "5/3.6.0/per-share"), ("single", "5/3.6.0")):
                 publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key", mode=mode)
                 publisher.daemon = Mock(pid=1234)
                 socket_path = publisher.state / "daemon.sock"
@@ -35,9 +35,10 @@ class DeviceRecoveryTests(unittest.TestCase):
                     (expected, 1234, True),
                     ("5/3.0.0/per-share", 1234, False),
                     ("5/3.5.0/per-share", 1234, False),
+                    ("5/3.5.0-access-pages.1/per-share", 1234, False),
                     ("5/2.6.0/per-share", 1234, False),
-                    ("4/3.5.0-access-pages.1/per-share", 1234, False),
-                    ("5/3.5.0-access-pages.1" if mode == "per-share" else "5/3.5.0-access-pages.1/per-share", 1234, False),
+                    ("4/3.6.0/per-share", 1234, False),
+                    ("5/3.6.0" if mode == "per-share" else "5/3.6.0/per-share", 1234, False),
                     (expected, 5678, False),
                     (expected, 0, False),
                     (expected, None, False),
@@ -434,7 +435,7 @@ class DeviceRecoveryTests(unittest.TestCase):
             publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="retained-secret")
             self._enroll_fixture(publisher, shares=True)
             popen.return_value.poll.return_value = None
-            with patch.object(publisher, "_ipc", return_value={"job_version": "5/3.5.0-access-pages.1/per-share"}):
+            with patch.object(publisher, "_ipc", return_value={"job_version": "5/3.6.0/per-share"}):
                 publisher._start()
             args = popen.call_args.args[0]
             self.assertIn("--supervision", args)

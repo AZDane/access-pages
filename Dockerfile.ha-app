@@ -1,22 +1,18 @@
-# Build the pinned CLI source with the narrowly scoped Access Pages patch.
-FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS qurl
-ENV GOTOOLCHAIN=go1.26.9 CGO_ENABLED=0
-WORKDIR /src
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl patch \
-    && curl -fsSL https://codeload.github.com/layervai/qurl-integrations/tar.gz/3da4ba34df029c31e86dc2ed00997d015b1bac8d -o /tmp/qurl-source.tar.gz \
-    && printf '%s  /tmp/qurl-source.tar.gz\n' 1741ed95a34c5665849d492b94d9dc1798f0379f1cfaefbf1e601f29a72db318 | sha256sum -c - \
-    && tar -xzf /tmp/qurl-source.tar.gz --strip-components=1 -C /src
-COPY packaging/qurl/access-pages.diff /tmp/access-pages.diff
-COPY packaging/qurl/access_pages_publish*.go /src/apps/cli/cmd/
-RUN patch --batch --fuzz=0 -p1 < /tmp/access-pages.diff \
-    && go test ./apps/cli/cmd -run 'TestAccessPages|TestLocalPublish|TestPublishIsPrivateUnlessPublic' -count=1
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS qurl
 ARG TARGETARCH
-# The hub key is the public trust anchor embedded in the official 3.5.0 binary.
-RUN GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -buildvcs=false \
-    -ldflags='-s -w -X main.version=3.5.0-access-pages.1 -X github.com/layervai/qurl-integrations/apps/cli/internal/connector/hub.defaultServerPublicKeyB64=LxWWlFQ18yEgSl0lDX1+cMhCLLEc8LkHTOc1QskRY28=' \
-    -o /out/qurl ./apps/cli/cmd
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && case "${TARGETARCH}" in \
+        amd64) QURL_CHECKSUM=b28e995228d9e3fdc8944b590587d3e9a06b41a43dfe9797d424576ef5c77967 ;; \
+        arm64) QURL_CHECKSUM=19521dde36007363281c8c6f36fd7303d46bf9243d1c3ba6ce504193889f7932 ;; \
+        *) exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v3.6.0/qurl_3.6.0_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
+    && printf '%s  /tmp/qurl.tar.gz\n' "${QURL_CHECKSUM}" | sha256sum -c - \
+    && mkdir /out \
+    && tar -xzf /tmp/qurl.tar.gz -C /out qurl \
+    && chmod 0755 /out/qurl
 
-FROM --platform=$BUILDPLATFORM golang:1.27.2-bookworm@sha256:5cf287a799e6b94384bad13d16b14904c531f51ba65792237e122ce42b392f61 AS guest-endpoint
+FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS guest-endpoint
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/guest-endpoint ./cmd/guest-endpoint
@@ -46,7 +42,7 @@ RUN dpkg-query -W ca-certificates \
     && python -c 'import ssl; assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0'
 
 ARG BUILD_ARCH
-ARG BUILD_VERSION=0.1.142
+ARG BUILD_VERSION=0.1.144
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -67,7 +63,6 @@ COPY static ./static
 COPY themes.py ./
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
 COPY third_party_licenses ./third_party_licenses
-COPY packaging/qurl ./third_party_licenses/access-pages-qurl-compatibility
 COPY homeassistant-app/app_runner.py /usr/local/bin/app_runner.py
 COPY homeassistant-app/ingress_proxy.py /usr/local/bin/ingress_proxy.py
 COPY homeassistant-app/onboarding.py /usr/local/bin/onboarding.py

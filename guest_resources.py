@@ -46,7 +46,7 @@ GRANT = re.compile(r"grant_[A-Za-z0-9_-]{16}")
 
 
 def _invalid_connector_request(stderr):
-    """Translate only pinned qURL 3.5.0 diagnostics, never arbitrary detail.
+    """Translate only pinned qURL 3.6.0 diagnostics, never arbitrary detail.
 
     The native enrollment/recovery headlines come from apps/cli/internal/
     output/messages.go; REST validation uses errors.go's Invalid fields block.
@@ -108,7 +108,7 @@ def _invalid_connector_request(stderr):
 class ConnectorPublisher:
     """Run all guest routes in one pinned CLI daemon owned by the broker.
 
-    qURL 3.5.0 reloads this externally supervised daemon. The broker owns its
+    qURL 3.6.0 reloads this externally supervised daemon. The broker owns its
     lifecycle; CLI commands must never install a native background job.
     """
 
@@ -135,7 +135,6 @@ class ConnectorPublisher:
             "HOME": str(home),
             "QURL_CONNECTOR_STATE_DIR": str(self.state),
             "QURL_SHARE_GROUP_MODE": mode,
-            "ACCESS_PAGES_LEGACY_PUBLIC_PUBLISH": "1",
         }
         self.command = [binary, "--endpoint", api_base_url, "--supervision", "external", "-o", "json"]
         self.management = LayerVClient(api_base_url, enrollment_key, "enrollment")
@@ -360,7 +359,7 @@ class ConnectorPublisher:
             if response.status != 200:
                 raise OSError("Connector status unavailable")
             data = json.load(response)
-            expected = "5/3.5.0-access-pages.1" + ("/per-share" if self.mode == "per-share" else "")
+            expected = "5/3.6.0" + ("/per-share" if self.mode == "per-share" else "")
             if data.get("job_version") != expected:
                 raise OSError("Connector version or session mode mismatch")
             # A new daemon can wait behind another process's lifetime lock.

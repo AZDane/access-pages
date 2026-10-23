@@ -69,6 +69,8 @@ def probe():
                 resources[identifier] = None
                 published = run(["publish", "http://127.0.0.2:8080", "--id", identifier, "--public"])
                 crid = resources[identifier] = published["crid"]
+                check(published.get("private") is False, "Publication did not confirm public privacy")
+                check(published.get("found_existing") is False, "Fresh publication reused an existing resource")
                 run(["share", crid, "--ttl", "5m"])
                 output = Path(temp) / f"{isolation}.txt"
                 run(["get", crid, "--file", str(output), "--yes"])
@@ -79,6 +81,10 @@ def probe():
             for identifier, crid in resources.items():
                 repeated = run(["publish", "http://127.0.0.2:8080", "--id", identifier, "--public"])
                 check(repeated["crid"] == crid, "Restart changed the resource identity")
+                check(repeated.get("private") is False, "Restart did not confirm public privacy")
+                output = Path(temp) / (identifier + ".txt")
+                run(["get", crid, "--file", str(output), "--yes"])
+                check(output.read_bytes() == CONTENT, "Restarted tunnel content differs")
             print("Warm restart and stable resource reuse: passed", flush=True)
         finally:
             cleanup_failed = False
