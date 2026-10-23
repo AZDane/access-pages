@@ -59,10 +59,42 @@ def create_native_socket():
         transport.close()
 
 
-as_service(create_native_socket, uid=2103, gid=2103)
+broker_uid, broker_gid, _, _ = app_runner.PROCESS_IDENTITIES["access_pages_broker"]
+as_service(create_native_socket, uid=broker_uid, gid=broker_gid)
+native_socket = native_state / "daemon.sock"
+socket_before = native_socket.stat()
+assert (socket_before.st_uid, socket_before.st_gid) == (broker_uid, broker_gid)
 app_runner._prepare_runtime_permissions()
+socket_after = native_socket.stat()
+assert (socket_after.st_ino, socket_after.st_uid, socket_after.st_gid, socket_after.st_mode) == (
+    socket_before.st_ino, socket_before.st_uid, socket_before.st_gid, socket_before.st_mode
+)
 assert (valid.stat().st_uid, valid.stat().st_gid, stat.S_IMODE(valid.stat().st_mode)) == (2100, 2000, 0o2750)
 assert ((valid / "state.json").stat().st_uid, (valid / "state.json").stat().st_gid, stat.S_IMODE((valid / "state.json").stat().st_mode)) == (2100, 2000, 0o640)
+app_runner._prepare_runtime_permissions()
+
+for socket_uid, socket_gid, socket_mode in (
+    (2100, broker_gid, 0o600),
+    (broker_uid, 2000, 0o600),
+    (broker_uid, broker_gid, 0o660),
+    (broker_uid, broker_gid, 0o606),
+):
+    os.chown(native_socket, socket_uid, socket_gid)
+    os.chmod(native_socket, socket_mode)
+    try:
+        app_runner._prepare_runtime_permissions()
+    except app_runner.SetupError as error:
+        assert str(error) == "Unsafe Connector socket"
+    else:
+        raise AssertionError("Unsafe Connector socket was accepted")
+    current = native_socket.stat()
+    assert (current.st_uid, current.st_gid, stat.S_IMODE(current.st_mode)) == (
+        socket_uid, socket_gid, socket_mode
+    ), "Permission repair mutated an unsafe socket"
+
+# The private-tree group remains valid for existing installations.
+os.chown(native_socket, broker_uid, 2103)
+os.chmod(native_socket, 0o600)
 app_runner._prepare_runtime_permissions()
 
 link = pages / "attack"

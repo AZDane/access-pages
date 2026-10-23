@@ -664,7 +664,15 @@ def _repair_tree_fd(
         if allow_native_socket and relative == ("shared-state",) and name == "daemon.sock":
             info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
             if stat.S_ISSOCK(info.st_mode):
-                if info.st_uid != uid or info.st_gid != gid or info.st_mode & 0o077:
+                # The broker runs with the policy-reader primary group, so
+                # its Connector socket need not share the private tree's GID.
+                # Retain support for sockets created with the tree's group.
+                broker_gid = PROCESS_IDENTITIES["access_pages_broker"][1]
+                if (
+                    info.st_uid != uid
+                    or info.st_gid not in {gid, broker_gid}
+                    or info.st_mode & 0o077
+                ):
                     raise SetupError("Unsafe Connector socket")
                 # A UNIX socket cannot be opened as a regular file. It is
                 # broker-owned and never mutated by this privileged walk.

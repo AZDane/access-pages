@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.145
+
+- Fix "Setup required: Unsafe Connector socket" when starting after a previous
+  run. Accept the Connector's normal service group while retaining owner-only
+  socket permissions and ownership checks.
+- Preserve saved pages, settings, and connection state. No connection reset is
+  required.
+
 ## 0.1.144
 
 - Rebuild the guest endpoint with Go 1.27.3 to fix the certificate-verification vulnerability CVE-2026-111943.
