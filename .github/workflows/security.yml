@@ -128,6 +128,30 @@ jobs:
           --volume "$PWD/tests/packaged_security_probe.py:/tmp/probe.py:ro"
           access-pages-app:security-scan /tmp/probe.py
 
+      - name: Verify AppArmor executable enforcement when supported
+        run: |
+          case "$(docker info --format '{{json .SecurityOptions}}')" in
+            *name=apparmor*) ;;
+            *) echo "AppArmor enforcement unavailable on this runner"; exit 0 ;;
+          esac
+          sudo apparmor_parser --replace homeassistant-app/apparmor.txt
+          trap 'sudo apparmor_parser --remove homeassistant-app/apparmor.txt' EXIT
+          docker run --rm --interactive --network none --entrypoint python \
+            --security-opt apparmor=access_pages access-pages-app:security-scan - <<'PY'
+          import subprocess
+          import sys
+
+          assert sys.version_info[:2] == (3, 15), sys.version
+          for executable in ("/usr/local/bin/python", "/usr/local/bin/python3", "/usr/local/bin/python3.15"):
+              subprocess.run([executable, "-c", "import ssl"], check=True)
+          try:
+              subprocess.run(["/bin/sh", "-c", "exit 0"], check=True)
+          except PermissionError:
+              print("AppArmor: selected Python and aliases execute; shell execution denied")
+          else:
+              raise AssertionError("AppArmor allowed an unlisted executable")
+          PY
+
       - name: Verify Gateway startup with unavailable logging
         run: >-
           docker run --rm --network none --user root --entrypoint python
