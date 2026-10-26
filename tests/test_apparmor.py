@@ -35,6 +35,10 @@ class AppArmorProfileTests(unittest.TestCase):
             rf"(?m)^\s*{re.escape(executable)}\s+rix,\s*$",
             f"AppArmor must permit the final runtime executable {executable}",
         )
+        python_rules = re.findall(
+            r"(?m)^\s*(/usr/local/bin/python\S*)\s+rix,\s*$", self.profile
+        )
+        self.assertEqual(python_rules, [executable])
 
     def test_qurl_system_trust_and_lifetime_lock_remain_confined(self):
         self.assertIn("/etc/ssl/certs/{,**} r,", self.profile)
