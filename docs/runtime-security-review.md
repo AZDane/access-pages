@@ -69,6 +69,7 @@ The refreshed amd64 scan with Trivy 0.76.1 reports **59 HIGH + 2 CRITICAL packag
 records, representing 15 distinct CVEs across 8 source-package families**.
 For example, six util-linux CVEs are repeated against eight binary packages,
 accounting for 48 records. Count unique CVEs separately from affected packages.
+Both native architecture CI scans reproduced the same 61-record inventory.
 
 ## Finding-by-finding assessment
 
@@ -131,12 +132,13 @@ runs existing security/permission/qURL probes, and runs startup/security probes
 under the exact AppArmor profile on capable runners. Check the actual logs:
 the AppArmor step explicitly reports a skip if a runner lacks enforcement.
 
-Remaining external-beta acceptance requirements include actual Supervisor-managed
-installation, authenticated ingress, discovery/action against a real HA test
-entity, live disposable LayerV enrollment/guest access/revocation, SMTP verification,
-restart/upgrade persistence, and inspection of AppArmor denial logs. Synthetic
-fixtures and ordinary Docker runs do not substitute for these checks. Results
-from the disposable HAOS environment are recorded below after execution.
+Remaining external-beta acceptance requirements include live disposable LayerV
+enrollment, external guest access/revocation, SMTP delivery/verification, outbound
+TLS handshakes and rejected-certificate tests under confinement, and an actual
+upgrade/restore persistence cycle. Supervisor installation, authenticated ingress,
+a real HA entity action, restart persistence, and audit-log inspection were
+verified in the disposable environment below. Real HAOS execution was amd64;
+ARM64 has native container coverage, not a second HAOS VM acceptance run.
 
 ### Disposable HAOS verification
 
@@ -150,6 +152,46 @@ and Docker AppArmor support. Access is bound to localhost, with a disposable
 The exact reviewed amd64 image was imported, the unchanged `access_pages`
 profile loaded in enforce mode, and the full startup, real-service-identity
 security, and failure/startup probes passed under that profile. An explicit
-attempt to execute `/bin/sh` returned PermissionError. This verifies actual
-HAOS kernel enforcement for the synthetic application flows; it does not by
-itself verify Supervisor-managed installation, ingress or live external services.
+attempt to execute `/bin/sh` returned PermissionError.
+
+Supervisor then installed a sandbox-only local App derived from that exact
+image. The local installation fixture removes the public `image` setting and
+uses a one-line Dockerfile inheriting the reviewed image through a registry
+bound to VM loopback, accommodating Supervisor's mandatory base pull. It does
+not alter application files, command, environment, profile, privileges or slug.
+Supervisor names its loaded profile `local_access_pages`; both the container
+inspection and kernel profile list confirmed it was enforced. Nothing was
+published to a public registry or deployed to an existing installation.
+
+A disposable HA owner and `input_boolean.access61_probe` entity were created.
+The App's normal options explicitly included input_boolean for this test.
+Verified through authenticated HA ingress: onboarding, real HA discovery,
+page creation, admin preview executing `turn_on`, and the actual entity changing
+from off to on. Requests without an ingress session and unapproved actions
+were denied. A Supervisor-managed App restart retained the configured page
+and resumed authenticated access. The LayerV key was deliberately synthetic;
+no enrollment, public guest URL, or external LayerV success is claimed.
+
+Audit logs contain denied reads of `/usr/local/bin/`, `/etc/ssl/openssl.cnf`,
+process fd/cgroup metadata, and `/proc/sys/net/core/somaxconn`. These did not
+prevent the exercised flows. Do not describe the audit as empty or widen the
+profile simply to hide these events. The installed OpenSSL configuration has
+an empty initialization section; default SSL contexts inside and outside the
+profile have identical CA/cipher digests, CERT_REQUIRED, hostname checking,
+minimum TLS 1.2, and security level 2. This checks current effective defaults,
+not live handshake behavior or future configuration changes. The denied process
+metadata/backlog probes still need observation during live Connector acceptance.
+
+All five jobs passed at `2af7d3f` in
+[Security run 40368916751](https://github.com/AZDane/access-pages/actions/runs/40368916751):
+static analysis and 428 tests; secret scan; dependency/configuration scan;
+amd64 image build, shipped-runtime 428 tests, package/security probes and actual
+AppArmor enforcement; native arm64 image build and package/security probes.
+Local Ruff/Bandit, the shipped-runtime 428 tests, and `git diff --check` also
+passed. Unfiltered reports still contain the findings above.
+
+**Readiness:** keep PR #61 draft pending the patched official Python image and
+its repeat validation. The existing package findings have documented exposure
+constraints, not a blanket zero-vulnerability claim. External beta remains
+blocked on the live-service and upgrade/restore acceptance tests above, even
+after the runtime image is updated. No merge or release was performed.
