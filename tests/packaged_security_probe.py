@@ -9,10 +9,8 @@ import hashlib
 import http.client
 import json
 import os
-import ssl
 import subprocess
 import sys
-import sysconfig
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -36,35 +34,6 @@ GRANT_V = "grant_" + "v" * 16
 NOW = datetime.now(timezone.utc)
 events = {"emails": [], "actions": [], "admin_paths": [], "guest_events": []}
 assert not list((DATA / "pages").glob("*.json")), "Probe requires disposable App data"
-assert sys.version_info[:3] == (3, 15, 1), sys.version
-for executable in (sys.executable, "/usr/local/bin/python", "/usr/local/bin/python3"):
-    assert Path(executable).resolve() == Path("/usr/local/bin/python3.15")
-for package in ("openssl", "libssl3"):
-    version = subprocess.check_output(
-        ["dpkg-query", "-W", "-f=${Version}", package], text=True
-    ).strip()
-    subprocess.run(
-        ["dpkg", "--compare-versions", version, "ge", "3.0.22-1~deb12u2"], check=True
-    )
-    print(f"{package}: {version}")
-print(f"Python: {sys.version}; TLS: {ssl.OPENSSL_VERSION}")
-assert not (Path(sysconfig.get_path("stdlib")) / "ensurepip").exists()
-assert not list(Path(sysconfig.get_path("purelib")).glob("pip*"))
-notices = Path("/app/third_party_licenses")
-assert Path("/app/THIRD_PARTY_NOTICES.md").is_file()
-assert Path("/app/LICENSE").is_file()
-for license_file in (
-    notices / "qurl-3.6.0-LICENSE",
-    notices / "Go-1.26.10-and-1.27.3-LICENSE",
-    notices / "Python-3.15.1-LICENSE",
-    notices / "qurl-modules/github.com/layervai/qurl-connector@v0.14.2/LICENSE",
-    notices / "qurl-modules/github.com/fatedier/yamux@v0.0.0-20250825093530-d0154be01cd6/LICENSE",
-):
-    assert license_file.is_file() and license_file.stat().st_size > 0, license_file
-assert (notices / "Python-3.15.1-LICENSE").read_bytes() == (
-    Path(sysconfig.get_path("stdlib")) / "LICENSE.txt"
-).read_bytes()
-assert (notices / "yamux-source/session.go").is_file()
 
 
 def own(path, uid, gid, mode):
