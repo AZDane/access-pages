@@ -32,6 +32,10 @@ print(f"SQLite: {sqlite3.sqlite_version}; libc: {platform.libc_ver()}")
 assert not subprocess.check_output(["dpkg", "--audit"], text=True).strip()
 subprocess.run(["apt-get", "check"], check=True)
 assert shutil.which("mount") is None and shutil.which("umount") is None
+# Source-package CVEs do not imply these optional components are shipped.
+# Keep the component-absence dispositions in the vulnerability baseline honest.
+assert not any(Path("/usr").glob("**/Archive/Tar.pm")), "Archive::Tar is now shipped; reassess CVE-2026-9538"
+assert not any(Path("/usr").glob("**/systemd-homed")), "systemd-homed is now shipped; reassess CVE-2026-16742"
 packages = subprocess.check_output(
     ["dpkg-query", "-W", "-f=${binary:Package}\t${Version}\t${db:Status-Status}\n"], text=True
 )

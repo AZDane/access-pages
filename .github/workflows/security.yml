@@ -119,6 +119,11 @@ jobs:
           EOF
 
       # Preserve the complete inventory before applying the reviewed baseline.
+      - name: Prepare an empty ignore file for the complete scan
+        if: ${{ !cancelled() }}
+        run: |
+          : > "$RUNNER_TEMP/no-vulnerability-ignores"
+
       - name: Report unfiltered image findings at every severity
         if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -129,7 +134,7 @@ jobs:
           scanners: vuln
           format: json
           output: vulnerability-amd64.json
-          trivyignores: /dev/null
+          trivyignores: ${{ runner.temp }}/no-vulnerability-ignores
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: "0"
@@ -189,7 +194,7 @@ jobs:
           assert sys.version_info[:2] == (3, 15), sys.version
           for executable in ("/usr/local/bin/python", "/usr/local/bin/python3", "/usr/local/bin/python3.15"):
               subprocess.run([executable, "-c", "import ssl"], check=True)
-          for command in (["/bin/sh", "-c", "exit 0"], ["/usr/bin/nsenter", "--help"]):
+          for command in (["/bin/sh", "-c", "exit 0"], ["/usr/bin/nsenter", "--help"], ["/usr/bin/infocmp", "-V"]):
               try:
                   subprocess.run(command, check=True)
               except PermissionError:
@@ -262,6 +267,11 @@ jobs:
             --volume "$PWD/tests/packaged_tls_probe.py:/tmp/probe.py:ro" \
             access-pages-app:arm64-test /tmp/probe.py
 
+      - name: Prepare an empty ignore file for the complete scan
+        if: ${{ !cancelled() }}
+        run: |
+          : > "$RUNNER_TEMP/no-vulnerability-ignores"
+
       - name: Report unfiltered ARM64 findings at every severity
         if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -272,7 +282,7 @@ jobs:
           scanners: vuln
           format: json
           output: vulnerability-arm64.json
-          trivyignores: /dev/null
+          trivyignores: ${{ runner.temp }}/no-vulnerability-ignores
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: "0"

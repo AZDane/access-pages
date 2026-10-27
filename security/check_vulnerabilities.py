@@ -2,6 +2,7 @@
 
 import argparse
 from datetime import date
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
@@ -82,6 +83,9 @@ def main():
         dockerfile = Path("Dockerfile.ha-app").read_text()
         if f"FROM {baseline['runtime_base']}\n" not in dockerfile:
             raise ValueError("Runtime pin changed; reassess the vulnerability baseline")
+        for path, digest in baseline["control_files"].items():
+            if sha256(Path(path).read_bytes()).hexdigest() != digest:
+                raise ValueError(f"Security control changed: {path}; reassess the baseline")
         errors, counts = check_report(json.loads(args.report.read_text()), baseline, args.architecture)
     except (OSError, ValueError, TypeError, KeyError) as error:
         raise SystemExit(f"Vulnerability evidence invalid: {error}") from error

@@ -106,11 +106,52 @@ identified application path: Access Pages does not apply external changesets
 or accept uploaded databases. Ordinary persistence uses fixed SQL and bound
 values. Future use of those APIs requires reassessment.
 
-The existing blocking gate remains HIGH/CRITICAL with `ignore-unfixed: true`.
-It passes because remaining findings lack a reported distribution fix, not
-because they are absent. The ignore file and blocking policy are unchanged.
-The additional all-severity unfiltered reports deliberately exit zero to
-preserve visibility; they are not vulnerability waivers.
+### Continuous detection and disposition (2026-10-27)
+
+The original fixable HIGH/CRITICAL gate remains in place. It excludes unfixed
+findings and therefore cannot establish that an image is free of vulnerabilities.
+PR #61 now adds a **second blocking check** over the complete JSON report on
+both native architectures. No finding is removed from that report.
+
+`security/vulnerability-baseline.json` records each reviewed HIGH/CRITICAL CVE,
+its exact binary package names/versions, severity, disposition, evidence,
+maintainer responsibility, review date and review deadline. The current eight
+CVEs are reviewed on October 27 and due for reassessment on November 10, 2026.
+The checker fails on:
+
+- An unreviewed HIGH/CRITICAL ID, new affected package/version or raised severity.
+- An available fixed version, even if the finding has a baseline entry.
+- An expired review (review windows cannot exceed 30 days).
+- Missing/invalid image evidence, wrong architecture or missing shipped-binary
+  scan results.
+- A changed runtime base pin or AppArmor profile without reassessing the baseline.
+
+The unfiltered scan uses pinned Trivy 0.76.1, every severity, unfixed findings,
+and an explicitly empty ignore file. Its JSON is uploaded as a commit-associated
+artifact for **90 days**, including when the blocking checks fail. A missing
+report fails the job rather than being treated as clean. The scanner's own exit
+status still propagates; its `exit-code: 0` only leaves vulnerability disposition
+to the separate checker. The original repository/image security gates remain.
+
+Regression tests exercise new IDs/packages/versions, severity escalation,
+available fixes, expired reviews, malformed/missing reports and changed runtime
+or confinement. Packaged checks now confirm that Archive::Tar and systemd-homed
+remain absent, and CI checks actual infocmp execution denial alongside shell
+and nsenter denial. These directly support the residual-risk evidence below.
+
+To review a new finding, inspect the retained report and advisory, verify the
+actual component and trigger path, and fix or remove the affected dependency
+where supported. If a scoped disposition is justified, change the baseline
+through a reviewed PR with evidence and a new review deadline. Never copy all
+scanner output into the baseline or renew a date without reassessing exposure.
+LOW/MEDIUM/UNKNOWN findings stay visible in the full artifact; they are not
+implicitly approved by the HIGH/CRITICAL baseline.
+
+The October 27 refreshed scan reproduces 161 records / 72 advisory IDs,
+including 40 HIGH / 0 CRITICAL, with no newly reported fixes or advisory IDs
+relative to the previously verified Trixie image. Existing application and HAOS
+acceptance evidence is reused; this prevention change does not alter application
+functionality or require repeating live-service acceptance.
 
 ## Remaining HIGH findings and changed applicability
 
