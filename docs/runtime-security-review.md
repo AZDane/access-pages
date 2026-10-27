@@ -116,7 +116,10 @@ both native architectures. No finding is removed from that report.
 `security/vulnerability-baseline.json` records each reviewed HIGH/CRITICAL CVE,
 its exact binary package names/versions, severity, disposition, evidence,
 maintainer responsibility, review date and review deadline. The current eight
-CVEs are reviewed on October 27 and due for reassessment on November 10, 2026.
+CVEs use a 30-day review window: reviewed on October 27 and due for
+reassessment on November 26, 2026. New findings, available fixes, severity
+increases and changed affected packages still fail at the next CI run; the
+review window does not defer those checks.
 The checker fails on:
 
 - An unreviewed HIGH/CRITICAL ID, new affected package/version or raised severity.
