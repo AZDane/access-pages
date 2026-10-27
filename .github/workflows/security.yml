@@ -170,12 +170,13 @@ jobs:
           assert sys.version_info[:2] == (3, 15), sys.version
           for executable in ("/usr/local/bin/python", "/usr/local/bin/python3", "/usr/local/bin/python3.15"):
               subprocess.run([executable, "-c", "import ssl"], check=True)
-          try:
-              subprocess.run(["/bin/sh", "-c", "exit 0"], check=True)
-          except PermissionError:
-              print("AppArmor: selected Python and aliases execute; shell execution denied")
-          else:
-              raise AssertionError("AppArmor allowed an unlisted executable")
+          for command in (["/bin/sh", "-c", "exit 0"], ["/usr/bin/nsenter", "--help"]):
+              try:
+                  subprocess.run(command, check=True)
+              except PermissionError:
+                  print(f"AppArmor: execution denied for {command[0]}")
+              else:
+                  raise AssertionError(f"AppArmor allowed {command[0]}")
           PY
           for probe in packaged_app_probe packaged_security_probe packaged_startup_probe packaged_tls_probe; do
             docker run --rm --network none --user root --entrypoint python \
