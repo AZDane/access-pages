@@ -23,9 +23,9 @@ Its exact pinned Source Code Form, including the license, is supplied in
 `third_party_licenses/yamux-source/` in both the source distribution and
 container image. Access Pages has not modified that source.
 
-The final Python base image is Python 3.15.1. Its exact license is retained
+The final Home Assistant base image is Python 3.15.2 on Debian Trixie. Its exact license is retained
 at `/usr/local/lib/python3.15/LICENSE.txt` in the image and copied to
-`third_party_licenses/Python-3.15.1-LICENSE` in this source distribution.
+`third_party_licenses/Python-3.15.2-LICENSE` in this source distribution.
 The runtime removes pip and ensurepip, including their vendored dependencies;
 the application uses only the Python standard library.
 Debian base-image package license/copyright records remain under

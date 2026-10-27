@@ -27,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.15.1"
+          python-version: "3.15.2"
 
       - name: Install pinned security tools
         run: python -m pip install --disable-pip-version-check ruff==0.15.22 bandit==1.9.4
@@ -118,13 +118,13 @@ jobs:
 
       # Keep the existing fixable-vulnerability gate above. This additional
       # inventory exposes unfixed findings too; it is not an allowlist or waiver.
-      - name: Report unfiltered HIGH and CRITICAL image findings
+      - name: Report unfiltered image findings at every severity
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: access-pages-app:security-scan
           scan-type: image
           scanners: vuln
-          severity: HIGH,CRITICAL
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: "0"
 
@@ -133,6 +133,14 @@ jobs:
           docker run --rm --network none --entrypoint python
           --volume "$PWD/tests/packaged_runtime_probe.py:/tmp/probe.py:ro"
           access-pages-app:security-scan /tmp/probe.py
+
+      - name: Verify packaged TLS handshakes and certificate rejection
+        run: |
+          python3 tests/packaged_tls_probe.py --generate-fixture "$RUNNER_TEMP/access-pages-tls"
+          docker run --rm --network none --entrypoint python \
+            --volume "$RUNNER_TEMP/access-pages-tls:/tmp/tls:ro" \
+            --volume "$PWD/tests/packaged_tls_probe.py:/tmp/probe.py:ro" \
+            access-pages-app:security-scan /tmp/probe.py
 
       - name: Run unit suite in the shipped Python runtime
         run: >-
@@ -169,10 +177,11 @@ jobs:
           else:
               raise AssertionError("AppArmor allowed an unlisted executable")
           PY
-          for probe in packaged_app_probe packaged_security_probe packaged_startup_probe; do
+          for probe in packaged_app_probe packaged_security_probe packaged_startup_probe packaged_tls_probe; do
             docker run --rm --network none --user root --entrypoint python \
               --add-host supervisor:127.0.0.1 --security-opt apparmor=access_pages \
               --volume "$PWD/tests/fixtures/packaged-app-options.json:/data/options.json:ro" \
+              --volume "$RUNNER_TEMP/access-pages-tls:/tmp/tls:ro" \
               --volume "$PWD/tests/$probe.py:/tmp/probe.py:ro" \
               access-pages-app:security-scan /tmp/probe.py
           done
@@ -225,13 +234,21 @@ jobs:
           --volume "$PWD/tests/packaged_app_probe.py:/tmp/probe.py:ro"
           access-pages-app:arm64-test /tmp/probe.py
 
-      - name: Report unfiltered HIGH and CRITICAL ARM64 findings
+      - name: Verify packaged TLS on ARM64
+        run: |
+          python3 tests/packaged_tls_probe.py --generate-fixture "$RUNNER_TEMP/access-pages-tls"
+          docker run --rm --network none --entrypoint python \
+            --volume "$RUNNER_TEMP/access-pages-tls:/tmp/tls:ro" \
+            --volume "$PWD/tests/packaged_tls_probe.py:/tmp/probe.py:ro" \
+            access-pages-app:arm64-test /tmp/probe.py
+
+      - name: Report unfiltered ARM64 findings at every severity
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: access-pages-app:arm64-test
           scan-type: image
           scanners: vuln
-          severity: HIGH,CRITICAL
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: "0"
       - name: Verify Gateway startup with unavailable logging on ARM64
