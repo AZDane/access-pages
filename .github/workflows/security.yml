@@ -74,6 +74,7 @@ jobs:
       - name: Scan dependencies, configuration, and working tree
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           scan-type: fs
           scan-ref: .
           scanners: vuln,misconfig,secret
@@ -101,6 +102,7 @@ jobs:
       - name: Scan built image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           image-ref: access-pages-app:security-scan
           scan-type: image
           scanners: vuln,misconfig,secret
@@ -116,17 +118,34 @@ jobs:
           COPY --from=node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 /usr/local/bin/node /usr/local/bin/node
           EOF
 
-      # Keep the existing fixable-vulnerability gate above. This additional
-      # inventory exposes unfixed findings too; it is not an allowlist or waiver.
+      # Preserve the complete inventory before applying the reviewed baseline.
       - name: Report unfiltered image findings at every severity
+        if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           image-ref: access-pages-app:security-scan
           scan-type: image
           scanners: vuln
+          format: json
+          output: vulnerability-amd64.json
+          trivyignores: /dev/null
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: "0"
+
+      - name: Retain complete amd64 vulnerability evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vulnerability-amd64-${{ github.sha }}
+          path: vulnerability-amd64.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Require reviewed amd64 vulnerability dispositions
+        if: ${{ !cancelled() }}
+        run: python3 security/check_vulnerabilities.py vulnerability-amd64.json --architecture amd64
 
       - name: Verify packaged runtime and licenses
         run: >-
@@ -244,14 +263,32 @@ jobs:
             access-pages-app:arm64-test /tmp/probe.py
 
       - name: Report unfiltered ARM64 findings at every severity
+        if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
+          version: v0.76.1
           image-ref: access-pages-app:arm64-test
           scan-type: image
           scanners: vuln
+          format: json
+          output: vulnerability-arm64.json
+          trivyignores: /dev/null
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
           exit-code: "0"
+      - name: Retain complete arm64 vulnerability evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vulnerability-arm64-${{ github.sha }}
+          path: vulnerability-arm64.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Require reviewed arm64 vulnerability dispositions
+        if: ${{ !cancelled() }}
+        run: python3 security/check_vulnerabilities.py vulnerability-arm64.json --architecture arm64
+
       - name: Verify Gateway startup with unavailable logging on ARM64
         run: >-
           docker run --rm --network none --user root --entrypoint python
