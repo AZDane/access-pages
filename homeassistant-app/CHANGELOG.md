@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.146
+
+- Update the pinned Home Assistant runtime to Python 3.15.2 on Debian Trixie,
+  including patched SQLite and OpenSSL libraries.
+- Remove the standalone mount utility and retain enforced AppArmor confinement.
+- Retain complete vulnerability reports for both architectures and require
+  review of new or changed HIGH/CRITICAL findings, available fixes, and residual
+  findings whose 30-day review window expires.
+- Update the pinned Python setup action used by CI to 7.1.0.
+- Preserve configuration, credentials, guest grants, and persistent data.
+  Back up the App before updating; no connection reset is required.
+
 ## 0.1.145
 
 - Fix "Setup required: Unsafe Connector socket" when starting after a previous
