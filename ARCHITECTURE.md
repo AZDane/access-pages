@@ -12,7 +12,7 @@ Assistant resources selected by an administrator. The browser is not trusted
 to choose a Home Assistant entity, domain, service, or unrestricted parameter.
 The server resolves those values from the saved page policy.
 
-The current private-development Gateway is dependency-free Python 3.12 and uses
+The current private-development Gateway is dependency-free Python 3.15 and uses
 `ThreadingHTTPServer`. Small static Go processes provide the page-facing
 endpoints. The Home Assistant App runs these components with supporting
 brokers and stores under separate process identities inside one App container.

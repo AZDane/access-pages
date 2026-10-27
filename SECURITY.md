@@ -197,8 +197,18 @@ Every pull request and push to `main`, plus a weekly scheduled run, performs:
 - Ruff static correctness checks and Bandit Python security analysis
 - Gitleaks scanning across the complete Git history
 - Trivy dependency, secret, and configuration scanning of the repository
-- A clean Home Assistant App image build followed by a Trivy image scan
+- Native AMD64 and ARM64 App builds with complete, all-severity Trivy image
+  reports, including unfixed findings; JSON evidence retained for 90 days
+- A blocking review of every HIGH/CRITICAL finding against exact package/version
+  dispositions in `security/vulnerability-baseline.json`; new or escalated
+  findings, available fixes, expired reviews and invalid reports fail CI
 - JavaScript syntax checks and the complete unit-test suite
+
+A passing vulnerability check means that no unreviewed HIGH/CRITICAL finding
+remains under the current policy; it does not mean zero vulnerabilities.
+Disposition changes require evidence and review through a PR. The report keeps
+accepted findings visible. See [the runtime review](docs/runtime-security-review.md#continuous-detection-and-disposition-2026-10-27)
+for the current findings, review deadlines, and update procedure.
 
 Scanner actions and Python tools are pinned to reviewed versions. Dependabot
 checks the pinned GitHub Actions and Docker base images weekly. This project
