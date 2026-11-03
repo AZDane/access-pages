@@ -107,6 +107,20 @@ jobs:
         with:
           daemon-config: '{"features":{"containerd-snapshotter":true}}'
 
+      - name: Build and verify standalone stable Python image
+        run: |
+          docker build --file Dockerfile --tag access-pages:standalone-test .
+          docker run --rm --network none --entrypoint python \
+            --env HA_BASE_URL=http://127.0.0.1:8123 \
+            --env HA_TOKEN=smoke-test-only --env ADMIN_TOKEN=smoke-test-only \
+            access-pages:standalone-test -c '
+          import sys, sqlite3, ssl
+          assert sys.version_info[:3] == (3, 15, 2), sys.version
+          assert sys.version_info.releaselevel == "final", sys.version
+          import server, actions, admin, access
+          print(sys.version, sqlite3.sqlite_version, ssl.OPENSSL_VERSION)
+          '
+
       - name: Build native final-version App image
         run: >-
           docker buildx build --load --provenance=mode=max --sbom=true
