@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.148
+
+- Fix a shutdown race that could leave the qURL child running when the broker
+  received SIGTERM during process creation. Verify child termination, warm
+  restart, and failure recovery on both supported architectures.
+- Include the reviewed Go 1.27.3 builder and stable Python 3.15.2 standalone
+  image digest updates, plus the artifact-upload action update.
+- Preserve configuration, credentials, guest grants, and connection state.
+  No connection reset is required. Live Home Assistant acceptance remains manual.
+
 ## 0.1.147
 
 - Prepare the next beta with one complete vulnerability report and one policy
@@ -8,7 +18,6 @@
   artifacts with their SBOMs, provenance and signatures.
 - Consolidate packaging checks and retain guest isolation, AppArmor, invitations,
   sessions and recovery behavior. Existing data and connection state are preserved.
-- Publication and Home Assistant App Store synchronization remain pending review.
 
 ## 0.1.146
 
