@@ -46,33 +46,6 @@ class PackagingTests(unittest.TestCase):
                 self.assertTrue(any(module.rglob("LICENSE*")), name)
                 self.assertIn(f"`{name}`", notices)
 
-    def test_development_image_contains_every_gateway_module(self):
-        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-
-        for module in (
-            "server.py",
-            "actions.py",
-            "admin.py",
-            "access.py",
-            "upstream_cleanup.py",
-            "guest_resources.py",
-            "internal.py",
-            "config.py",
-            "ha.py",
-            "guest_diagnostics.py",
-            "guest_request.py",
-            "ha_broker.py",
-            "layerv_broker.py",
-            "policy.py",
-            "policy_store.py",
-            "pages.py",
-            "layerv.py",
-            "audit.py",
-            "activity.py",
-            "rate_limit.py",
-        ):
-            self.assertIn(f"COPY {module} .", dockerfile)
-
     def test_supported_images_include_local_import_dependency_closure(self):
         local = {path.stem for path in ROOT.glob('*.py')}
         manifests = []

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.147
+
+- Prepare the next beta with one complete vulnerability report and one policy
+  decision per architecture, including bounded, reproducible reachability evidence.
+- Build, scan and test the final versioned images before publishing those same
+  artifacts with their SBOMs, provenance and signatures.
+- Consolidate packaging checks and retain guest isolation, AppArmor, invitations,
+  sessions and recovery behavior. Existing data and connection state are preserved.
+- Publication and Home Assistant App Store synchronization remain pending review.
+
 ## 0.1.146
 
 - Update the pinned Home Assistant runtime to Python 3.15.2 on Debian Trixie,
