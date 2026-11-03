@@ -6,6 +6,7 @@ from pathlib import Path
 import signal
 import subprocess
 import tempfile
+from threading import Thread
 import unittest
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError
@@ -98,6 +99,85 @@ class DeviceRecoveryTests(unittest.TestCase):
             publisher.daemon.send_signal.assert_called_once_with(signal.SIGINT)
             publisher.daemon.kill.assert_called_once_with()
             self.assertEqual(publisher.daemon.wait.call_count, 2)
+
+    def test_sigterm_during_popen_keeps_child_owned_until_shutdown(self):
+        def stop(_signum, _frame):
+            raise SystemExit(0)
+
+        original = signal.signal(signal.SIGTERM, stop)
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key")
+                self._enroll_fixture(publisher, shares=True)
+                child = Mock()
+                child.poll.return_value = None
+
+                def spawn(*_args, **_kwargs):
+                    self.assertIsNone(publisher.daemon)
+                    signal.raise_signal(signal.SIGTERM)
+                    return child
+
+                with patch("guest_resources.subprocess.Popen", side_effect=spawn):
+                    with self.assertRaises(SystemExit) as stopped:
+                        try:
+                            publisher.restore()
+                        finally:
+                            publisher.close()
+                self.assertEqual(stopped.exception.code, 0)
+                self.assertIs(publisher.daemon, child)
+                self.assertTrue(publisher.closed)
+                child.send_signal.assert_called_once_with(signal.SIGINT)
+                child.wait.assert_called_once_with(timeout=5)
+                self.assertIs(signal.getsignal(signal.SIGTERM), stop)
+        finally:
+            signal.signal(signal.SIGTERM, original)
+
+    def test_failed_spawn_restores_sigterm_handler(self):
+        def stop(_signum, _frame):
+            raise SystemExit(0)
+
+        original = signal.signal(signal.SIGTERM, stop)
+        try:
+            with tempfile.TemporaryDirectory() as temp:
+                publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key")
+                self._enroll_fixture(publisher, shares=True)
+                with patch("guest_resources.subprocess.Popen", side_effect=OSError("spawn failed")):
+                    with self.assertRaisesRegex(OSError, "spawn failed"):
+                        publisher.restore()
+                self.assertIsNone(publisher.daemon)
+                self.assertIs(signal.getsignal(signal.SIGTERM), stop)
+                with self.assertRaises(SystemExit):
+                    signal.raise_signal(signal.SIGTERM)
+        finally:
+            signal.signal(signal.SIGTERM, original)
+
+    def test_reconciliation_thread_can_start_daemon_without_changing_handlers(self):
+        with tempfile.TemporaryDirectory() as temp:
+            publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key")
+            self._enroll_fixture(publisher, shares=True)
+            errors = []
+
+            def restore():
+                try:
+                    publisher.restore()
+                except Exception as error:
+                    errors.append(error)
+
+            with (
+                patch("guest_resources.subprocess.Popen") as spawn,
+                patch("guest_resources.signal.signal") as change_handler,
+                patch.object(publisher, "_ipc"),
+            ):
+                spawn.return_value.poll.return_value = None
+                worker = Thread(target=restore)
+                worker.start()
+                worker.join(timeout=2)
+                self.assertFalse(worker.is_alive())
+                self.assertEqual(errors, [])
+                self.assertIs(publisher.daemon, spawn.return_value)
+                change_handler.assert_not_called()
+                publisher.close()
+                spawn.return_value.wait.assert_called_once_with(timeout=5)
 
     @patch("guest_resources.subprocess.run")
     def test_native_rate_limit_is_not_a_plan_quota_and_uses_local_cooldown(self, run):

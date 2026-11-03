@@ -8,6 +8,7 @@ import fcntl
 import json
 import os
 from pathlib import Path
+import signal
 import ssl
 import subprocess
 import tempfile
@@ -72,7 +73,7 @@ with tempfile.TemporaryDirectory(prefix="qurl-probe-") as directory:
 
         # SIGTERM while the actual broker is restoring a contended daemon
         # must reap that child, even before its HTTP listener is established.
-        broker = subprocess.Popen(["python", "/app/layerv_broker.py"], env={
+        broker_env = {
             **os.environ,
             "ACCESS_PAGES_BROKER_DATA_DIR": directory,
             "ACCESS_PAGES_BROKER_POLICY_DIR": str(Path(directory) / "policy"),
@@ -81,7 +82,8 @@ with tempfile.TemporaryDirectory(prefix="qurl-probe-") as directory:
             "LAYERV_API_BASE_URL": "http://127.0.0.1:9",
             "LAYERV_API_TOKEN": "offline-fixture",
             "LAYERV_RESOURCE_ID": "offline-fixture",
-        })
+        }
+        broker = subprocess.Popen(["python", "/app/layerv_broker.py"], env=broker_env)
         try:
             children_file = Path(f"/proc/{broker.pid}/task/{broker.pid}/children")
             deadline = time.monotonic() + 5
@@ -101,6 +103,42 @@ with tempfile.TemporaryDirectory(prefix="qurl-probe-") as directory:
             if broker.poll() is None:
                 broker.kill()
                 broker.wait(timeout=5)
+
+        # Force SIGTERM after the real child exists but before Popen returns
+        # it to ConnectorPublisher. No scheduling delay or polling can miss it.
+        interrupted_spawn = """
+import os, signal, subprocess
+import layerv_broker
+spawn = subprocess.Popen
+def interrupt(*args, **kwargs):
+    child = spawn(*args, **kwargs)
+    print(child.pid, flush=True)
+    os.kill(os.getpid(), signal.SIGTERM)
+    return child
+subprocess.Popen = interrupt
+layerv_broker.run()
+"""
+        broker = subprocess.Popen(["python", "-c", interrupted_spawn], env=broker_env,
+                                  stdout=subprocess.PIPE, text=True)
+        child_pid = None
+        try:
+            output, _ = broker.communicate(timeout=7)
+            assert broker.returncode == 0, broker.returncode
+            child_pid = int(output.strip())
+            status = Path(f"/proc/{child_pid}/status")
+            assert not status.exists(), (
+                "SIGTERM during Popen orphaned qURL: " + status.read_text()
+            )
+            assert publisher.healthy(), "Interrupted spawn stopped its predecessor"
+            print("SIGTERM before Popen returns reaps the real qURL child: passed", flush=True)
+        finally:
+            if broker.poll() is None:
+                broker.kill()
+                broker.wait(timeout=5)
+            # Clean up the deliberately exposed leak when testing unfixed code.
+            if child_pid is not None and Path(f"/proc/{child_pid}").exists():
+                os.kill(child_pid, signal.SIGKILL)
+                os.waitpid(child_pid, 0)
 
         started = time.monotonic()
         publisher.close()

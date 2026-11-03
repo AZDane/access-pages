@@ -20,7 +20,7 @@ import subprocess  # nosec B404
 import tempfile
 import time
 from pathlib import Path
-from threading import RLock
+from threading import RLock, current_thread, main_thread
 
 from audit import audit
 from layerv import LayerVClient, LayerVError
@@ -31,6 +31,31 @@ class AgentRecoveryRequired(LayerVError):
 
     def __init__(self, message):
         super().__init__(message, status=503)
+
+
+@contextmanager
+def _defer_sigterm():
+    """Keep a raising broker handler from interrupting child ownership transfer."""
+    handler = signal.getsignal(signal.SIGTERM)
+    if current_thread() is not main_thread() or not callable(handler):
+        # Python handlers only interrupt the main thread. Worker starts are
+        # already serialized with publisher.close() by the publisher lock.
+        yield
+        return
+    pending = False
+
+    def defer(_signum, _frame):
+        nonlocal pending
+        pending = True
+
+    try:
+        # Do not block the OS signal: qURL must not inherit a blocked mask.
+        signal.signal(signal.SIGTERM, defer)
+        yield
+    finally:
+        signal.signal(signal.SIGTERM, handler)
+        if pending:
+            signal.raise_signal(signal.SIGTERM)
 
 
 def _present(path: Path) -> bool:
@@ -380,7 +405,7 @@ class ConnectorPublisher:
             return
         log_path = self.state.parent / "connector.log"
         fd = os.open(log_path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        with os.fdopen(fd, "ab") as log, self._key_pipe() as (key_fd, environment):
+        with os.fdopen(fd, "ab") as log, self._key_pipe() as (key_fd, environment), _defer_sigterm():
             self.daemon = subprocess.Popen(  # nosec B603
                 [*self.command, "daemon", "run", "--state-dir", str(self.state),
                  "--share-group-mode", self.mode],
