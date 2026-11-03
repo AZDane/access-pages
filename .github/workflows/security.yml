@@ -45,8 +45,10 @@ jobs:
           node --check static/access.js
           node --check static/access-api.js
 
-      - name: Run test suite
-        run: python -m unittest discover -s tests -v
+      - name: Run test suite including browser regressions
+        run: |
+          command -v node
+          python -m unittest discover -s tests -v
 
   secrets:
     name: Secret scanning
@@ -83,236 +85,95 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
 
-  container:
-    name: Container image
-    runs-on: ubuntu-latest
+  package:
+    name: Package (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            ha_arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            ha_arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
 
-      - name: Build Home Assistant App image
-        run: >-
-          docker build
-          --file Dockerfile.ha-app
-          --build-arg BUILD_ARCH=amd64
-          --build-arg BUILD_VERSION=security-scan
-          --tag access-pages-app:security-scan
-          .
+      - name: Retain OCI images and attestations locally
+        uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5 # v5
+        with:
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
 
-      - name: Scan built image
+      - name: Build native final-version App image
+        run: >-
+          docker buildx build --load --provenance=mode=max --sbom=true
+          --file Dockerfile.ha-app --build-arg BUILD_ARCH=${{ matrix.ha_arch }}
+          --tag access-pages-app:${{ matrix.arch }} .
+
+      - name: Scan image secrets and configuration
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.76.1
-          image-ref: access-pages-app:security-scan
+          image-ref: access-pages-app:${{ matrix.arch }}
           scan-type: image
-          scanners: vuln,misconfig,secret
+          scanners: misconfig,secret
           trivyignores: .trivyignore.yaml
           severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
+          exit-code: '1'
 
-      - name: Add Node only to a disposable unit-test image
-        run: |
-          docker build --tag access-pages-app:unit-tests - <<'EOF'
-          FROM access-pages-app:security-scan
-          COPY --from=node:24-bookworm-slim@sha256:55fb5f5a527ea2c5c4a95f963e48ef90aa38c7b346054fdc8ee9957a2b55d205 /usr/local/bin/node /usr/local/bin/node
-          EOF
-
-      # Preserve the complete inventory before applying the reviewed baseline.
       - name: Prepare an empty ignore file for the complete scan
         if: ${{ !cancelled() }}
-        run: |
-          : > "$RUNNER_TEMP/no-vulnerability-ignores"
+        run: ': > "$RUNNER_TEMP/no-vulnerability-ignores"'
 
-      - name: Report unfiltered image findings at every severity
+      - name: Report every vulnerability without filtering
         if: ${{ !cancelled() }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
         with:
           version: v0.76.1
-          image-ref: access-pages-app:security-scan
+          image-ref: access-pages-app:${{ matrix.arch }}
           scan-type: image
           scanners: vuln
           format: json
-          output: vulnerability-amd64.json
+          output: vulnerability-${{ matrix.arch }}.json
           trivyignores: ${{ runner.temp }}/no-vulnerability-ignores
           severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
           ignore-unfixed: false
-          exit-code: "0"
+          exit-code: '0'
 
-      - name: Retain complete amd64 vulnerability evidence
+      - name: Reproduce packaged evidence and apply policy
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          python3 security/image_evidence.py "access-pages-app:$ARCH" "vulnerability-$ARCH.json" --architecture "$ARCH" --require-attestations > "evidence-$ARCH.json"
+          python3 security/check_vulnerabilities.py "vulnerability-$ARCH.json" --architecture "$ARCH" --evidence "evidence-$ARCH.json"
+
+      - name: Retain complete vulnerability and artifact evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: vulnerability-amd64-${{ github.sha }}
-          path: vulnerability-amd64.json
+          name: vulnerability-${{ matrix.arch }}-${{ github.sha }}
+          path: |
+            vulnerability-${{ matrix.arch }}.json
+            evidence-${{ matrix.arch }}.json
           if-no-files-found: error
           retention-days: 90
 
-      - name: Require reviewed amd64 vulnerability dispositions
-        if: ${{ !cancelled() }}
-        run: python3 security/check_vulnerabilities.py vulnerability-amd64.json --architecture amd64
+      - name: Validate packaged application
+        run: bash tests/check_packaged_image.sh access-pages-app:${{ matrix.arch }} ${{ matrix.arch }}
 
-      - name: Verify packaged runtime and licenses
-        run: >-
-          docker run --rm --network none --entrypoint python
-          --volume "$PWD/tests/packaged_runtime_probe.py:/tmp/probe.py:ro"
-          access-pages-app:security-scan /tmp/probe.py
-
-      - name: Verify packaged TLS handshakes and certificate rejection
-        run: |
-          python3 tests/packaged_tls_probe.py --generate-fixture "$RUNNER_TEMP/access-pages-tls"
-          docker run --rm --network none --entrypoint python \
-            --volume "$RUNNER_TEMP/access-pages-tls:/tmp/tls:ro" \
-            --volume "$PWD/tests/packaged_tls_probe.py:/tmp/probe.py:ro" \
-            access-pages-app:security-scan /tmp/probe.py
-
-      - name: Run unit suite in the shipped Python runtime
-        run: >-
-          docker run --rm --network none --user 1000:1000 --entrypoint python
-          --volume "$PWD:/src:ro" --workdir /src --env PYTHONPATH=/src
-          access-pages-app:unit-tests -m unittest discover -s tests -v
-
-      - name: Exercise packaged services and identities on AMD64
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --volume "$PWD/tests/packaged_security_probe.py:/tmp/probe.py:ro"
-          access-pages-app:security-scan /tmp/probe.py
-
-      - name: Verify AppArmor executable enforcement when supported
-        run: |
-          case "$(docker info --format '{{json .SecurityOptions}}')" in
-            *name=apparmor*) ;;
-            *) echo "AppArmor enforcement unavailable on this runner"; exit 0 ;;
-          esac
-          sudo apparmor_parser --replace homeassistant-app/apparmor.txt
-          trap 'sudo apparmor_parser --remove homeassistant-app/apparmor.txt' EXIT
-          docker run --rm --interactive --network none --entrypoint python \
-            --security-opt apparmor=access_pages access-pages-app:security-scan - <<'PY'
-          import subprocess
-          import sys
-
-          assert sys.version_info[:2] == (3, 15), sys.version
-          for executable in ("/usr/local/bin/python", "/usr/local/bin/python3", "/usr/local/bin/python3.15"):
-              subprocess.run([executable, "-c", "import ssl"], check=True)
-          for command in (["/bin/sh", "-c", "exit 0"], ["/usr/bin/nsenter", "--help"], ["/usr/bin/infocmp", "-V"]):
-              try:
-                  subprocess.run(command, check=True)
-              except PermissionError:
-                  print(f"AppArmor: execution denied for {command[0]}")
-              else:
-                  raise AssertionError(f"AppArmor allowed {command[0]}")
-          PY
-          for probe in packaged_app_probe packaged_security_probe packaged_startup_probe packaged_tls_probe; do
-            docker run --rm --network none --user root --entrypoint python \
-              --add-host supervisor:127.0.0.1 --security-opt apparmor=access_pages \
-              --volume "$PWD/tests/fixtures/packaged-app-options.json:/data/options.json:ro" \
-              --volume "$RUNNER_TEMP/access-pages-tls:/tmp/tls:ro" \
-              --volume "$PWD/tests/$probe.py:/tmp/probe.py:ro" \
-              access-pages-app:security-scan /tmp/probe.py
-          done
-
-      - name: Verify Gateway startup with unavailable logging
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
-          access-pages-app:security-scan /tmp/probe.py
-
-      - name: Verify runtime permission repair with service identities
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --volume "$PWD/tests/packaged_permission_probe.py:/tmp/probe.py:ro"
-          access-pages-app:security-scan /tmp/probe.py
-
-      - name: Verify packaged qURL supervision and lifetime lock
-        run: >-
-          docker run --rm --network none --user 2103:2103 --entrypoint python
-          --volume "$PWD/tests/packaged_qurl_probe.py:/tmp/probe.py:ro"
-          access-pages-app:security-scan /tmp/probe.py
-
-  arm64-package:
-    name: ARM64 package
-    runs-on: ubuntu-24.04-arm
+  container:
+    # Preserve the protected check name and make BOTH native architectures mandatory.
+    name: Container image
+    if: ${{ always() }}
+    needs: package
+    runs-on: ubuntu-latest
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
-      - name: Build native ARM64 App image
-        run: >-
-          docker build --file Dockerfile.ha-app --build-arg BUILD_ARCH=aarch64
-          --build-arg BUILD_VERSION=security-scan --tag access-pages-app:arm64-test .
-      - name: Exercise packaged services and identities on ARM64
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --volume "$PWD/tests/packaged_security_probe.py:/tmp/probe.py:ro"
-          access-pages-app:arm64-test /tmp/probe.py
-
-      - name: Verify packaged runtime and licenses on ARM64
-        run: >-
-          docker run --rm --network none --entrypoint python
-          --volume "$PWD/tests/packaged_runtime_probe.py:/tmp/probe.py:ro"
-          access-pages-app:arm64-test /tmp/probe.py
-
-      - name: Verify complete App startup on ARM64
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --add-host supervisor:127.0.0.1
-          --volume "$PWD/tests/fixtures/packaged-app-options.json:/data/options.json:ro"
-          --volume "$PWD/tests/packaged_app_probe.py:/tmp/probe.py:ro"
-          access-pages-app:arm64-test /tmp/probe.py
-
-      - name: Verify packaged TLS on ARM64
-        run: |
-          python3 tests/packaged_tls_probe.py --generate-fixture "$RUNNER_TEMP/access-pages-tls"
-          docker run --rm --network none --entrypoint python \
-            --volume "$RUNNER_TEMP/access-pages-tls:/tmp/tls:ro" \
-            --volume "$PWD/tests/packaged_tls_probe.py:/tmp/probe.py:ro" \
-            access-pages-app:arm64-test /tmp/probe.py
-
-      - name: Prepare an empty ignore file for the complete scan
-        if: ${{ !cancelled() }}
-        run: |
-          : > "$RUNNER_TEMP/no-vulnerability-ignores"
-
-      - name: Report unfiltered ARM64 findings at every severity
-        if: ${{ !cancelled() }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          version: v0.76.1
-          image-ref: access-pages-app:arm64-test
-          scan-type: image
-          scanners: vuln
-          format: json
-          output: vulnerability-arm64.json
-          trivyignores: ${{ runner.temp }}/no-vulnerability-ignores
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          ignore-unfixed: false
-          exit-code: "0"
-      - name: Retain complete arm64 vulnerability evidence
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: vulnerability-arm64-${{ github.sha }}
-          path: vulnerability-arm64.json
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Require reviewed arm64 vulnerability dispositions
-        if: ${{ !cancelled() }}
-        run: python3 security/check_vulnerabilities.py vulnerability-arm64.json --architecture arm64
-
-      - name: Verify Gateway startup with unavailable logging on ARM64
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --volume "$PWD/tests/packaged_startup_probe.py:/tmp/probe.py:ro"
-          access-pages-app:arm64-test /tmp/probe.py
-
-      - name: Verify runtime permission repair with service identities on ARM64
-        run: >-
-          docker run --rm --network none --user root --entrypoint python
-          --volume "$PWD/tests/packaged_permission_probe.py:/tmp/probe.py:ro"
-          access-pages-app:arm64-test /tmp/probe.py
-
-      - name: Verify packaged qURL supervision and lifetime lock on ARM64
-        run: >-
-          docker run --rm --network none --user 2103:2103 --entrypoint python
-          --volume "$PWD/tests/packaged_qurl_probe.py:/tmp/probe.py:ro"
-          access-pages-app:arm64-test /tmp/probe.py
+      - name: Require both architecture checks
+        env:
+          PACKAGE_RESULT: ${{ needs.package.result }}
+        run: test "$PACKAGE_RESULT" = success

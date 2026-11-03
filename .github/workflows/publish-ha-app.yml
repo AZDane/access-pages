@@ -2,74 +2,65 @@ name: Publish Home Assistant App
 
 on:
   release:
-    types:
-      - published
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
         description: Version matching homeassistant-app/config.yaml
         required: true
         type: string
+  pull_request:
+    paths:
+      - .github/workflows/publish-ha-app.yml
+      - Dockerfile.ha-app
+      - security/**
+      - tests/check_packaged_image.sh
+      - homeassistant-app/config.yaml
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
 
 concurrency:
-  group: publish-ha-app-${{ github.ref }}
+  group: publish-ha-app-${{ github.event_name == 'pull_request' && github.ref || 'release' }}
   cancel-in-progress: false
 
 jobs:
-  validate:
+  release:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.value }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          fetch-depth: 0
 
-      - name: Read and validate App version
+      - name: Validate release version and source
         id: version
         env:
           REQUESTED_VERSION: ${{ inputs.version || github.event.release.tag_name }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          python - <<'PY'
-          import os
+          python3 - <<'PY'
+          import os, re
           from pathlib import Path
-
-          requested = os.environ["REQUESTED_VERSION"].removeprefix("v")
-          config = Path("homeassistant-app/config.yaml").read_text()
-          expected = next(
-              line.split(":", 1)[1].strip().strip('"')
-              for line in config.splitlines()
-              if line.startswith("version:")
-          )
-          if requested != expected:
-              raise SystemExit(
-                  f"Requested version {requested!r} does not match "
-                  f"config.yaml version {expected!r}"
-              )
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"value={expected}", file=output)
+          expected = re.search(r'^version: "(0\.1\.\d+)"$', Path('homeassistant-app/config.yaml').read_text(), re.M).group(1)
+          requested = os.environ['REQUESTED_VERSION'].removeprefix('v')
+          if os.environ['EVENT_NAME'] != 'pull_request' and requested != expected:
+              raise SystemExit('Release version does not match App configuration')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f'value={expected}', file=output)
           PY
+          if [[ "$EVENT_NAME" != pull_request ]]; then
+            git merge-base --is-ancestor HEAD origin/main
+          fi
 
-      - name: Run unit tests
-        run: python -m unittest discover -s tests -v
-
-  build:
-    needs: validate
-    strategy:
-      matrix:
-        include:
-          - arch: amd64
-            platform: linux/amd64
-          - arch: aarch64
-            platform: linux/arm64
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
+      - name: Retain OCI images and attestations locally
+        uses: docker/setup-docker-action@7ec28a010822b4626af4874f9448a4b05ac6f3e5 # v5
+        with:
+          daemon-config: '{"features":{"containerd-snapshotter":true}}'
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -77,71 +68,114 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and publish architecture image
+      - name: Build final amd64 image locally
         uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.ha-app
-          platforms: ${{ matrix.platform }}
-          push: true
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: access-pages-release:amd64
           build-args: |
-            BUILD_ARCH=${{ matrix.arch }}
-            BUILD_VERSION=${{ needs.validate.outputs.version }}
-          tags: |
-            ghcr.io/azdane/access-pages-app:${{ needs.validate.outputs.version }}-${{ matrix.arch }}
-            ${{ github.event_name == 'release' && !github.event.release.prerelease && format('ghcr.io/azdane/access-pages-app:latest-{0}', matrix.arch) || '' }}
+            BUILD_ARCH=amd64
+            BUILD_VERSION=${{ steps.version.outputs.value }}
           provenance: mode=max
           sbom: true
 
-  manifest:
-    needs:
-      - validate
-      - build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+      - name: Build final ARM64 image locally
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.ha-app
+          platforms: linux/arm64
+          load: true
+          push: false
+          tags: access-pages-release:arm64
+          build-args: |
+            BUILD_ARCH=aarch64
+            BUILD_VERSION=${{ steps.version.outputs.value }}
+          provenance: mode=max
+          sbom: true
 
-      - name: Log in to GitHub Container Registry
+      - name: Prepare complete scan evidence
+        run: ': > "$RUNNER_TEMP/no-vulnerability-ignores"'
+
+      - name: Report every amd64 vulnerability
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: v0.76.1
+          image-ref: access-pages-release:amd64
+          scan-type: image
+          scanners: vuln
+          format: json
+          output: vulnerability-amd64.json
+          trivyignores: ${{ runner.temp }}/no-vulnerability-ignores
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '0'
+
+      - name: Report every ARM64 vulnerability
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: linux/arm64
+        with:
+          version: v0.76.1
+          image-ref: access-pages-release:arm64
+          scan-type: image
+          scanners: vuln
+          format: json
+          output: vulnerability-arm64.json
+          trivyignores: ${{ runner.temp }}/no-vulnerability-ignores
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          exit-code: '0'
+
+      - name: Validate BOTH retained release images
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          for arch in amd64 arm64; do
+            image="access-pages-release:$arch"
+            trivy image --platform "linux/$arch" --scanners misconfig,secret --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --exit-code 1 "$image"
+            python3 security/image_evidence.py "$image" "vulnerability-$arch.json" --architecture "$arch" --version "$VERSION" --require-attestations > "evidence-$arch.json"
+            python3 security/check_vulnerabilities.py "vulnerability-$arch.json" --architecture "$arch" --evidence "evidence-$arch.json"
+            # Use the verified immutable index for every runtime check.
+            digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["identity"]["index_digest"])' "evidence-$arch.json")
+            bash tests/check_packaged_image.sh "$digest" "$arch"
+            python3 -c 'import json,sys; print(json.dumps({"index_digest":sys.argv[1]}))' "$digest" > "tested-$arch.json"
+          done
+
+      - name: Retain complete reports and artifact evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            vulnerability-*.json
+            evidence-*.json
+            tested-*.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Log in for validated publication
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Cosign
+      - name: Prepare existing Cosign signing
+        if: github.event_name != 'pull_request'
         uses: sigstore/cosign-installer@v4.1.2
 
-      - name: Publish versioned multi-architecture manifest
+      - name: Publish retained images and sign their index
+        if: github.event_name != 'pull_request'
         env:
-          VERSION: ${{ needs.validate.outputs.version }}
+          VERSION: ${{ steps.version.outputs.value }}
+          UPDATE_LATEST: ${{ github.event_name == 'release' && !github.event.release.prerelease }}
         run: |
-          docker buildx imagetools create \
-            --tag "ghcr.io/azdane/access-pages-app:${VERSION}" \
-            "ghcr.io/azdane/access-pages-app:${VERSION}-amd64" \
-            "ghcr.io/azdane/access-pages-app:${VERSION}-aarch64"
-
-      - name: Publish latest multi-architecture manifest
-        if: github.event_name == 'release' && !github.event.release.prerelease
-        run: |
-          docker buildx imagetools create \
-            --tag ghcr.io/azdane/access-pages-app:latest \
-            ghcr.io/azdane/access-pages-app:latest-amd64 \
-            ghcr.io/azdane/access-pages-app:latest-aarch64
-
-      - name: Sign the versioned image
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-        run: |
-          IMAGE="ghcr.io/azdane/access-pages-app:${VERSION}"
-          DIGEST="$(docker buildx imagetools inspect \
-            "${IMAGE}" | awk '/^Digest:/ {print $2; exit}')"
-          test -n "${DIGEST}"
-          cosign sign --yes "${IMAGE}@${DIGEST}"
+          options=()
+          if [[ "$UPDATE_LATEST" == true ]]; then options+=(--latest); fi
+          python3 security/publish_validated.py "$VERSION" "${options[@]}"
