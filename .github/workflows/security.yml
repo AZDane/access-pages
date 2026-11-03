@@ -90,6 +90,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
 
+      - name: Build and verify standalone stable Python image
+        run: |
+          docker build --file Dockerfile --tag access-pages:standalone-test .
+          docker run --rm --network none --entrypoint python \
+            --env HA_BASE_URL=http://127.0.0.1:8123 \
+            --env HA_TOKEN=smoke-test-only --env ADMIN_TOKEN=smoke-test-only \
+            access-pages:standalone-test -c '
+          import sys, sqlite3, ssl
+          assert sys.version_info.releaselevel == "final", sys.version
+          import server, actions, admin, access
+          print(sys.version, sqlite3.sqlite_version, ssl.OPENSSL_VERSION)
+          '
+
       - name: Build Home Assistant App image
         run: >-
           docker build
@@ -235,6 +248,18 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - name: Build and verify standalone stable Python image on ARM64
+        run: |
+          docker build --file Dockerfile --tag access-pages:standalone-test .
+          docker run --rm --network none --entrypoint python \
+            --env HA_BASE_URL=http://127.0.0.1:8123 \
+            --env HA_TOKEN=smoke-test-only --env ADMIN_TOKEN=smoke-test-only \
+            access-pages:standalone-test -c '
+          import sys, sqlite3, ssl
+          assert sys.version_info.releaselevel == "final", sys.version
+          import server, actions, admin, access
+          print(sys.version, sqlite3.sqlite_version, ssl.OPENSSL_VERSION)
+          '
       - name: Build native ARM64 App image
         run: >-
           docker build --file Dockerfile.ha-app --build-arg BUILD_ARCH=aarch64
