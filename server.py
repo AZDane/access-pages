@@ -95,7 +95,6 @@ PROXIMITY_MAX_ACCURACY_METERS = 1000
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-# Local pilot only. Packaged migration stays disabled until LayerV acceptance.
 
 QURL_LIFETIME_RE = re.compile(r"^([1-9][0-9]{0,4})([mhdw])$")
 QURL_MAX_LIFETIME = timedelta(days=QURL_MAX_LIFETIME_DAYS)

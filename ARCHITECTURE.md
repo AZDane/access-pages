@@ -33,7 +33,7 @@ individual guest sessions.
 
 ## LayerV enrollment and resources
 
-The App packages qURL 3.0.0 with embedded Connector module v0.14.1. One
+The App packages qURL 3.6.0 with embedded Connector module v0.14.2. One
 externally supervised Connector runtime serves the installation. A dedicated,
 retained management API key has qURL read/write and enrollment-token minting
 authority. On the first required publication of a genuinely fresh

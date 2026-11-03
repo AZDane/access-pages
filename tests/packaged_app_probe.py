@@ -91,6 +91,11 @@ def ready(process, expected):
         try:
             status, body = request("GET", "/health")
             if status == 200 and body.get("status") == expected:
+                # The ingress proxy starts separately from the admin server.
+                # Wait for both listeners, including under ARM64 emulation.
+                # Loopback and a forged header must never impersonate Supervisor.
+                assert request("GET", "/", port=8099,
+                               extra={"X-Ingress-Path": "/api/hassio_ingress/synthetic/"})[0] == 403
                 return
         except (OSError, http.client.HTTPException):
             pass
@@ -122,9 +127,6 @@ process = start()
 try:
     ready(process, "setup_required")
     assert b"Connect to LayerV" in request("GET", "/admin")[1]
-    # Loopback plus a forged ingress header must not impersonate Supervisor.
-    assert request("GET", "/", port=8099,
-                   extra={"X-Ingress-Path": "/api/hassio_ingress/synthetic/"})[0] == 403
     assert request("POST", "/api/onboarding/key", {"api_key": "synthetic-layerv-api-key"})[0] == 201
     ready(process, "ok")
     config = json.loads(DATA.joinpath("app-config.json").read_text())
