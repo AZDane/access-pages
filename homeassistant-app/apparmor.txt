@@ -26,7 +26,7 @@ profile access_pages flags=(attach_disconnected,mediate_deleted) {
   /var/lib/dbus/machine-id r,
 
   # Home Assistant-owned configuration and Gateway persistence.
-  # qURL CLI 3.0.0 opens the filesystem root read-only, then walks /data and
+  # qURL CLI 3.6.0 opens the filesystem root read-only, then walks /data and
   # its native state directory using O_DIRECTORY/O_NOFOLLOW and openat.
   # This permits opening only the root directory, not reading its files.
   / r,
@@ -60,7 +60,7 @@ profile access_pages flags=(attach_disconnected,mediate_deleted) {
   # The Connector's /var/log/layerv path links to this persistent log tree.
   /data/logs/{,**} rwk,
 
-  # The inactive guest service owns only its private runtime socket.
+  # The isolated guest service owns only its private runtime socket.
   /run/access-pages/ rw,
   /run/access-pages/guest/ rw,
   /run/access-pages/guest/http.sock rw,

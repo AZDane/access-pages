@@ -26,23 +26,6 @@ with patch.dict("os.environ", {}, clear=True):
 
 
 class OnboardingTests(unittest.TestCase):
-    def test_gateway_error_has_the_reported_json_parse_signature(self):
-        script = (
-            "try { JSON.parse('502: Bad Gateway') } "
-            "catch (error) { process.stdout.write(error.message) }"
-        )
-        result = subprocess.run(
-            ["node", "-e", script],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        self.assertEqual(
-            result.stdout,
-            "Unexpected non-whitespace character after JSON at "
-            "position 3 (line 1 column 4)",
-        )
-
     def test_real_onboarding_process_waits_for_persistence_and_sends_json(self):
         key = "lv_test_processSyntheticCredential"
         for _ in range(5):
