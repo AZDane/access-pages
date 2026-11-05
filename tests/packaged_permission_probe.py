@@ -3,6 +3,7 @@
 import importlib.util
 import os
 import socket
+import sqlite3
 import stat
 from pathlib import Path
 from guest_resources import GuestResources
@@ -19,11 +20,11 @@ os.chmod(privileged, 0o600)
 initial = privileged.stat()
 
 
-def as_service(operation, uid=2100, gid=2100):
+def as_service(operation, uid=2100, gid=2100, groups=()):
     child = os.fork()
     if child == 0:
         try:
-            os.setgroups([])
+            os.setgroups(list(groups))
             os.setgid(gid)
             os.setuid(uid)
             operation()
@@ -47,6 +48,46 @@ as_service(lambda: (valid.mkdir(), (valid / "state.json").write_text("valid")))
 os.chmod(valid, 0o777)
 os.chmod(valid / "state.json", 0o666)
 app_runner._prepare_runtime_permissions()
+
+# Model a backup restored with root ownership and broader permissions. The
+# broker must retain the saved data and be able to write after startup repair.
+session_dir = app_runner.HA_GUEST_SESSION_DIR
+session_db = app_runner.HA_GUEST_SESSION_DB
+with sqlite3.connect(session_db) as db:
+    db.execute("CREATE TABLE restored_session (token TEXT)")
+    db.execute("INSERT INTO restored_session VALUES ('saved-session')")
+before_restore_repair = session_db.read_bytes()
+for path, mode in ((session_dir, 0o755), (session_db, 0o644)):
+    os.chown(path, 0, 0)
+    os.chmod(path, mode)
+app_runner._prepare_runtime_permissions()
+app_runner._prepare_runtime_permissions()
+for path, mode in ((session_dir, 0o700), (session_db, 0o600)):
+    info = path.stat()
+    assert (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) == (2102, 2102, mode)
+assert session_db.read_bytes() == before_restore_repair
+
+
+def use_restored_sessions():
+    with sqlite3.connect(session_db) as db:
+        assert db.execute("SELECT token FROM restored_session").fetchall() == [("saved-session",)]
+        db.execute("INSERT INTO restored_session VALUES ('new-session')")
+
+
+as_service(use_restored_sessions, uid=2102, gid=2001, groups=(2000, 2102))
+with sqlite3.connect(session_db) as db:
+    assert db.execute("SELECT COUNT(*) FROM restored_session").fetchone()[0] == 2
+
+
+def guest_cannot_read_sessions():
+    try:
+        session_db.read_bytes()
+    except PermissionError:
+        return
+    raise AssertionError("guest could read broker session database")
+
+
+as_service(guest_cannot_read_sessions, uid=2101, gid=2101)
 
 native_state = Path("/data/access-pages-broker/shared-state")
 def create_native_socket():
