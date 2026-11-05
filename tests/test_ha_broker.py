@@ -422,6 +422,13 @@ class HomeAssistantBrokerPolicyTests(unittest.TestCase):
             self.client.call_service.assert_called_once_with("cover", "close_cover_tilt", "cover.blind", {})
             self.assertEqual(self.store.load("guest")["resources"][0]["name"], "Owner label")
 
+    def test_live_state_transport_failure_remains_an_ha_error(self):
+        self.client.get_states.side_effect = HomeAssistantError("Connection interrupted")
+        with patch("ha_broker.PAGE_STORE", self.store), patch("ha_broker.HA_CLIENT", self.client):
+            with self.assertRaisesRegex(HomeAssistantError, "Connection interrupted"):
+                ha_broker.execute_page_action("guest", "light", "turn_on", {})
+        self.client.call_service.assert_not_called()
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.store = PageStore(Path(self.temporary.name))

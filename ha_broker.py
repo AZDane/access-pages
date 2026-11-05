@@ -192,10 +192,12 @@ def _service_data(resource, action, supplied):
     if not isinstance(supplied, dict):
         raise BrokerPolicyError("Parameters must be an object")
     domain = resource["domain"]
+    # Preserve transport failures as HA errors, distinct from a confirmed
+    # missing entity or unsupported action.
+    states = HA_CLIENT.get_states({resource["entity_id"]})
     try:
         state = validate_action_state(
-            domain, action["service"], resource["entity_id"],
-            HA_CLIENT.get_states({resource["entity_id"]}),
+            domain, action["service"], resource["entity_id"], states,
         )
     except HomeAssistantError as error:
         raise BrokerPolicyError(str(error), error.status or HTTPStatus.CONFLICT) from error
