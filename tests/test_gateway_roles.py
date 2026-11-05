@@ -70,6 +70,9 @@ class GatewayBoundaryTests(unittest.TestCase):
             "id": "lamp", "name": "Lamp", "entity_id": "switch.lamp", "domain": "switch", "widget": "auto",
             "actions": [{"id": "turn_on", "name": "On", "service": "turn_on"}],
         }]
+        self.ha_client.get_states.return_value = [
+            {"entity_id": "switch.lamp", "state": "off", "attributes": {}}
+        ]
         self.assertEqual(self.request("GET", "/admin")[0], 200)
         self.assertEqual(self.request("GET", "/health")[0], 200)
         self.assertEqual(self.request("GET", "/access/guest?preview_token=" + preview)[0], 200)

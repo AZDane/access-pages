@@ -84,6 +84,28 @@ This assessment cannot transfer to a newer qURL binary, changed CLI operations,
 new linked JOSE/OIDC functions or changed vulnerability characteristics. Prefer
 a supported official fixed release when available; never rebuild qURL locally.
 
+## Home Assistant compatibility reassessment (2026-11-04, America/Phoenix)
+
+The compatibility change modifies four fingerprinted modules: `ha.py`,
+`ha_broker.py`, `actions.py`, and `server.py`. Review of their changes confirms
+that they add fixed HA metadata templates, entity-feature validation, narrowed
+guest action serialization, and preservation of explicit read-only page grants.
+They introduce no SQL consumer, uploaded database, SQLite extension, database
+deserialization, or qURL operation. Metadata remains JSON over the existing HA
+transport; naming is separate from authorization. New actions require explicit
+page policy, and the broker retains its final grant/deadline checks after the
+new live-state read.
+
+The unchanged reachability probe reproduces all 115 constant SQL calls and the
+five consumer schemas. The container bases, bundled binary pins, confinement,
+SQL consumers, runner, and reachability probe are unchanged. Only these four
+application hashes and this evidence-document hash are refreshed. Existing
+advisory decisions, binary fingerprints, review dates, and expiration dates are
+not renewed or relaxed. CI must still produce fresh image-bound evidence and
+pass native packaged tests on both architectures before the PR is mergeable.
+See [compatibility validation](../docs/home-assistant-compatibility.md) for the
+real-Core test scope and outstanding HAOS acceptance limits.
+
 ## PR #68 restore repair reassessment (2026-11-04, America/Phoenix)
 
 The guest-session startup repair changes the runner's reviewed source hash.

@@ -489,6 +489,14 @@ function actionVisibility(resource, action) {
   }
 
   if (domain === "cover") {
+    // Lift motion/state does not describe tilt motion. Keep approved tilt
+    // controls usable, including Stop, unless their own position proves a limit.
+    if (actionId.endsWith("_cover_tilt")) {
+      const tilt = resource.capabilities?.cover?.tilt_position;
+      const atLimit = (actionId === "open_cover_tilt" && tilt === 100)
+        || (actionId === "close_cover_tilt" && tilt === 0);
+      return {visible: true, disabled: atLimit, reason: atLimit ? "Already at tilt limit" : ""};
+    }
     const isOpen = actionId === "open_cover" || actionId === "open";
     const isClose = actionId === "close_cover" || actionId === "close";
     const isStop = actionId === "stop_cover" || actionId === "stop";

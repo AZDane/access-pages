@@ -29,6 +29,7 @@ from ha import (
     public_state_fields,
     public_resource_state,
     validate_dispatch_deadline,
+    validate_action_state,
 )
 from pages import PAGE_ID_RE, PageConfigError, PageNotFoundError, PageStore
 from rate_limit import MinimumIntervalRateLimiter, SlidingWindowRateLimiter
@@ -91,6 +92,7 @@ PUBLIC_DENIALS = {
     "Invalid location reading": "proximity_invalid",
     "Location reading is invalid": "proximity_invalid",
     "Assigned entity not found": "resource_unavailable",
+    "Action is not supported by this entity": "control_unavailable",
     "Parameters must be an object": "invalid_parameters",
     "Unknown action parameters": "invalid_parameters",
     "Invalid temperature": "invalid_parameters",
@@ -190,19 +192,15 @@ def _service_data(resource, action, supplied):
     if not isinstance(supplied, dict):
         raise BrokerPolicyError("Parameters must be an object")
     domain = resource["domain"]
-    needs_state = (
-        domain in {"climate", "number", "input_number", "select", "input_select"}
-        or (domain == "fan" and action["service"] == "set_percentage")
-    )
-    state = {}
-    if needs_state:
-        states = HA_CLIENT.get_states({resource["entity_id"]})
-        state = next(
-            (item for item in states if item.get("entity_id") == resource["entity_id"]),
-            None,
+    # Preserve transport failures as HA errors, distinct from a confirmed
+    # missing entity or unsupported action.
+    states = HA_CLIENT.get_states({resource["entity_id"]})
+    try:
+        state = validate_action_state(
+            domain, action["service"], resource["entity_id"], states,
         )
-        if state is None:
-            raise BrokerPolicyError("Assigned entity not found", HTTPStatus.NOT_FOUND)
+    except HomeAssistantError as error:
+        raise BrokerPolicyError(str(error), error.status or HTTPStatus.CONFLICT) from error
     capabilities = normalize_capabilities(
         resource["domain"],
         state.get("state"),

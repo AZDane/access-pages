@@ -328,6 +328,9 @@ class Handler(BaseHTTPRequestHandler):
                 for action in entity.get("actions", [])
                 if isinstance(action, dict) and action.get("service")
             }
+            # Preserve an explicitly saved read-only grant when the entity
+            # subsequently gains controls. It must not become a control grant.
+            allowed_actions.setdefault("view", "Display")
             for action in resource.get("actions", []):
                 if not isinstance(action, dict):
                     raise PageConfigError(f"Invalid action for {entity_id}")

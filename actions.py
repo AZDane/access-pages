@@ -2,7 +2,7 @@
 
 import math
 
-from ha import HomeAssistantError
+from ha import HomeAssistantError, validate_action_state
 
 
 def _matches_step(value, minimum, maximum, step):
@@ -62,24 +62,18 @@ def execute_public_action(
         return
 
     service_data = {}
+    try:
+        state = validate_action_state(
+            resource["domain"], action["service"], resource["entity_id"],
+            ha_client.get_states({resource["entity_id"]}),
+        )
+    except HomeAssistantError as error:
+        handler._send_ha_error(error)
+        return
 
     # Only accept tightly-scoped parameters for approved climate actions.
     # The client can never choose an entity, domain, or arbitrary service.
     if resource["domain"] == "climate":
-        try:
-            state = next(
-                item for item in ha_client.get_states(
-                    {resource["entity_id"]}
-                )
-                if item.get("entity_id") == resource["entity_id"]
-            )
-        except StopIteration:
-            handler._send_json(404, {"error": "Climate entity not found"})
-            return
-        except HomeAssistantError as error:
-            handler._send_ha_error(error)
-            return
-
         attributes = state.get("attributes") or {}
         capabilities = normalize_capabilities(
             "climate",
@@ -139,19 +133,6 @@ def execute_public_action(
         if not math.isfinite(value):
             handler._send_json(400, {"error": "A finite value is required"})
             return
-        try:
-            state = next(
-                item for item in ha_client.get_states(
-                    {resource["entity_id"]}
-                )
-                if item.get("entity_id") == resource["entity_id"]
-            )
-        except StopIteration:
-            handler._send_json(404, {"error": "Number entity not found"})
-            return
-        except HomeAssistantError as error:
-            handler._send_ha_error(error)
-            return
         attributes = state.get("attributes") or {}
         capability = normalize_capabilities(
             resource["domain"],
@@ -184,19 +165,6 @@ def execute_public_action(
 
     elif resource["domain"] in {"select", "input_select"}:
         option = str(payload.get("option", "")).strip()
-        try:
-            state = next(
-                item for item in ha_client.get_states(
-                    {resource["entity_id"]}
-                )
-                if item.get("entity_id") == resource["entity_id"]
-            )
-        except StopIteration:
-            handler._send_json(404, {"error": "Select entity not found"})
-            return
-        except HomeAssistantError as error:
-            handler._send_ha_error(error)
-            return
         capability = normalize_capabilities(
             resource["domain"],
             state.get("state"),
@@ -213,19 +181,6 @@ def execute_public_action(
             percentage = int(payload.get("percentage"))
         except (TypeError, ValueError, OverflowError):
             handler._send_json(400, {"error": "A percentage is required"})
-            return
-        try:
-            state = next(
-                item for item in ha_client.get_states(
-                    {resource["entity_id"]}
-                )
-                if item.get("entity_id") == resource["entity_id"]
-            )
-        except StopIteration:
-            handler._send_json(404, {"error": "Fan entity not found"})
-            return
-        except HomeAssistantError as error:
-            handler._send_ha_error(error)
             return
         capability = normalize_capabilities(
             "fan",

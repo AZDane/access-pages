@@ -36,6 +36,7 @@ STATES = [
         "entity_id": "cover.patio",
         "state": "open",
         "attributes": {
+            "supported_features": 11,
             "friendly_name": "Patio Awning",
             "device_class": "awning",
         },
@@ -44,6 +45,7 @@ STATES = [
         "entity_id": "cover.garage",
         "state": "closed",
         "attributes": {
+            "supported_features": 11,
             "friendly_name": "Garage",
             "device_class": "garage",
         },
@@ -200,6 +202,12 @@ class EntityPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(Exception, "registered location"):
                 client.get_location()
 
+    def setUp(self):
+        # Older HA fixture: optional naming helpers are not available.
+        patcher = patch.object(HomeAssistantClient, "get_entity_names", return_value={})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_unrestricted_policy_allows_supported_entities(self):
         client = HomeAssistantClient("http://ha", "token")
         self.assertTrue(client.entity_allowed("light.kitchen", "light"))
@@ -328,6 +336,7 @@ class EntityPolicyTests(unittest.TestCase):
             patch.object(HomeAssistantClient, "get_states", return_value=STATES),
             patch.object(HomeAssistantClient, "get_services", return_value=SERVICES),
             patch.object(HomeAssistantClient, "get_entity_areas", return_value={
+                "cover.garage": {"area_id": "", "area_name": ""},
                 "cover.patio": {"area_id": "patio", "area_name": "Patio"},
                 "light.kitchen": {"area_id": "kitchen", "area_name": "Kitchen"},
             }),

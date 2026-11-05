@@ -139,6 +139,10 @@ class BrokerGuestSessionTests(unittest.TestCase):
         ))
         for patcher in self.patchers:
             patcher.start()
+        ha_broker.HA_CLIENT.get_states.return_value = [
+            {"entity_id": "switch.garden", "state": "off", "attributes": {}},
+            {"entity_id": "switch.other", "state": "off", "attributes": {}},
+        ]
         self.server = ha_broker.GuestSocketServer(
             str(self.socket_path), ha_broker.GuestHandler
         )
@@ -473,7 +477,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
                     ),
                 ))
                 ha_broker._emit_guest_event.side_effect = EMIT_GUEST_EVENT
-                ha_broker.HA_CLIENT.get_states.return_value = []
+                ha_broker.HA_CLIENT.get_states.return_value = [
+                    {"entity_id": "switch.garden", "state": "off", "attributes": {}}
+                ]
                 session = self.exchange(
                     self.cap_a, "page-a", self.grant_a, self.secret_a,
                 )[1]["session"]
@@ -540,6 +546,10 @@ class BrokerGuestSessionTests(unittest.TestCase):
                 )["guest"]["first_access_at"])
 
                 ha_broker.HA_CLIENT.call_service.side_effect = None
+                ha_broker.HA_CLIENT.get_states.return_value = [
+                    {"entity_id": "switch.garden", "state": "off", "attributes": {}},
+                    {"entity_id": "switch.other", "state": "off", "attributes": {}},
+                ]
                 direct_action_session = self.exchange(
                     self.cap_b, "page-b", self.grant_c, self.secret_c,
                 )[1]["session"]
@@ -879,7 +889,7 @@ class BrokerGuestSessionTests(unittest.TestCase):
         ha_broker.HA_CLIENT.get_states.return_value = [{
             "entity_id": "number.level", "state": "4",
             "attributes": {"min": 0, "max": 10, "step": 2},
-        }]
+        }, {"entity_id": "switch.garden", "state": "off", "attributes": {}}]
         self.assertEqual(self.action(
             session, resource_id="level", action_id="set_value",
             parameters={"value": 5},
@@ -923,7 +933,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
         page = self.policy.load("page-a")
         page["proximity"] = {"enabled": True, "radius_meters": 500}
         self.policy.replace("page-a", page)
-        ha_broker.HA_CLIENT.get_states.return_value = []
+        ha_broker.HA_CLIENT.get_states.return_value = [
+            {"entity_id": "switch.garden", "state": "off", "attributes": {}}
+        ]
         self.assertEqual(self.read(session)[0], 200)
         self.assertEqual(self.action(session)[0], 403)
         now = datetime.now(timezone.utc).timestamp()
@@ -1329,7 +1341,9 @@ class BrokerGuestSessionTests(unittest.TestCase):
             patch("ha_broker.GUEST_SESSION_STORE", VerificationStore(self.sessions.path)),
         ):
             self.assertEqual(self.status(self.cap_a, "page-a", self.grant_a, first["session"])[0], 200)
-            ha_broker.HA_CLIENT.get_states.return_value = []
+            ha_broker.HA_CLIENT.get_states.return_value = [
+                {"entity_id": "switch.garden", "state": "off", "attributes": {}}
+            ]
             self.assertEqual(self.read(first["session"])[0], 200)
             self.assertEqual(self.action(first["session"])[0], 200)
             for grant_id, secret in ((self.grant_a, self.secret_a), (self.grant_b, self.secret_b)):
