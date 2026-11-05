@@ -84,6 +84,35 @@ This assessment cannot transfer to a newer qURL binary, changed CLI operations,
 new linked JOSE/OIDC functions or changed vulnerability characteristics. Prefer
 a supported official fixed release when available; never rebuild qURL locally.
 
+## PR #68 restore repair reassessment (2026-11-04, America/Phoenix)
+
+The guest-session startup repair changes the runner's reviewed source hash.
+The retained amd64 and arm64 evidence from
+[Security run 41954946349](https://github.com/AZDane/access-pages/actions/runs/41954946349)
+was compared with the baseline: only `homeassistant-app/app_runner.py` differs.
+Both SQLite and qURL binary hashes, all 115 constant SQL calls and schemas,
+the JOSE/OIDC linked-function inventory, advisory fingerprints, and confinement
+remain identical to the reviewed inputs.
+
+The runner now uses the existing descriptor-based permission repair for the
+broker-private session tree before starting services. It neither changes SQL
+nor introduces a database import endpoint or new qURL operation. It preserves
+database bytes, refuses symlinks and special files, and restores directory
+0700/file 0600 ownership to UID/GID 2102. The packaged permission probe checks
+restored SQLite contents, broker read/write access, and denied guest access
+using the actual service IDs. Arbitrary malicious database replacement and
+untrusted backups remain outside the assessment above.
+
+The runner hash is updated after this reassessment; existing review dates and
+the November 26 UTC expiry are unchanged. Fresh image-bound evidence and native
+packaged tests are still required for both architectures.
+
+The same CI scan also found the newly available
+[APT fix for CVE-2026-109518](https://security-tracker.debian.org/tracker/CVE-2026-109518).
+The runtime explicitly upgrades only `apt` and `libapt-pkg7.0` from 3.0.3 to
+3.0.4, and the packaged probe enforces that minimum. This is a package fix,
+with no new vulnerability disposition or scanner exclusion.
+
 ## Release flow
 
 Prepare the next numeric beta version in `homeassistant-app/config.yaml`, the
