@@ -26,6 +26,9 @@ CURATED_ACTIONS = {
         "open_cover": "Open",
         "close_cover": "Close",
         "stop_cover": "Stop",
+        "open_cover_tilt": "Open tilt",
+        "close_cover_tilt": "Close tilt",
+        "stop_cover_tilt": "Stop tilt",
     },
     "switch": {
         "turn_on": "Turn on",
@@ -78,6 +81,62 @@ CURATED_ACTIONS = {
 }
 
 HIDDEN_STATES = {"unavailable", "unknown"}
+# Public HA EntityFeature flags, stable across the supported HA versions.
+# See docs/home-assistant-compatibility.md for upstream definitions.
+ACTION_FEATURES = {
+    "cover": {"open_cover": 1, "close_cover": 2, "stop_cover": 8,
+              "open_cover_tilt": 16, "close_cover_tilt": 32, "stop_cover_tilt": 64},
+    "fan": {"set_percentage": 1, "turn_off": 16, "turn_on": 32},
+    "media_player": {"media_pause": 1, "volume_set": 4,
+                     "media_stop": 4096, "media_play": 16384},
+    "vacuum": {"pause": 4, "stop": 8, "return_to_base": 16, "start": 8192},
+    "climate": {"set_temperature": 1},
+}
+
+
+def action_supported(domain, service, state):
+    """Intersect saved/curated authority with current entity capabilities."""
+    if service == "view":
+        return True
+    if service not in CURATED_ACTIONS.get(domain, {}) or not state:
+        return False
+    if state.get("state") in {None, "unavailable"}:
+        return False
+    # Stateless actions can legitimately have no previous invocation time.
+    if state.get("state") == "unknown" and domain not in {
+        "button", "input_button", "scene", "script",
+    }:
+        return False
+    attributes = state.get("attributes") or {}
+    feature = ACTION_FEATURES.get(domain, {}).get(service)
+    if feature is not None:
+        flags = attributes.get("supported_features")
+        if type(flags) is not int or flags < 0 or not flags & feature:
+            return False
+    if domain == "climate" and service == "set_hvac_mode":
+        modes = attributes.get("hvac_modes")
+        return isinstance(modes, list) and bool(modes) and all(
+            isinstance(mode, str) for mode in modes
+        )
+    return True
+
+
+def validate_action_state(domain, service, entity_id, states):
+    state = next((item for item in states if item.get("entity_id") == entity_id), None)
+    if state is None:
+        raise HomeAssistantError("Assigned entity not found", status=404)
+    if not action_supported(domain, service, state):
+        raise HomeAssistantError("Action is not supported by this entity", status=409)
+    return state
+
+
+def entity_display_name(state, metadata):
+    # Metadata is optional and never used to identify or authorize an entity.
+    parts = [metadata.get("device_name"), metadata.get("entity_name")]
+    name = " ".join(dict.fromkeys(part.strip() for part in parts
+                                 if isinstance(part, str) and part.strip()))
+    return name or (state.get("attributes") or {}).get("friendly_name") or state["entity_id"]
+
 CAMERA_IMAGE_MAX_BYTES = 5 * 1024 * 1024
 CAMERA_IMAGE_TYPES = frozenset({
     "image/jpeg",
@@ -250,8 +309,9 @@ def normalize_capabilities(domain, state, attributes, action_services=()):
         position = _finite_number(attributes.get("current_position"))
         capabilities["cover"] = {
             "position": position if position is not None else None,
+            "tilt_position": _finite_number(attributes.get("current_tilt_position")),
             "operations": [
-                service for service in ("open_cover", "close_cover", "stop_cover")
+                service for service in CURATED_ACTIONS["cover"]
                 if service in action_services
             ],
         }
@@ -263,7 +323,8 @@ def normalize_capabilities(domain, state, attributes, action_services=()):
 # this allowlist. Raw HA attributes never cross the guest broker boundary.
 PUBLIC_STATE_ATTRIBUTES = (
     "friendly_name", "device_class", "unit_of_measurement",
-    "current_position", "percentage", "percentage_step", "temperature",
+    "current_position", "current_tilt_position", "supported_features",
+    "percentage", "percentage_step", "temperature",
     "current_temperature", "temperature_unit", "min_temp", "max_temp",
     "target_temp_step", "target_temp_low", "target_temp_high",
     "hvac_modes", "hvac_action", "last_triggered", "options", "min",
@@ -285,7 +346,9 @@ def public_state_fields(state_record):
 def public_resource_state(resource, state_record):
     """Serialize only fields already exposed by the Access Pages guest UI."""
     attributes = state_record.get("attributes") or {}
-    action_services = {item["service"] for item in resource["actions"]}
+    supported_actions = [item for item in resource["actions"]
+                         if action_supported(resource["domain"], item["service"], state_record)]
+    action_services = {item["service"] for item in supported_actions}
     result = {
         "id": resource["id"],
         "name": resource["name"] or attributes.get("friendly_name") or resource["entity_id"],
@@ -297,7 +360,7 @@ def public_resource_state(resource, state_record):
         ),
         "actions": [
             {"id": item["id"], "name": item["name"]}
-            for item in resource["actions"]
+            for item in supported_actions
         ],
     }
     if resource["domain"] == "camera":
@@ -581,39 +644,57 @@ class HomeAssistantClient:
         return distance <= radius_meters
 
     def get_entity_areas(self) -> dict[str, dict]:
-        # Home Assistant's REST API does not expose registry lists directly.
-        # This fixed, non-user-controlled template uses HA's public area helper
-        # functions to return only entity/area identifiers and display names.
+        # HA resolves entity overrides, device areas and inherited child-device
+        # areas. Include unassigned entities so a missing row is never confused
+        # with an authoritative "no area" result.
         template = """
 {% set ns = namespace(items=[]) %}
-{% for area_id in areas() %}
-  {% for entity_id in area_entities(area_id) %}
-    {% set ns.items = ns.items + [{
-      "entity_id": entity_id,
-      "area_id": area_id,
-      "area_name": area_name(area_id)
-    }] %}
-  {% endfor %}
+{% for state in states %}
+  {% set area = area_id(state.entity_id) %}
+  {% set ns.items = ns.items + [{
+    "entity_id": state.entity_id,
+    "area_id": area or "",
+    "area_name": area_name(area) if area else ""
+  }] %}
 {% endfor %}
 {{ ns.items | to_json }}
 """.strip()
-        result = self._request(
-            "POST",
-            "/api/template",
-            {"template": template},
-        )
+        result = self._request("POST", "/api/template", {"template": template})
         if not isinstance(result, list):
-            raise HomeAssistantError(
-                "Home Assistant returned invalid area metadata"
-            )
-        return {
-            str(item.get("entity_id", "")): {
-                "area_id": str(item.get("area_id", "")),
-                "area_name": str(item.get("area_name", "")),
+            raise HomeAssistantError("Home Assistant returned invalid area metadata")
+        areas = {}
+        for item in result:
+            if (not isinstance(item, dict)
+                    or not all(isinstance(item.get(key), str)
+                               for key in ("entity_id", "area_id", "area_name"))
+                    or not item["entity_id"] or item["entity_id"] in areas):
+                raise HomeAssistantError("Home Assistant returned invalid area metadata")
+            areas[item["entity_id"]] = {
+                "area_id": item["area_id"], "area_name": item["area_name"],
             }
-            for item in result
-            if isinstance(item, dict) and item.get("entity_id")
-        }
+        return areas
+
+    def get_entity_names(self):
+        # Feature detection preserves older releases. Keep this optional request
+        # separate from the area lookup used by discovery policy.
+        template = """
+{% set ns = namespace(items=[]) %}
+{% if entity_name is defined and device_name is defined %}
+  {% for state in states %}
+    {% set ns.items = ns.items + [{
+      "entity_id": state.entity_id,
+      "entity_name": entity_name(state.entity_id),
+      "device_name": device_name(state.entity_id)
+    }] %}
+  {% endfor %}
+{% endif %}
+{{ ns.items | to_json }}
+""".strip()
+        result = self._request("POST", "/api/template", {"template": template})
+        if not isinstance(result, list):
+            raise HomeAssistantError("Home Assistant returned invalid name metadata")
+        return {item["entity_id"]: item for item in result
+                if isinstance(item, dict) and isinstance(item.get("entity_id"), str)}
 
     def discover_entities(self, *, force: bool = False) -> dict:
         if (
@@ -627,9 +708,18 @@ class HomeAssistantClient:
         try:
             entity_areas = self.get_entity_areas()
         except HomeAssistantError:
-            # Area browsing is an enhancement; state/action discovery remains
-            # useful on older HA versions where template helpers are absent.
             entity_areas = {}
+        area_metadata_available = all(
+            state.get("entity_id") in entity_areas for state in states
+        )
+        if (self.include_areas or self.exclude_areas) and not area_metadata_available:
+            raise HomeAssistantError(
+                "Area metadata is unavailable; area-filtered discovery is blocked"
+            )
+        try:
+            entity_names = self.get_entity_names()
+        except HomeAssistantError:
+            entity_names = {}
         service_domains = {
             item.get("domain"): item.get("services", {})
             for item in self.get_services()
@@ -690,6 +780,8 @@ class HomeAssistantClient:
                 # applied to an entity, device, or area.
                 if service_definition.get("target") is None:
                     continue
+                if not action_supported(domain, service_name, state):
+                    continue
 
                 actions.append(
                     {
@@ -716,7 +808,7 @@ class HomeAssistantClient:
                 {
                     "entity_id": entity_id,
                     "domain": domain,
-                    "name": attributes.get("friendly_name") or entity_id,
+                    "name": entity_display_name(state, entity_names.get(entity_id, {})),
                     "state": entity_state,
                     "device_class": device_class,
                     "type": device_class or domain,
@@ -736,6 +828,7 @@ class HomeAssistantClient:
             )
 
         result = {
+            "area_metadata_available": area_metadata_available,
             "entity_count": len(entities),
             "domain_count": len(domain_counts),
             "domain_counts": domain_counts,
@@ -954,6 +1047,10 @@ class BrokerHomeAssistantClient(HomeAssistantClient):
         if not isinstance(result, dict):
             raise HomeAssistantError(
                 "Home Assistant broker returned invalid discovery data"
+            )
+        if (self.include_areas or self.exclude_areas) and result.get("area_metadata_available") is not True:
+            raise HomeAssistantError(
+                "Area metadata is unavailable; area-filtered discovery is blocked"
             )
         entities = [
             entity for entity in result["entities"]

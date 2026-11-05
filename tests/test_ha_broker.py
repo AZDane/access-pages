@@ -389,9 +389,38 @@ class HomeAssistantBrokerPolicyTests(unittest.TestCase):
                     patch("ha_broker.HA_CLIENT", self.client),
                     self.assertRaises(ha_broker.BrokerPolicyError),
                 ):
-                    self.client.get_states.return_value = [{"entity_id": resource["entity_id"], "attributes": {}}]
+                    self.client.get_states.return_value = [{
+                        "entity_id": resource["entity_id"], "state": "on",
+                        "attributes": {"supported_features": 49},
+                    }]
                     ha_broker._service_data(resource, {"service": service}, {parameter: value})
         self.client.call_service.assert_not_called()
+
+    def test_saved_cover_capabilities_cannot_expand_or_survive_feature_removal(self):
+        page = self.store.load("guest")
+        page["resources"] = [{
+            "id": "blind", "name": "Owner label", "entity_id": "cover.blind",
+            "domain": "cover", "actions": [{
+                "id": "close_cover_tilt", "name": "Close tilt", "service": "close_cover_tilt",
+            }],
+        }]
+        self.store.replace("guest", page)
+        with patch("ha_broker.PAGE_STORE", self.store), patch("ha_broker.HA_CLIENT", self.client):
+            for state in [[], [{"entity_id": "cover.blind", "state": "open",
+                               "attributes": {"supported_features": 11}}]]:
+                self.client.get_states.return_value = state
+                with self.assertRaises(ha_broker.BrokerPolicyError):
+                    ha_broker.execute_page_action("guest", "blind", "close_cover_tilt", {})
+                self.client.call_service.assert_not_called()
+            self.client.get_states.return_value = [{
+                "entity_id": "cover.blind", "state": "open", "attributes": {"supported_features": 112},
+            }]
+            with self.assertRaises(ha_broker.BrokerPolicyError):
+                ha_broker.execute_page_action("guest", "blind", "open_cover_tilt", {})
+            self.client.call_service.assert_not_called()
+            ha_broker.execute_page_action("guest", "blind", "close_cover_tilt", {})
+            self.client.call_service.assert_called_once_with("cover", "close_cover_tilt", "cover.blind", {})
+            self.assertEqual(self.store.load("guest")["resources"][0]["name"], "Owner label")
 
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()

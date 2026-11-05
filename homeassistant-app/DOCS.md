@@ -1,5 +1,22 @@
 # Access Pages for Home Assistant
 
+## Home Assistant compatibility
+
+The supported Core baseline is 2026.10.4; automated compatibility checks also
+cover 2026.11.0. Default entity labels follow Home Assistant's naming metadata,
+while saved guest labels and explicitly selected permissions stay unchanged.
+Tilt-only covers require explicitly selected tilt controls.
+
+After a Home Assistant upgrade, open affected pages in the Access Pages editor.
+Missing entities and unsupported saved controls are shown for repair. Restore
+the entity in Home Assistant, remove the affected resource/control, or select
+a replacement deliberately. Access Pages does not replace entities by name or
+automatically grant new controls. If area filtering is configured and HA cannot
+provide complete area information, discovery is blocked until it recovers.
+
+See the [compatibility matrix and validation limits](https://github.com/AZDane/access-pages/blob/main/docs/home-assistant-compatibility.md)
+for tested behavior and the HAOS checks required before release.
+
 ## About Access Pages
 
 Access Pages lets a Home Assistant administrator provide temporary

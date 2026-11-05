@@ -527,6 +527,10 @@ class AuthorizationBoundaryTests(unittest.TestCase):
                 resource.update(domain=domain, entity_id=f"{domain}.allowed")
                 resource["actions"][0]["service"] = service
                 client = Mock()
+                client.get_states.return_value = [{
+                    "entity_id": resource["entity_id"], "state": "on",
+                    "attributes": {"supported_features": 49},
+                }]
                 with self.subTest(domain=domain, value=value), patch("server.HA_CLIENT", client):
                     self.handler(responses)._execute_public_action(
                         page, "kitchen", "turn_on", {parameter: value},
@@ -676,6 +680,9 @@ class AuthorizationBoundaryTests(unittest.TestCase):
     def test_ignores_entity_service_and_unknown_parameter_substitution(self):
         responses = []
         client = Mock()
+        client.get_states.return_value = [{
+            "entity_id": "light.kitchen", "state": "off", "attributes": {},
+        }]
         client.call_service.return_value = {}
         activity_store = Mock()
         handler = self.handler(responses)
@@ -839,6 +846,7 @@ class ParameterValidationTests(unittest.TestCase):
             "state": "on",
             "attributes": {
                 "friendly_name": "Test Fan",
+                "supported_features": 49,
                 "percentage": 66,
                 "percentage_step": 33.3333333333,
             },
@@ -899,6 +907,7 @@ class ParameterValidationTests(unittest.TestCase):
             "entity_id": "fan.test",
             "state": "on",
             "attributes": {
+                "supported_features": 49,
                 "percentage": 66,
                 "percentage_step": 33.3333333333,
             },
@@ -950,6 +959,7 @@ class ParameterValidationTests(unittest.TestCase):
             "entity_id": "fan.test",
             "state": "on",
             "attributes": {
+                "supported_features": 49,
                 "percentage": 66,
                 "percentage_step": 33.3333333333,
             },
@@ -1032,6 +1042,7 @@ class ParameterValidationTests(unittest.TestCase):
             "state": "cool",
             "attributes": {
                 "temperature": 72.5,
+                "supported_features": 1,
                 "min_temp": 60,
                 "max_temp": 85,
                 "target_temp_step": 0.5,
@@ -1076,6 +1087,7 @@ class ParameterValidationTests(unittest.TestCase):
             "state": "cool",
             "attributes": {
                 "temperature": 72,
+                "supported_features": 1,
                 "min_temp": 60,
                 "max_temp": 85,
                 "target_temp_step": 1,
@@ -1115,6 +1127,9 @@ class ParameterValidationTests(unittest.TestCase):
             }],
         }
         client = Mock()
+        client.get_states.return_value = [{
+            "entity_id": "number.test", "state": "4", "attributes": {"min": 0, "max": 10, "step": 1},
+        }]
 
         with patch("server.HA_CLIENT", client):
             handler._execute_public_action(
@@ -1127,7 +1142,7 @@ class ParameterValidationTests(unittest.TestCase):
         self.assertEqual(responses[0], (400, {
             "error": "A finite value is required",
         }))
-        client.get_states.assert_not_called()
+        client.get_states.assert_called_once()
         client.call_service.assert_not_called()
 
     def test_rejects_non_finite_media_volume(self):
@@ -1150,6 +1165,9 @@ class ParameterValidationTests(unittest.TestCase):
             }],
         }
         client = Mock()
+        client.get_states.return_value = [{
+            "entity_id": "media_player.test", "state": "on", "attributes": {"supported_features": 4, "volume_level": 0.5},
+        }]
 
         with patch("server.HA_CLIENT", client):
             handler._execute_public_action(
@@ -1186,7 +1204,7 @@ class ParameterValidationTests(unittest.TestCase):
         }
         client = Mock()
         client.get_states.return_value = [{
-            "entity_id": "select.mode",
+            "entity_id": "select.mode", "state": "Home",
             "attributes": {"options": ["Home", "Away"]},
         }]
 

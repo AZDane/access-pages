@@ -873,8 +873,13 @@ function renderCatalog() {
     discovery.entities.map((entity) => [entity.entity_id, entity]),
   );
   const entities = selectionOrder
-    .map((entityId) => entityMap.get(entityId))
-    .filter(Boolean);
+    .map((entityId) => entityMap.get(entityId) || {
+      entity_id: entityId,
+      name: customNames.get(entityId) || entityId,
+      domain: entityId.split(".")[0],
+      state: "Unavailable or excluded",
+      actions: [],
+    });
   catalog.replaceChildren();
 
   if (!entities.length) {
@@ -982,7 +987,38 @@ function renderCatalog() {
       const actionList = document.createElement("div");
       actionList.className = "action-list";
 
-      entity.actions.forEach((action) => {
+      const availableServices = new Set(entity.actions.map((action) => action.service));
+      const unsupported = [...(selections.get(entity.entity_id) || [])]
+        .filter((service) => service !== "view" && !availableServices.has(service));
+      if (!entityMap.has(entity.entity_id) || unsupported.length) {
+        const warning = document.createElement("p");
+        warning.className = "status error";
+        warning.textContent = !entityMap.has(entity.entity_id)
+          ? "This saved entity is missing, unavailable, or excluded. Restore it in Home Assistant, or remove it and deliberately select a replacement."
+          : `Saved controls are no longer supported: ${unsupported.join(", ")}. Uncheck them before saving; replacement controls require your selection.`;
+        card.appendChild(warning);
+      }
+      if (!entityMap.has(entity.entity_id)) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.textContent = "Remove unavailable resource";
+        remove.addEventListener("click", () => {
+          selections.delete(entity.entity_id);
+          customNames.delete(entity.entity_id);
+          cameraRefreshIntervals.delete(entity.entity_id);
+          selectionOrder = selectionOrder.filter((id) => id !== entity.entity_id);
+          updateSelectionSummary();
+          renderCatalog();
+        });
+        card.appendChild(remove);
+      }
+      const actions = [...entity.actions, ...unsupported.map((service) => ({
+        service, name: `${service} (unsupported)`,
+      }))];
+      if (selections.get(entity.entity_id)?.has("view") && !availableServices.has("view")) {
+        actions.push({service: "view", name: "Display"});
+      }
+      actions.forEach((action) => {
         const label = document.createElement("label");
         label.className = "action-option";
 
@@ -2335,6 +2371,7 @@ async function editPage(pageId) {
       throw new Error(data.error || "Could not load page");
     }
 
+    await loadDiscovery(true);
     prepareEditor(data, true);
   } catch (error) {
     setStatus(`Error: ${error.message}`, "error");
@@ -2352,9 +2389,20 @@ function buildPagePayload() {
     const services = selections.get(entityId);
     if (!services) return;
     const entity = entityMap.get(entityId);
-    if (!entity) return;
+    if (!entity) {
+      throw new Error(`Saved entity ${entityId} is unavailable or excluded. Restore it or remove it before saving.`);
+    }
+    const availableServices = new Set(entity.actions.map((action) => action.service));
+    const unsupported = [...services].filter((service) => service !== "view" && !availableServices.has(service));
+    if (unsupported.length) {
+      throw new Error(`Remove unsupported controls for ${entityId}: ${unsupported.join(", ")}.`);
+    }
+    const availableActions = [...entity.actions];
+    if (services.has("view") && !availableServices.has("view")) {
+      availableActions.push({service: "view", name: "Display"});
+    }
 
-    const actions = entity.actions
+    const actions = availableActions
       .filter((action) => services.has(action.service))
       .map((action) => ({
         id: action.service,
@@ -2365,7 +2413,8 @@ function buildPagePayload() {
     if (!actions.length) return;
 
     const resource = {
-      id: resourceId(entity.entity_id),
+      id: currentPage?.resources?.find((item) => item.entity_id === entity.entity_id)?.id
+        || resourceId(entity.entity_id),
       name: (
         customNames.get(entity.entity_id) ||
         entity.name ||
@@ -2401,7 +2450,13 @@ proximityEnabledInput.addEventListener("change", () => {
 });
 
 async function savePage() {
-  const payload = buildPagePayload();
+  let payload;
+  try {
+    payload = buildPagePayload();
+  } catch (error) {
+    setStatus(error.message, "error");
+    return;
+  }
 
   if (!payload.title) {
     setStatus("Enter a page name.", "error");

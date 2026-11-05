@@ -749,7 +749,46 @@ async function testExplicitFinishedSharing() {
   }
 }
 
+async function testCompatibilityRepairAndTilt() {
+  const fixture = harness("admin", {async fetch() { return jsonResponse(200, {}); }});
+  vm.runInContext(`
+    discovery = {entities: [{entity_id: "cover.blind", name: "New HA name", domain: "cover",
+      state: "open", actions: [{service: "open_cover_tilt", name: "Open tilt"}]}]};
+    loadSelections({resources: [
+      {entity_id: "cover.blind", name: "Owner label", actions: [{service: "open_cover"}]},
+      {entity_id: "switch.missing", name: "Saved missing label", actions: [{service: "turn_on"}]},
+    ]});
+    renderCatalog();
+  `, fixture.context);
+  const text = descendants(fixture.elements.get("catalog")).map(item => item.textContent).join(" ");
+  assert.match(text, /Saved controls are no longer supported/);
+  assert.match(text, /saved entity is missing/);
+  assert.match(text, /Saved missing label/);
+  assert.throws(() => vm.runInContext("buildPagePayload()", fixture.context), /unsupported controls/);
+  assert.equal(vm.runInContext("selections.get('cover.blind').has('open_cover_tilt')", fixture.context), false);
+  vm.runInContext("selections.set('cover.blind', new Set(['open_cover_tilt']))", fixture.context);
+  assert.throws(() => vm.runInContext("buildPagePayload()", fixture.context), /unavailable or excluded/);
+  const remove = descendants(fixture.elements.get("catalog"))
+    .find(item => item.textContent === "Remove unavailable resource");
+  remove.listeners.get("click")();
+  const payload = vm.runInContext("buildPagePayload()", fixture.context);
+  assert.equal(payload.resources.length, 1);
+  assert.equal(payload.resources[0].name, "Owner label");
+  assert.equal(payload.resources[0].entity_id, "cover.blind");
+  assert.equal(payload.resources[0].actions[0].service, "open_cover_tilt");
+
+  const guest = harness("access", {});
+  for (const state of ["open", "closed", "opening", "closing"]) {
+    guest.context.fixtureResource = {domain: "cover", state, capabilities: {cover: {tilt_position: 40}}};
+    for (const id of ["open_cover_tilt", "close_cover_tilt", "stop_cover_tilt"]) {
+      guest.context.fixtureAction = {id};
+      assert.equal(vm.runInContext("actionVisibility(fixtureResource, fixtureAction).disabled", guest.context), false);
+    }
+  }
+}
+
 (async () => {
+  await testCompatibilityRepairAndTilt();
   await testVerificationOptionAvailability();
   await testExplicitFinishedSharing();
   await testActionFreshState();

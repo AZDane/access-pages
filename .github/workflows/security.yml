@@ -17,6 +17,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ha-compatibility:
+    name: Home Assistant Core (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - version: "2026.10.4"
+            digest: sha256:23f4dfbb69ce76315dbc4de7915504f1c2dcecd7ca2648113a493a385972e133
+          - version: "2026.11.0"
+            digest: sha256:c6c1ca9931036bf3a2c4cc088d8db25dfea3b33935a5ecc83c40349462e2f69e
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+      - name: Exercise real Core APIs and guest broker in isolation
+        run: >-
+          docker run --rm --network none --entrypoint python
+          --env PYTHONPATH=/workspace --env PYTHONDONTWRITEBYTECODE=1
+          --volume "$GITHUB_WORKSPACE:/workspace:ro"
+          ghcr.io/home-assistant/home-assistant:${{ matrix.version }}@${{ matrix.digest }}
+          /workspace/tests/live_ha_compatibility.py
+
   static-analysis:
     name: Static analysis and tests
     runs-on: ubuntu-latest
