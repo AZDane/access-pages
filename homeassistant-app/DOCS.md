@@ -2,8 +2,9 @@
 
 ## Home Assistant compatibility
 
-The supported Core baseline is 2026.10.4; automated compatibility checks also
-cover 2026.11.0. Default entity labels follow Home Assistant's naming metadata,
+Home Assistant Core 2026.10.4 and 2026.11.0 are supported and tested, with
+2026.10.4 as the minimum supported version. Default entity labels follow Home
+Assistant's naming metadata,
 while saved guest labels and explicitly selected permissions stay unchanged.
 Tilt-only covers require explicitly selected tilt controls.
 

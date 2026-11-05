@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.150
+
+- Support Home Assistant Core 2026.10.4 and 2026.11.0, with 2026.10.4 as
+  the minimum supported version. Test both pinned official Core images in CI.
+- Use Home Assistant entity and device naming metadata with friendly-name and
+  entity-ID fallbacks. Preserve existing page names, custom labels, and grants.
+- Add explicitly authorized tilt-only cover controls and validate each entity's
+  current capabilities before dispatching actions. Never grant new controls
+  automatically.
+- Show missing entities and unsupported saved actions for deliberate owner
+  repair. Fail closed when area-filtered discovery lacks complete metadata,
+  including child-device inheritance and explicit area overrides.
+- Real-Core checks use synthetic devices. Live Supervisor ingress, HAOS
+  upgrade/restore, physical Matter/Tuya devices, and external LayerV guest-link
+  acceptance remain unverified for this release. No connection reset is required.
+
 ## 0.1.149
 
 - Fix "Setup required: Unsafe HA guest session directory" after restoring a
