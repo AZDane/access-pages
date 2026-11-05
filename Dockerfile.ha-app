@@ -27,8 +27,13 @@ FROM python:3.15.2-slim-trixie@sha256:197f6622a70b727a4e61bdac13a73b4e2b914b896a
 # HAOS supplies container mounts. Remove only the standalone, non-Essential
 # mount package; retain its shared libraries and Debian's maintenance tools.
 # The pinned Trixie base already includes the reviewed SQLite/OpenSSL fixes.
-RUN apt-get purge -y mount \
+# Apply the subsequent APT security update (CVE-2026-109518) explicitly.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends --only-upgrade apt=3.0.4 libapt-pkg7.0=3.0.4 \
+    && apt-get purge -y mount \
     && apt-get check \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' apt)" ge 3.0.4 \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libapt-pkg7.0)" ge 3.0.4 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' openssl)" ge 3.5.7-1~deb13u3 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libssl3t64)" ge 3.5.7-1~deb13u3 \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libsqlite3-0)" ge 3.46.1-7+deb13u2 \

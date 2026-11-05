@@ -785,6 +785,74 @@ class AppRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(app_runner.SetupError, "Unsafe"):
             app_runner._prepare_ha_guest_session_dir()
 
+    def test_restored_guest_sessions_repair_permissions_and_preserve_data(self):
+        directory = self.paths["HA_GUEST_SESSION_DIR"]
+        directory.mkdir(parents=True)
+        directory.chmod(0o755)
+        contents = {
+            self.paths["HA_GUEST_SESSION_DB"]: b"restored session database",
+            directory / "sessions.sqlite3-wal": b"restored pending transactions",
+            directory / "sessions.sqlite3-shm": b"restored shared memory",
+        }
+        for path, content in contents.items():
+            path.write_bytes(content)
+            path.chmod(0o644)
+        ownership = {}
+
+        def record_owner(descriptor, uid, gid):
+            ownership[os.fstat(descriptor).st_ino] = (uid, gid)
+
+        with patch.object(app_runner.os, "fchown", side_effect=record_owner):
+            # Exercise startup's parent walk too: it must not overwrite the
+            # broker-private ownership with capability-registry ownership.
+            app_runner._prepare_runtime_permissions()
+            app_runner._prepare_runtime_permissions()
+
+        for path, mode in [(directory, 0o700), *[(p, 0o600) for p in contents]]:
+            self.assertEqual(path.stat().st_mode & 0o7777, mode)
+            self.assertEqual(ownership[path.stat().st_ino], (2102, 2102))
+        for path, content in contents.items():
+            self.assertEqual(path.read_bytes(), content)
+
+    def test_guest_session_directory_created_on_first_start(self):
+        with patch.object(app_runner.os, "fchown") as chown:
+            app_runner._prepare_ha_guest_session_dir()
+        directory = self.paths["HA_GUEST_SESSION_DIR"]
+        self.assertEqual(directory.stat().st_mode & 0o7777, 0o700)
+        self.assertEqual(chown.call_args.args[1:], (2102, 2102))
+
+    def test_guest_session_repair_rejects_parent_symlink(self):
+        target = self.paths["DATA_DIR"] / "target"
+        target.mkdir()
+        self.paths["HA_CAPABILITY_DIR"].symlink_to(target)
+        with self.assertRaisesRegex(app_runner.SetupError, "Unsafe"):
+            app_runner._prepare_ha_guest_session_dir()
+        self.assertEqual(list(target.iterdir()), [])
+
+    def test_guest_session_repair_rejects_database_symlink(self):
+        directory = self.paths["HA_GUEST_SESSION_DIR"]
+        directory.mkdir(parents=True)
+        target = self.paths["DATA_DIR"] / "target"
+        target.write_bytes(b"must remain untouched")
+        original = target.stat()
+        self.paths["HA_GUEST_SESSION_DB"].symlink_to(target)
+        with (
+            patch.object(app_runner.os, "fchown"),
+            self.assertRaisesRegex(app_runner.SetupError, "Unsafe"),
+        ):
+            app_runner._prepare_ha_guest_session_dir()
+        self.assertEqual(target.read_bytes(), b"must remain untouched")
+        self.assertEqual(target.stat(), original)
+
+    def test_guest_session_repair_rejects_fifo(self):
+        self.paths["HA_GUEST_SESSION_DIR"].mkdir(parents=True)
+        os.mkfifo(self.paths["HA_GUEST_SESSION_DB"])
+        with (
+            patch.object(app_runner.os, "fchown"),
+            self.assertRaisesRegex(app_runner.SetupError, "Unsafe"),
+        ):
+            app_runner._prepare_ha_guest_session_dir()
+
     def test_gateway_uses_configured_qurl_lifetime_limit(self):
         options = {"qurl_max_lifetime_days": 30}
         config = {

@@ -762,16 +762,14 @@ def _prepare_runtime_permissions() -> None:
 
 
 def _prepare_ha_guest_session_dir() -> None:
-    if not HA_GUEST_SESSION_DIR.exists():
-        HA_GUEST_SESSION_DIR.mkdir(mode=0o700)
-        os.chown(HA_GUEST_SESSION_DIR, 2102, 2102)
-    session_dir = HA_GUEST_SESSION_DIR.lstat()
-    if (
-        not stat.S_ISDIR(session_dir.st_mode)
-        or (session_dir.st_uid, session_dir.st_gid,
-            stat.S_IMODE(session_dir.st_mode)) != (2102, 2102, 0o700)
-    ):
-        raise SetupError("Unsafe HA guest session directory")
+    # Backups can restore different ownership or modes. Repair the database
+    # and SQLite sidecars before starting the broker, without following links
+    # or changing their contents, just as for the other persistent trees.
+    descriptor = _open_data_directory(HA_GUEST_SESSION_DIR, create=True)
+    try:
+        _repair_tree_fd(descriptor, 2102, 2102, 0o700, 0o600)
+    finally:
+        os.close(descriptor)
 
 
 def _seed_authoritative_policy() -> int:
