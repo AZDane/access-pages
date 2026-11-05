@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.149
+
+- Fix "Setup required: Unsafe HA guest session directory" after restoring a
+  Home Assistant backup with changed ownership or permissions. Repair the
+  guest-session directory, database, and SQLite sidecars before startup while
+  preserving their contents and rejecting symbolic links and special files.
+- Apply Debian's APT 3.0.4 security update for CVE-2026-109518 and revalidate
+  the existing bounded security assessments for the startup repair.
+- Preserve saved pages, credentials, guest grants, and connection state.
+  No connection reset is required. Live Home Assistant restore acceptance
+  remains manual.
+
 ## 0.1.148
 
 - Fix a shutdown race that could leave the qURL child running when the broker
