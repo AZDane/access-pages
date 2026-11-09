@@ -14,7 +14,9 @@ from unittest.mock import patch
 from security.check_vulnerabilities import check_report, finding_fingerprint
 from security.image_evidence import bind_report, fingerprint, inspect_archive
 from security.publish_validated import candidates, publish
-from security.verify_unreachable import SQL_FILES, go_functions, sqlite_schema_evidence
+from security.verify_unreachable import (
+    SQL_FILES, go_functions, html_parser_evidence, sqlite_schema_evidence, sqlite_session_evidence,
+)
 
 
 class UnreachablePolicyTests(unittest.TestCase):
@@ -137,6 +139,25 @@ class UnreachablePolicyTests(unittest.TestCase):
 
 
 class PackagedEvidenceTests(unittest.TestCase):
+    def test_html_parser_or_wrapper_requires_reassessment(self):
+        self.assertEqual(html_parser_evidence(['net/http.(*Client).Do']), [])
+        for name in ('golang.org/x/net/html.Parse', 'golang.org/x/net/html.(*parser).addText',
+                     'type:.eq.golang.org/x/net/html.Node'):
+            with self.assertRaisesRegex(ValueError, 'code is linked'):
+                html_parser_evidence([name])
+
+    def test_session_binding_or_native_bridge_requires_reassessment(self):
+        self.assertEqual(sqlite_session_evidence(Path('.')), [])
+        with patch('security.verify_unreachable.sqlite3.Changeset', object(), create=True):
+            with self.assertRaisesRegex(ValueError, 'session API'):
+                sqlite_session_evidence(Path('.'))
+        for source in ('import ctypes', 'from cffi import FFI', 'import apsw'):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'new_consumer.py').write_text(source)
+                with self.assertRaisesRegex(ValueError, 'bridge'):
+                    sqlite_session_evidence(root)
+
     def test_sql_schema_is_reproducible_and_new_fts_or_dynamic_sql_blocks(self):
         evidence = sqlite_schema_evidence(Path('.'))
         self.assertEqual(evidence['sql_calls'], 115)

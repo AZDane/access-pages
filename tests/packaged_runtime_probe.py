@@ -17,6 +17,7 @@ for executable in (sys.executable, "/usr/local/bin/python", "/usr/local/bin/pyth
 for package, minimum in {
     "apt": "3.0.4",
     "libapt-pkg7.0": "3.0.4",
+    "zlib1g": "1:1.3.dfsg+really1.3.1-1+deb13u1",
     "openssl": "3.5.7-1~deb13u3",
     "libssl3t64": "3.5.7-1~deb13u3",
     "libsqlite3-0": "3.46.1-7+deb13u2",
