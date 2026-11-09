@@ -135,6 +135,68 @@ The runtime explicitly upgrades only `apt` and `libapt-pkg7.0` from 3.0.3 to
 3.0.4, and the packaged probe enforces that minimum. This is a package fix,
 with no new vulnerability disposition or scanner exclusion.
 
+## Dependency remediation reassessment (2026-11-09, America/Phoenix)
+
+The unmodified main scan [42678630300](https://github.com/AZDane/access-pages/actions/runs/42678630300)
+reported two new SQLite findings, two zlib findings, and an x/net finding.
+The runtime now installs Debian's fixed zlib1g
+`1:1.3.dfsg+really1.3.1-1+deb13u1` and both the build and packaged probe enforce
+that minimum. This fixes [CVE-2026-76844 and CVE-2026-85091](https://security-tracker.debian.org/tracker/CVE-2026-76844)
+without a disposition. The runtime base, SQLite and qURL binaries are unchanged.
+
+### SQLite CVE-2026-119374 and CVE-2026-119379
+
+Debian's [FTS5 advisory](https://security-tracker.debian.org/tracker/CVE-2026-119374)
+and [session advisory](https://security-tracker.debian.org/tracker/CVE-2026-119379)
+list the shipped Trixie package as affected with no stable fix. Mixing in sid's
+SQLite would change the supported runtime and is not used as a remediation.
+
+CVE-2026-119374 requires a corrupted FTS5 index and FTS5 secure-delete processing.
+The existing packaged probe reproduces all 115 constant SQL calls and schemas:
+none creates an FTS virtual table or accepts SQL. CVE-2026-119379 requires calling
+`sqlite3changeset_apply()` with an attacker-controlled session changeset. Access
+Pages uses Python's stdlib sqlite3 binding, which exposes no session/changeset
+API. Review of all packaged Python modules found no ctypes, cffi, APSW, native
+session call, changeset import, dynamic native loader or uploaded-database path.
+The new probe records the absence of a session/changeset binding and rejects
+native bridge imports; exact application hashes bind the remaining source review.
+This does not claim the SQLite library lacks the affected native code.
+
+Both decisions retain the existing SQLite binary hashes and schema fingerprint,
+add exact scanner-advisory fingerprints, and expire November 26 UTC. They cover
+remote application inputs and service-owned databases only. Malicious database
+replacement, untrusted backups, a new SQLite consumer, binding, native bridge or
+import feature invalidates them. Packaged isolation and permission tests remain
+required on both architectures.
+
+### qURL x/net/html CVE-2026-78661
+
+[GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860) identifies the HTML parser's
+Parse/ParseFragment entry points and quadratic text-node coalescing before
+x/net v0.62.0. This is not a finding in x/net's HTTP transport. The affected module
+is in the downloaded qURL binary and its two retained architecture SBOMs, not the
+stdlib-only guest-endpoint module compiled by our Go builder.
+
+Both official qURL 3.6.0 archives were downloaded again and matched their
+Dockerfile checksums. Their binaries match the existing baseline hashes. Parsing
+the ELF Go function tables found 46,060 functions on amd64 and 45,494 on arm64,
+with no `golang.org/x/net/html` function, wrapper or type symbol. The probe now
+requires that empty inventory in addition to the existing complete-function-table
+checks and exact binary hashes. No affected parser is linked into these exact
+artifacts; a missing arbitrary string alone is not accepted as evidence.
+
+The latest official release inspected, qURL 3.7.1, still lists x/net v0.61.0 in
+its published amd64 SBOM, so it does not supply the upstream fix. Keep the reviewed
+official binaries rather than rebuilding qURL. Prefer an official fixed release
+when available. Preserve all three scanner targets and their exact advisory
+fingerprints. New binary bytes, linked HTML code, changed advisory characteristics
+or expiry invalidate the assessment. This new disposition expires November 26 UTC.
+
+The reachability probe and this document were reassessed and their control hashes
+updated. Existing application hashes, binary hashes, dispositions and expiry dates
+are unchanged. Every candidate must reproduce fresh image-bound evidence; the
+previous CI evidence is only the investigation input, never a substitute for it.
+
 ## Release flow
 
 Prepare the next numeric beta version in `homeassistant-app/config.yaml`, the
