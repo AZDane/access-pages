@@ -1,0 +1,56 @@
+name: Security review alerts
+
+on:
+  schedule:
+    - cron: "23 0 * * *"
+  workflow_dispatch:
+    inputs:
+      write_issues:
+        description: Create or update due-review issues
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - .github/workflows/security-review-alerts.yml
+      - security/review_alerts.py
+      - security/vulnerability-baseline.json
+      - tests/test_review_alerts.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-review-alerts-${{ github.event_name == 'pull_request' && github.ref || 'scheduled' }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate review alerts
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -p test_review_alerts.py -v
+      - name: Preview current alerts without writes
+        run: python3 security/review_alerts.py
+
+  alert:
+    if: >-
+      github.repository == 'AZDane/access-pages' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.write_issues))
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Alert maintainer about due assessments
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 security/review_alerts.py --write-issues
