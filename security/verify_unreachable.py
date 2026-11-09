@@ -1,4 +1,4 @@
-"""Reproduce the two bounded reachability assessments inside the shipped image.
+"""Reproduce bounded reachability assessments inside the shipped image.
 
 This prints evidence; it does not approve a finding. The baseline checks the
 exact binary and source hashes, architecture, advisory fingerprint and dates.
@@ -72,6 +72,31 @@ def sqlite_schema_evidence(root):
     return {"sql_calls": total, "schemas": schemas}
 
 
+def html_parser_evidence(functions):
+    # Inspect the parsed ELF function table, including wrapper/type symbols.
+    html = sorted(name for name in functions if "golang.org/x/net/html" in name)
+    if html:
+        raise ValueError("x/net/html code is linked; reassess CVE-2026-78661")
+    return html
+
+
+def sqlite_session_evidence(root):
+    # The stdlib binding has no session/changeset API. Fail if that changes,
+    # or if packaged application code starts using a native-library bridge.
+    api = sorted(name for obj in (sqlite3, sqlite3.Connection) for name in dir(obj)
+                 if "session" in name.lower() or "changeset" in name.lower())
+    if api:
+        raise ValueError("SQLite session API exposed; reassessment required")
+    for path in root.glob("*.py"):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            modules = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                       else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+            if any(m.split(".")[0] in {"ctypes", "cffi", "apsw"} for m in modules):
+                raise ValueError("Native SQLite bridge requires review")
+    return api
+
+
 def collect(root=Path("/app")):
     binary = Path("/usr/local/bin/qurl").read_bytes()
     functions = go_functions(binary)
@@ -94,9 +119,11 @@ def collect(root=Path("/app")):
         "files": files,
         "qurl_sha256": sha256(binary).hexdigest(),
         "jose_functions": jose,
+        "html_functions": html_parser_evidence(functions),
         "sqlite_sha256": sha256(libraries[0].read_bytes()).hexdigest(),
         "sqlite_version": sqlite3.sqlite_version,
         "sqlite_schema": sqlite_schema_evidence(root),
+        "sqlite_session_bindings": sqlite_session_evidence(root),
     }
 
 
