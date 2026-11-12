@@ -36,7 +36,7 @@ configuration:
     description: Optional comma-separated entity IDs hidden from the picker. Exclusions override inclusions.
   qurl_max_lifetime_days:
     name: Maximum qURL lifetime
-    description: Plan limit in days. Use 3 for LayerV Free or up to 30 when allowed by your plan.
+    description: Maximum lifetime in days (default 30). Configure this to match your LayerV plan.
   resource_isolation:
     name: LayerV resource isolation
     description: Guest (default) gives each guest a separate resource. Page shares one resource among guests on the same Access Page.

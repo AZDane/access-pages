@@ -25,7 +25,7 @@ options:
   include_areas: ""
   exclude_domains: "alarm_control_panel"
   exclude_entities: ""
-  qurl_max_lifetime_days: 3
+  qurl_max_lifetime_days: 30
   diagnostic_logging: "off"
   resource_isolation: guest
 schema:

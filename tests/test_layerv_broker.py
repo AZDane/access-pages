@@ -286,7 +286,7 @@ class LayerVBrokerPolicyTests(unittest.TestCase):
                     "guest",
                     "grant_two",
                     "Guest",
-                    "4d",
+                    "31d",
                     "/access/guest?access_token=" + "a" * 43,
                 )
 

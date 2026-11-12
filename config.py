@@ -52,7 +52,7 @@ if POLICY_PUBLISH_URL and not POLICY_PUBLISH_TOKEN:
     )
 
 QURL_MAX_LIFETIME_DAYS = int(
-    os.getenv("QURL_MAX_LIFETIME_DAYS", "3")
+    os.getenv("QURL_MAX_LIFETIME_DAYS", "30")
 )
 if not 1 <= QURL_MAX_LIFETIME_DAYS <= 30:
     raise RuntimeError(
