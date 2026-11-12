@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.151
+
+- Increase the default maximum qURL lifetime from 3 days to 30 days across
+  App configuration, runtime services, and the owner interface.
+- Preserve explicitly configured limits and existing guest grants. Existing
+  installations configured for 3 days can set `qurl_max_lifetime_days` to 30
+  and restart the App. LayerV account limits still apply.
+
 ## 0.1.150
 
 - Support Home Assistant Core 2026.10.4 and 2026.11.0, with 2026.10.4 as

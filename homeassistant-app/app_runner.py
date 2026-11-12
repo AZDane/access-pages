@@ -396,7 +396,7 @@ def _policy_options(options: dict) -> dict:
             options.get("exclude_entities", "")
         ),
         "QURL_MAX_LIFETIME_DAYS": str(
-            options.get("qurl_max_lifetime_days", 3)
+            options.get("qurl_max_lifetime_days", 30)
         ),
     }
 
@@ -575,7 +575,7 @@ def _layerv_broker_environment(options: dict, config: dict) -> dict:
         "ACCESS_PAGES_INSTALLATION_ID": config["installation_id"],
         "ACCESS_PAGES_PAGE_CONNECTOR_REGISTRY": str(PAGE_CONNECTOR_REGISTRY),
         "QURL_MAX_LIFETIME_DAYS": str(
-            options.get("qurl_max_lifetime_days", 3)
+            options.get("qurl_max_lifetime_days", 30)
         ),
     }
 

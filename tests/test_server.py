@@ -76,15 +76,15 @@ class QurlLifetimeTests(unittest.TestCase):
             90 * 60,
         )
         self.assertEqual(
-            parse_qurl_lifetime("2d")[1].total_seconds(),
-            2 * 24 * 60 * 60,
+            parse_qurl_lifetime("30d")[1].total_seconds(),
+            30 * 24 * 60 * 60,
         )
 
     def test_rejects_invalid_or_over_limit_durations(self):
         with self.assertRaisesRegex(ValueError, "whole-number duration"):
             parse_qurl_lifetime("tomorrow")
         with self.assertRaisesRegex(ValueError, "configured maximum"):
-            parse_qurl_lifetime("7d")
+            parse_qurl_lifetime("31d")
 
 
 

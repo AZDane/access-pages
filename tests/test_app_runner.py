@@ -690,7 +690,7 @@ class AppRunnerTests(unittest.TestCase):
         self.assertEqual(
             admin["HA_ENTITY_INCLUDE_DOMAINS"], "light,cover"
         )
-        self.assertEqual(admin["QURL_MAX_LIFETIME_DAYS"], "3")
+        self.assertEqual(admin["QURL_MAX_LIFETIME_DAYS"], "30")
         self.assertEqual(admin["GATEWAY_VERSION"], "0.1.test")
 
     def test_gateway_does_not_inherit_unrelated_secrets(self):
@@ -854,7 +854,7 @@ class AppRunnerTests(unittest.TestCase):
             app_runner._prepare_ha_guest_session_dir()
 
     def test_gateway_uses_configured_qurl_lifetime_limit(self):
-        options = {"qurl_max_lifetime_days": 30}
+        options = {"qurl_max_lifetime_days": 3}
         config = {
             "admin_token": "admin-synthetic",
             "api_token": "layerv-synthetic",
@@ -872,7 +872,7 @@ class AppRunnerTests(unittest.TestCase):
         ):
             environment = app_runner._admin_gateway_environment(options, config)
 
-        self.assertEqual(environment["QURL_MAX_LIFETIME_DAYS"], "30")
+        self.assertEqual(environment["QURL_MAX_LIFETIME_DAYS"], "3")
 
     def test_connector_id_uses_layer_v_slug_rules(self):
         installation_id = "12345678-1234-1234-1234-123456789abc"

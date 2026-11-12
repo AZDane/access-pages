@@ -1,5 +1,5 @@
 name: Access Pages
-version: "0.1.150"
+version: "0.1.151"
 slug: access_pages
 description: Share selected Home Assistant controls through secure, revocable, expiring guest links
 url: https://github.com/AZDane/access-pages
@@ -25,7 +25,7 @@ options:
   include_areas: ""
   exclude_domains: "alarm_control_panel"
   exclude_entities: ""
-  qurl_max_lifetime_days: 3
+  qurl_max_lifetime_days: 30
   diagnostic_logging: "off"
   resource_isolation: guest
 schema:

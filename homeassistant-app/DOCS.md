@@ -437,7 +437,7 @@ Optional comma-separated entity IDs that must not appear in the picker.
 ### `qurl_max_lifetime_days`
 
 Sets the maximum qURL lifetime Access Pages will offer for new
-invitations.
+invitations. Defaults to 30 days; existing configured values are preserved.
 
 Configure this to match the [LayerV](https://layerv.ai) plan. LayerV remains authoritative
 and may reject a duration outside the account's limits.

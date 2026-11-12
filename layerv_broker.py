@@ -22,7 +22,7 @@ from pages import PageConfigError, PageNotFoundError, PageStore
 HOST = os.getenv("ACCESS_PAGES_BROKER_HOST", "0.0.0.0")
 PORT = int(os.getenv("ACCESS_PAGES_BROKER_PORT", "8083"))
 TOKEN = os.environ["ACCESS_PAGES_BROKER_TOKEN"]
-MAX_DAYS = int(os.getenv("QURL_MAX_LIFETIME_DAYS", "3"))
+MAX_DAYS = int(os.getenv("QURL_MAX_LIFETIME_DAYS", "30"))
 PAGE_STORE = PageStore(Path(os.getenv("ACCESS_PAGES_BROKER_POLICY_DIR", "/policy")))
 DATA_DIR = Path(os.getenv("ACCESS_PAGES_BROKER_DATA_DIR", "/data"))
 CLIENT = LayerVClient(

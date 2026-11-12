@@ -171,7 +171,7 @@ function configureGuestOptions() {
       : "Configure email delivery in Gateway health before enabling verification.";
 }
 let registeredNotificationOptions = [];
-let qurlMaxLifetimeDays = 3;
+let qurlMaxLifetimeDays = 30;
 let idWasManuallyEdited = false;
 let applicationReady = false;
 let activityGuests = [];
@@ -2578,7 +2578,7 @@ async function loadPages() {
   pages = data.pages;
   updateGatewayCounts();
   layerVApiConfigured = Boolean(data.layerv_api_configured);
-  qurlMaxLifetimeDays = Number(data.qurl_max_lifetime_days) || 3;
+  qurlMaxLifetimeDays = Number(data.qurl_max_lifetime_days) || 30;
   configureLifetimeOptions();
   renderPageList();
 }
