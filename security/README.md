@@ -197,6 +197,24 @@ updated. Existing application hashes, binary hashes, dispositions and expiry dat
 are unchanged. Every candidate must reproduce fresh image-bound evidence; the
 previous CI evidence is only the investigation input, never a substitute for it.
 
+## qURL lifetime default reassessment (2026-11-12, America/Phoenix)
+
+The 30-day default changes three fingerprinted modules: `config.py`,
+`layerv_broker.py`, and `homeassistant-app/app_runner.py`. Their only changes
+replace the omitted-setting fallback of 3 days with 30 days. Explicit limits,
+duration validation, grant deadlines, admission-duration bounds, SQL statements,
+database schemas, SQLite bindings, qURL operations, and confinement are unchanged.
+
+Both retained native architecture artifacts from
+[Security run 43301606782](https://github.com/AZDane/access-pages/actions/runs/43301606782)
+reproduce the existing binary, schema, binding, linked-function, and advisory
+properties. Their packaged source fingerprints differ only for those three
+modules and match the reviewed source bytes. Rechecking both complete reports
+with these three updated hashes passes the existing policy. Refresh only those
+source hashes and this evidence-document hash; do not renew or relax advisory
+decisions, review dates, expiration dates, or binary fingerprints. CI must still
+produce fresh image-bound evidence and pass packaged tests for both architectures.
+
 ## Release flow
 
 Prepare the next numeric beta version in `homeassistant-app/config.yaml`, the
