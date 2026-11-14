@@ -210,3 +210,8 @@ official status without prior written permission from LayerV.
 
 See [BRAND_ASSETS.md](https://github.com/AZDane/access-pages/blob/main/BRAND_ASSETS.md)
 for the full notice. For brand-use questions, visit [LayerV](https://layerv.ai).
+
+With SMTP configured, schedule a named guest for a one-time date or selected
+weekdays. Each access window receives a fresh emailed invitation and ends at its
+original deadline, including already-open sessions. Review timezone, delivery,
+and backup-recovery behavior in the documentation before enabling schedules.

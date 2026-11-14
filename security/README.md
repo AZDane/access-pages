@@ -43,8 +43,8 @@ The upstream reproducer requires an FTS5 virtual table with `detail=none`,
 negative rowids and a prefix `MATCH` query:
 https://sqlite.org/bugs/info/2026-08-04T08:49:27Z
 
-All 115 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
-`upstream_cleanup.py` and `layerv_broker.py` use constant SQL. Values are bound
+All 147 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
+`upstream_cleanup.py`, `layerv_broker.py` and `schedules.py` use constant SQL. Values are bound
 as parameters. There is no FTS table, MATCH query, extension loading or database
 deserialization. The probe executes the declared CREATE statements with the
 packaged SQLite and records every schema. It rejects new/dynamic SQL and changes
@@ -243,3 +243,27 @@ Before beta publication, record native CI, the release dry run, failure-path tes
 and live acceptance results. Synthetic tests do not replace real LayerV enrollment,
 external guest admission/revocation, SMTP verification or Home Assistant restore
 acceptance. Do not call an untested live workflow beta-ready.
+
+### Scheduled invitations reassessment — 2026-11-14
+
+App 0.1.152 adds `schedules.py` as a sixth SQLite consumer. Review covers all
+147 constant SQL calls and the new schedules, occurrences, schedule_meta and
+work-index schema. Guest inputs cannot select SQL or upload databases; all
+schedule administration requires the existing admin authentication. The database,
+outbox recipient/link material, and authorization permit are in Admin's private
+0700 directory with 0600 files. The packaged probe checks guest denial and Admin
+write access after permission repair. This is not a safe-import claim for
+untrusted backups or malicious database replacement.
+
+Creation journals precede remote calls; unknown outcomes retire broker-owned
+resources, and SMTP retries reuse one invitation. Restore recovery removes
+scheduled local grants before starting guests. The permit is excluded from HA
+cold backups; manual copies must omit it. Timezone support adds read-only access
+to `/usr/share/zoneinfo`, not executable access or a new native bridge.
+
+The schema probe, source fingerprints, and AppArmor fingerprint are updated to
+this reviewed implementation. No FTS tables, MATCH queries, dynamic SQL, extension
+loading, session/changeset binding, ctypes/cffi/APSW bridge, or database-upload
+path was added. Existing qURL and SQLite binary fingerprints, advisory evidence,
+and the November 26 review deadline remain mandatory. Both architectures still
+must reproduce the evidence and pass native packaged checks before publication.

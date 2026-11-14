@@ -634,6 +634,39 @@ function descendants(element) {
   return [element, ...element.children.flatMap(descendants)];
 }
 
+async function testScheduledGuestWorkflow() {
+  let smtp = false;
+  const rows = {schedules: [{id: "schedule_test", status: "enabled", definition: {label: "Visitor", email: "guest@example.test", kind: "weekly", timezone: "America/Phoenix"}, upcoming: [{start: 1794672000, end: 1794682800}]}], occurrences: [], supported: true, timezone: "America/Phoenix"};
+  const fixture = harness("admin", {async fetch(route, options = {}) {
+    assert.match(route, /pages\/fixture\/schedules/);
+    if (options.method === "POST") {
+      const payload = JSON.parse(options.body);
+      assert.equal(payload.action, "pause_all");
+      rows.schedules[0].status = "paused";
+      return jsonResponse(200, {success: true});
+    }
+    return jsonResponse(200, {...rows, smtp_configured: smtp});
+  }});
+  vm.runInContext("currentPage = {id: 'fixture'}; confirmAction = async () => true;", fixture.context);
+  await vm.runInContext("loadSchedules()", fixture.context);
+  assert.equal(fixture.elements.get("add-schedule").disabled, true);
+  assert.match(fixture.elements.get("schedule-availability").textContent, /Configure SMTP/);
+  assert.ok(descendants(fixture.elements.get("schedule-list")).some(e => e.textContent?.includes("America/Phoenix")));
+  smtp = true;
+  await vm.runInContext("loadSchedules()", fixture.context);
+  assert.equal(fixture.elements.get("add-schedule").disabled, false);
+  fixture.elements.get("add-schedule").listeners.get("click")();
+  assert.equal(fixture.elements.get("schedule-verification").checked, true);
+  assert.equal(fixture.elements.get("schedule-single-use").checked, false);
+  assert.equal(fixture.elements.get("schedule-timezone").value, "America/Phoenix");
+  fixture.elements.get("schedule-kind").value = "weekly";
+  fixture.elements.get("schedule-kind").listeners.get("change")();
+  assert.equal(fixture.elements.get("schedule-weekdays").classList.contains("hidden"), false);
+  assert.equal(fixture.elements.get("schedule-date").required, false);
+  await fixture.elements.get("pause-schedules").listeners.get("click")();
+  assert.equal(rows.schedules[0].status, "paused");
+}
+
 async function testExplicitFinishedSharing() {
   for (const smtpSent of [false, true]) {
     const link = "https://qurl.invalid/#retained-invitation";
@@ -645,6 +678,7 @@ async function testExplicitFinishedSharing() {
     const requests = [];
     let failRemoval = false;
     const fixture = harness("admin", {async fetch(route, options = {}) {
+      if (route.endsWith("/schedules")) return jsonResponse(200, {schedules: [], occurrences: [], smtp_configured: true, supported: true, timezone: "UTC"});
       requests.push([route, options.method || "GET"]);
       if (route.endsWith("/qurls")) {
         persisted.access_grants.unshift(structuredClone(grant));
@@ -790,6 +824,7 @@ async function testCompatibilityRepairAndTilt() {
 (async () => {
   await testCompatibilityRepairAndTilt();
   await testVerificationOptionAvailability();
+  await testScheduledGuestWorkflow();
   await testExplicitFinishedSharing();
   await testActionFreshState();
   await testPrecommandReadCannotFinalizeAction();

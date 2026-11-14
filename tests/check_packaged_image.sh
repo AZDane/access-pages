@@ -7,7 +7,7 @@ case "$architecture" in amd64|arm64) ;; *) exit 1 ;; esac
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
 python3 tests/packaged_tls_probe.py --generate-fixture "$fixture"
-for probe in packaged_runtime_probe packaged_security_probe packaged_app_probe packaged_tls_probe packaged_startup_probe packaged_permission_probe; do
+for probe in packaged_runtime_probe packaged_security_probe packaged_app_probe packaged_tls_probe packaged_startup_probe packaged_permission_probe packaged_schedule_probe; do
   docker run --rm --pull=never --platform "linux/$architecture" --network none \
     --user root --entrypoint python --add-host supervisor:127.0.0.1 \
     --volume "$PWD/tests/fixtures/packaged-app-options.json:/data/options.json:ro" \
@@ -47,7 +47,7 @@ for command in (["/bin/sh", "-c", "exit 0"], ["/usr/bin/nsenter", "--help"], ["/
     else:
         raise AssertionError(f"AppArmor allowed {command[0]}")
 PY
-for probe in packaged_app_probe packaged_security_probe packaged_startup_probe packaged_tls_probe; do
+for probe in packaged_app_probe packaged_security_probe packaged_startup_probe packaged_tls_probe packaged_schedule_probe; do
   docker run --rm --network none --user root --entrypoint python \
     --add-host supervisor:127.0.0.1 --security-opt apparmor=access_pages \
     --volume "$PWD/tests/fixtures/packaged-app-options.json:/data/options.json:ro" \

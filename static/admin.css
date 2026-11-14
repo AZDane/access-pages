@@ -1475,3 +1475,13 @@ input:disabled {
     height: 32px;
   }
 }
+
+/* Scheduled invitations use native date and time inputs. */
+.schedule-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.schedule-fields > label { display: flex; flex-direction: column; gap: .4rem; }
+.schedule-fields .wide { grid-column: 1 / -1; }
+.schedule-fields fieldset label { display: inline-flex; gap: .4rem; margin: .4rem; align-items: center; }
+#schedule-dialog { width: min(760px, 95vw); max-height: 90vh; overflow-y: auto; }
+#schedule-dialog input[type="checkbox"] { width: auto; }
+#schedule-list article { padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+@media (max-width: 600px) { .schedule-fields { grid-template-columns: 1fr; } }

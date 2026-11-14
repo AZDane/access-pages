@@ -1,7 +1,11 @@
 """Administrative HTTP routes using shared gateway runtime services."""
 
+import schedule_routes
+
 
 def handle_get(handler, parsed, path, runtime):
+    if schedule_routes.handle(handler, path, runtime):
+        return
     if path == "/api/admin/notification-options":
         if not handler._require_admin():
             return
@@ -130,6 +134,8 @@ def handle_get(handler, parsed, path, runtime):
 
 
 def handle_post(handler, path, payload, runtime):
+    if schedule_routes.handle(handler, path, runtime, payload):
+        return
     if path.startswith("/api/admin/pages/") and path.endswith("/finish-sharing"):
         if not handler._require_admin():
             return
@@ -453,6 +459,7 @@ def handle_delete(handler, path, runtime):
             with runtime.page_action_lock(page_id):
                 page = runtime.PAGE_STORE.load(page_id)
                 grants = list(page["access_grants"])
+                runtime.SCHEDULE_STORE.pause_page(page_id, runtime.time.time(), revoke=True)
                 runtime.POLICY_PUBLISHER.prepare(page_id)
                 runtime.PAGE_STORE.delete(page_id)
                 policy_cleanup_pending = False

@@ -3,6 +3,7 @@ FROM python:3.15.2-alpine@sha256:a0f2e268f2ce8f3709611a90054ec6a8ae31f6251f5896b
 WORKDIR /app
 
 COPY server.py .
+COPY schedules.py schedule_routes.py invitations.py ./
 COPY actions.py .
 COPY admin.py .
 COPY access.py .
@@ -28,6 +29,7 @@ COPY verification.py .
 COPY static ./static
 
 RUN apk upgrade --no-cache \
+    && apk add --no-cache tzdata \
     && addgroup -S gateway \
     && adduser -S -G gateway gateway \
     && mkdir -p /data/pages \
