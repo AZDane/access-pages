@@ -2236,7 +2236,7 @@ async function revokeAllQurls() {
   if (!currentPage || !editingExisting) return;
 
   const confirmed = await confirmAction(
-    "Revoke every gateway token for this page? Gateway access stops immediately; LayerV revocation follows after a short status-update window.",
+    "Revoke every gateway token and pause scheduled invitations for this page? Gateway access stops immediately; LayerV revocation follows after a short status-update window.",
   );
   if (!confirmed) return;
 
@@ -2345,6 +2345,7 @@ async function manageUsers(pageId) {
     await loadGuestActivitySummaries(data.id);
     renderAccessGrants(data);
     showUsers();
+    await loadSchedules();
     setGuestCountStatus(data);
   } catch (error) {
     setStatus(`Error: ${error.message}`, "error");
@@ -2749,4 +2750,178 @@ previewLink.addEventListener("click", (event) => {
   openAdminPreview(currentPage.id).catch((error) => {
     setStatus(`Error: ${error.message}`, "error");
   });
+});
+
+// Scheduled invitations have durable server-owned timing and delivery state.
+let scheduleData = {schedules: [], occurrences: [], timezone: "UTC"};
+let editingSchedule = null;
+const scheduleDialog = document.getElementById("schedule-dialog");
+const scheduleFormStatus = document.getElementById("schedule-form-status");
+const scheduleValueFields = {
+  label: "schedule-name", email: "schedule-email", kind: "schedule-kind",
+  timezone: "schedule-timezone", date: "schedule-date", first_date: "schedule-first",
+  last_date: "schedule-last", start_time: "schedule-start", end_time: "schedule-end",
+};
+const scheduleChecks = {
+  next_day: "schedule-next-day", verification_required: "schedule-verification",
+  one_time_use: "schedule-single-use",
+};
+
+function scheduleFields() {
+  const definition = {};
+  for (const [key, id] of Object.entries(scheduleValueFields)) definition[key] = document.getElementById(id).value;
+  for (const [key, id] of Object.entries(scheduleChecks)) definition[key] = document.getElementById(id).checked;
+  definition.weekdays = [...document.querySelectorAll('input[name="schedule-weekday"]:checked')].map(x => Number(x.value));
+  definition.notifications = {
+    targets: [...document.querySelectorAll('input[name="schedule-target"]:checked')].map(x => x.value),
+    events: [...document.querySelectorAll('input[name="schedule-event"]:checked')].map(x => x.value),
+  };
+  return definition;
+}
+
+function updateScheduleKind() {
+  const weekly = document.getElementById("schedule-kind").value === "weekly";
+  document.getElementById("schedule-date-field").classList.toggle("hidden", weekly);
+  document.getElementById("schedule-date").required = !weekly;
+  for (const id of ["schedule-weekdays", "schedule-first-field", "schedule-last-field"]) {
+    document.getElementById(id).classList.toggle("hidden", !weekly);
+  }
+}
+
+function scheduleTime(value, zone) {
+  if (value == null) return "Daylight-saving boundary";
+  return new Intl.DateTimeFormat(undefined, {timeZone: zone, dateStyle: "medium", timeStyle: "long"}).format(new Date(value * 1000));
+}
+
+function scheduleWindowText(window, zone) {
+  return window.reason || `${scheduleTime(window.start, zone)} – ${scheduleTime(window.end, zone)} · ${zone}`;
+}
+
+async function scheduleRequest(payload, id = editingSchedule) {
+  const suffix = id ? `/${encodeURIComponent(id)}` : "";
+  const response = await adminApi.fetch(`api/admin/pages/${encodeURIComponent(currentPage.id)}/schedules${suffix}`, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload),
+  });
+  const data = await responseJson(response, "Could not update schedule");
+  if (!response.ok) throw new Error(data.error || "Could not update schedule");
+  return data;
+}
+
+function openSchedule(row = null, duplicate = false) {
+  editingSchedule = duplicate ? null : row?.id || null;
+  const d = row?.definition || {
+    label: "", email: "", kind: "once", timezone: scheduleData.timezone,
+    date: "", start_time: "09:00", end_time: "12:00", first_date: "", last_date: "",
+    weekdays: [], next_day: false, verification_required: true, one_time_use: false,
+    notifications: {targets: [], events: []},
+  };
+  for (const [key, id] of Object.entries(scheduleValueFields)) document.getElementById(id).value = d[key] || "";
+  for (const [key, id] of Object.entries(scheduleChecks)) document.getElementById(id).checked = Boolean(d[key]);
+  for (const input of document.querySelectorAll('input[name="schedule-weekday"]')) input.checked = d.weekdays.includes(Number(input.value));
+  for (const input of document.querySelectorAll('input[name="schedule-event"]')) input.checked = d.notifications.events.includes(input.value);
+  const targets = document.getElementById("schedule-alert-targets");
+  targets.replaceChildren();
+  for (const option of registeredNotificationOptions) {
+    const label = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "checkbox"; input.name = "schedule-target"; input.value = option.value;
+    input.checked = d.notifications.targets.includes(option.value);
+    label.append(input, document.createTextNode(option.label)); targets.append(label);
+  }
+  document.getElementById("schedule-title").textContent = editingSchedule ? "Edit future invitations" : "Schedule guest";
+  scheduleFormStatus.textContent = duplicate ? "Choose another date or time for this guest." : "";
+  document.getElementById("schedule-preview").replaceChildren();
+  updateScheduleKind();
+  scheduleDialog.showModal();
+}
+
+async function previewSchedule() {
+  const definition = scheduleFields();
+  const data = await scheduleRequest({action: "preview", definition});
+  const preview = document.getElementById("schedule-preview");
+  preview.replaceChildren();
+  for (const window of data.upcoming) {
+    const item = document.createElement("p"); item.textContent = scheduleWindowText(window, definition.timezone); preview.append(item);
+  }
+  scheduleFormStatus.textContent = data.warning || (data.upcoming.length ? "Review these times before saving." : "No future occurrences. Choose a future date.");
+  return data;
+}
+
+async function loadSchedules() {
+  if (!currentPage) return;
+  const pageId = currentPage.id;
+  const response = await adminApi.fetch(`api/admin/pages/${encodeURIComponent(pageId)}/schedules`, {cache: "no-store"});
+  const data = await responseJson(response, "Could not load schedules");
+  if (!response.ok) throw new Error(data.error || "Could not load schedules");
+  if (currentPage?.id !== pageId) return;
+  scheduleData = data;
+  document.getElementById("add-schedule").disabled = !data.smtp_configured || !data.supported;
+  document.getElementById("schedule-availability").textContent = !data.supported
+    ? "Scheduling requires the Home Assistant App Connector."
+    : !data.smtp_configured ? "Configure SMTP to enable scheduled invitations. Existing schedules remain visible."
+      : "A new link for every occurrence. Times use each schedule’s saved timezone. Refresh to see delivery and retry progress.";
+  const list = document.getElementById("schedule-list"); list.replaceChildren();
+  for (const row of data.schedules) {
+    const card = document.createElement("article");
+    const title = document.createElement("h4"); title.textContent = `${row.definition.label} · ${row.status}`;
+    const detail = document.createElement("p");
+    detail.textContent = `${row.definition.email} · ${row.definition.kind === "once" ? "One-time" : "Weekly"} · ${row.definition.timezone}`;
+    card.append(title, detail);
+    for (const window of row.upcoming || []) {
+      const line = document.createElement("p"); line.textContent = scheduleWindowText(window, row.definition.timezone); card.append(line);
+    }
+    const actions = document.createElement("div"); actions.className = "editor-actions";
+    const button = (label, callback) => {
+      const control = document.createElement("button"); control.type = "button"; control.className = "secondary"; control.textContent = label;
+      control.addEventListener("click", () => Promise.resolve().then(callback).catch(error => setStatus(error.message, "error"))); actions.append(control);
+    };
+    button("Edit", () => openSchedule(row));
+    if (data.smtp_configured) button("Duplicate", () => openSchedule(row, true));
+    button(row.status === "enabled" ? "Pause" : "Resume future invitations", async () => {
+      await scheduleRequest({action: row.status === "enabled" ? "pause" : "resume"}, row.id); await loadSchedules();
+    });
+    button("Pause and end current access", async () => {
+      if (!await confirmAction(`Pause ${row.definition.label} and revoke their scheduled invitations?`)) return;
+      await scheduleRequest({action: "pause", revoke_active: true}, row.id); await loadSchedules();
+    });
+    button("Delete schedule", async () => {
+      if (!await confirmAction("Delete future invitations? Already-emailed invitations keep their original end. Use Pause and end current access first to revoke them.")) return;
+      await scheduleRequest({action: "delete"}, row.id); await loadSchedules();
+    });
+    card.append(actions); list.append(card);
+  }
+  if (!data.schedules.length) list.textContent = "No scheduled guests yet.";
+  const historyList = document.getElementById("schedule-history"); historyList.replaceChildren();
+  for (const row of data.occurrences) {
+    const line = document.createElement("article"); line.className = "activity-entry";
+    const title = document.createElement("strong"); title.textContent = `${row.label} · ${row.state === "accepted" ? "Accepted by email server" : row.state}`;
+    const detail = document.createElement("p");
+    detail.textContent = `${scheduleTime(row.start, row.timezone)} · ${row.reason || "Waiting"} · Creation attempts: ${row.attempts || 0}; email attempts: ${row.email_attempts || 0}` +
+      (row.due > Date.now() / 1000 ? ` · Retry: ${scheduleTime(row.due, row.timezone)}` : "");
+    line.append(title, detail); historyList.append(line);
+  }
+  if (!data.occurrences.length) historyList.textContent = "No occurrences yet.";
+}
+
+document.getElementById("add-schedule").addEventListener("click", () => openSchedule());
+document.getElementById("close-schedule").addEventListener("click", () => scheduleDialog.close());
+document.getElementById("schedule-kind").addEventListener("change", updateScheduleKind);
+document.getElementById("preview-schedule").addEventListener("click", () => previewSchedule().catch(error => { scheduleFormStatus.textContent = error.message; }));
+document.getElementById("refresh-schedules").addEventListener("click", () => loadSchedules().catch(error => setStatus(error.message, "error")));
+document.getElementById("pause-schedules").addEventListener("click", async () => {
+  if (!await confirmAction("Pause future scheduled invitations for this page? Already-emailed invitations keep their original end.")) return;
+  try { await scheduleRequest({action: "pause_all"}, null); await loadSchedules(); }
+  catch (error) { setStatus(error.message, "error"); }
+});
+document.getElementById("schedule-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const button = document.getElementById("save-schedule"); button.disabled = true;
+  try {
+    const data = await previewSchedule();
+    if (!data.upcoming.length) throw new Error("Choose a future occurrence before saving.");
+    if (data.warning && !await confirmAction(data.warning)) return;
+    await scheduleRequest({action: "save", definition: scheduleFields()});
+    scheduleDialog.close(); await loadSchedules(); setStatus("Schedule saved. Invitations will be emailed when access begins.", "success");
+  } catch (error) { scheduleFormStatus.textContent = error.message; }
+  finally { button.disabled = false; }
 });

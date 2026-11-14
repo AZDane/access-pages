@@ -649,3 +649,85 @@ healthy polling alone never causes a loss summary. Detailed-mode traffic can
 still exceed the allowance with multiple guests, bursts, or blocked output.
 Missing records therefore do not prove a request never reached a component.
 Some problems will require enabling this mode and reproducing them again.
+
+## Scheduled guest invitations
+
+With SMTP configured, open an Access Page's **Guests** view and select
+**Schedule guest**. Enter a name and email address, then choose a one-time date
+or selected weekdays. Set start/end times, an optional next-day end, and optional
+first/last start dates for weekly recurrence. Review the upcoming times before
+saving. Use **Duplicate** for additional individual dates. This release uses
+native date/time pickers and an upcoming list; it does not synchronize external
+calendars.
+
+The timezone defaults to the Home Assistant App's `TZ` value (UTC if unavailable)
+and is saved explicitly as an IANA name on each schedule. Check it before saving.
+Changes to the installation or browser timezone do not move existing schedules.
+Weekly schedules follow local wall-clock time. Nonexistent or ambiguous DST
+boundaries are skipped and shown in previews/history. The weekday and final
+recurrence date refer to the start date, including overnight windows. Windows
+must be 2 minutes to 24 hours; a DST transition that makes the elapsed window
+longer than 24 hours is skipped.
+
+At each start, the App creates a fresh qURL and emails it. Creation and SMTP can
+add delay. The local guest grant always expires no later than the original end,
+including sessions already open. An already-dispatched Home Assistant action
+cannot be recalled. Permissions and proximity continue to follow the Access
+Page's current policy.
+
+Verification is enabled by default and remains session-specific. Renewable
+invitations are the default within each occurrence; single-use invitations are
+optional. Neither setting reuses a link across occurrences. Sending the invitation
+does not itself verify ownership of the email address.
+
+If the App was offline, it may create/send within 15 minutes of the original
+start, provided at least one minute remains. It never extends the end. Older
+occurrences are skipped; up to 30 days of missed history is recorded after a
+long outage. Paused occurrences are not replayed when resumed.
+
+Temporary creation failures are reconciled through broker-owned retirement
+before another grant is attempted. Email retries reuse the same qURL and
+Message-ID. SMTP can accept an email and lose its acknowledgement, so duplicate
+emails are possible. **Accepted by email server** does not confirm inbox delivery.
+Permanent failures or exhausted delivery windows revoke local access and queue
+upstream cleanup. An ambiguously accepted email can consequently contain an
+already-ended invitation. Use **Refresh schedules** to see upcoming occurrences,
+attempt counts, next retries, failures, and cleanup progress without displaying
+invitation secrets. History is retained for 30 days after an occurrence ends.
+
+Missing or invalid SMTP configuration blocks schedules until explicitly resumed.
+An SMTP outage is retried within the original delivery window. Already-issued
+invitations retain their expiry; guests needing a verification code must wait for
+working SMTP, and verification is never bypassed. LayerV credential/quota failures
+also block the affected schedule. Resolve the cause before resuming. There is a
+limit of 200 schedules; simultaneous starts are queued, and provider limits may
+prevent all guests receiving an invitation within the grace period.
+
+**Edit**, **Pause**, and **Delete** affect future or not-yet-emailed invitations.
+Already-emailed invitations retain their original recipient and end time. Use
+**Pause and end current access** to revoke them immediately. Revoking all guests
+also pauses schedules. Page deletion or connection reset prevents scheduled
+reissuance. Other schedules for the same email/page are flagged for overlap
+review; independent grants remain independent, so revoking one does not end
+another. No windows are silently combined.
+
+### Restart, upgrade, and restore
+
+Schedules and delivery journals persist under `/data/admin-runtime`. Ordinary
+restarts and upgrades resume eligible pending work. They do not recreate completed
+occurrences. The App's existing cold-backup mode includes consistent persistent
+stores and sensitive recipient/invitation data; protect those backups.
+
+Home Assistant backups deliberately exclude `admin-runtime/schedule-authorization`.
+On restore, its absence or mismatch blocks enabled schedules and revokes restored
+scheduled grants locally **before guest services start**. Cleanup remains durable.
+Review SMTP, the timezone, guest permissions, and LayerV state, then use **Resume
+future invitations** on each intended schedule. Past occurrences are not replayed.
+Revocations made after an older backup may need to be reapplied to manual guests.
+Do not run the original App and a restored clone simultaneously.
+
+For manual filesystem backups/restores, omit/remove the same authorization file
+before starting the restored App. Copying the database together with a matching
+permit outside Home Assistant bypasses automatic restore detection. A significant
+backward clock jump also blocks schedules and cancels their outstanding access;
+correct system time before resuming.

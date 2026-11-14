@@ -26,8 +26,12 @@ from actions import execute_public_action
 from audit import audit
 from themes import render_theme
 from rate_limit import MinimumIntervalRateLimiter, SlidingWindowRateLimiter
+from schedules import ScheduleStore, Scheduler
+from invitations import invitation_grant
 from config import (
     ADMIN_TOKEN,
+    SCHEDULE_DB_FILE,
+    SCHEDULE_TIMEZONE,  # noqa: F401 - admin route runtime
     ACTIVITY_DB_FILE,
     CONNECTOR_STATUS_FILE,
     GATEWAY_VERSION,
@@ -94,6 +98,7 @@ PROXIMITY_READING_MAX_AGE_SECONDS = 300
 PROXIMITY_MAX_ACCURACY_METERS = 1000
 
 BASE_DIR = Path(__file__).resolve().parent
+SCHEDULE_STORE = ScheduleStore(SCHEDULE_DB_FILE)
 STATIC_DIR = BASE_DIR / "static"
 
 QURL_LIFETIME_RE = re.compile(r"^([1-9][0-9]{0,4})([mhdw])$")
@@ -896,28 +901,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send_layerv_error(error)
             return
 
-        expires_at = qurl.get("expires_at") or isoformat(local_expires_at)
-
-        grant = {
-            "id": grant_id,
-            "token_hash": token_hash(raw_token),
-            "created_at": isoformat(created_at),
-            "expires_at": expires_at,
-            "label": label,
-            "lifetime": lifetime,
-            "one_time_use": one_time_use,
-            "qurl_link": qurl["qurl_link"],
-            "qurl_site": qurl.get("qurl_site", ""),
-            "resource_id": qurl.get("resource_id", "") or LAYERV_CLIENT.resource_id,
-            "qurl_id": qurl.get("qurl_id", ""),
-            "type": qurl.get("type", ""),
-            "verification_required": verification_required,
-            "notifications": notifications or {"targets": [], "events": []},
-            "target_path_applied": bool(qurl.get("target_path_applied", False)),
-            "credential_flow": "bootstrap-v1",
-            "resource_crid": qurl.get("resource_crid", ""),
-            "upstream_scope": qurl.get("upstream_scope", "page"),
-        }
+        grant = invitation_grant(
+            qurl, grant_id=grant_id, secret=raw_token, created_at=created_at,
+            expires_at=local_expires_at, label=label, lifetime=lifetime,
+            one_time_use=one_time_use, verification_required=verification_required,
+            notifications=notifications, resource_id=LAYERV_CLIENT.resource_id,
+        )
 
         if verification_required:
             try:
@@ -1099,6 +1088,7 @@ class Handler(BaseHTTPRequestHandler):
 
             grants = list(page["access_grants"])
             revoked_count = len(grants)
+            SCHEDULE_STORE.pause_page(page_id, time.time(), revoke=True)
 
             # The page store writes a durable local revocation marker before
             # queuing cleanup; reads deny grants while either step is pending.
@@ -1176,6 +1166,7 @@ class Handler(BaseHTTPRequestHandler):
         with ExitStack() as locks:
             for page_id in page_ids:
                 locks.enter_context(page_action_lock(page_id))
+                SCHEDULE_STORE.pause_page(page_id, time.time(), revoke=True)
             pages_updated, grants = PAGE_STORE.revoke_all_access_grants()
             for grant in grants:
                 try:
@@ -1422,6 +1413,7 @@ def retry_pending_policies():
 def run():
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     PAGE_STORE.recover_pending_revocations()
+    Scheduler(RUNTIME, SCHEDULE_STORE).start()
     if LAYERV_CLIENT.configured or POLICY_PUBLISHER.configured:
         def retry_cleanup():
             while True:

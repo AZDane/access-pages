@@ -18,6 +18,8 @@ from threading import Lock
 class EmailConfigError(ValueError):
     """A safe configuration or delivery error."""
 
+    permanent = False
+
 
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 MOBILE_NOTIFY_TARGET_RE = re.compile(r"^notify\.mobile_app_[a-z0-9_]+$")
@@ -333,12 +335,15 @@ def send_email(
     body: str,
     *,
     html_body: str | None = None,
+    message_id: str | None = None,
 ) -> None:
     recipient = validate_email(recipient, "Recipient email")
     message = EmailMessage()
     message["From"] = f"{config.sender_name} <{config.sender_email}>"
     message["To"] = recipient
     message["Subject"] = subject
+    if message_id is not None:
+        message["Message-ID"] = message_id
     message.set_content(body)
     if html_body:
         message.add_alternative(html_body, subtype="html")
@@ -364,4 +369,8 @@ def send_email(
             client.login(config.username, config.password)
             client.send_message(message)
     except (OSError, smtplib.SMTPException) as error:
-        raise EmailConfigError("The SMTP server could not send the test email") from error
+        failure = EmailConfigError("The SMTP server could not send the email")
+        failure.permanent = isinstance(error, smtplib.SMTPResponseException) and 500 <= error.smtp_code < 600
+        if isinstance(error, smtplib.SMTPRecipientsRefused):
+            failure.permanent = all(500 <= value[0] < 600 for value in error.recipients.values())
+        raise failure from error

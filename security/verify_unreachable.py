@@ -16,7 +16,7 @@ import struct
 
 SQL_FILES = (
     "activity.py", "verification.py", "guest_resources.py",
-    "upstream_cleanup.py", "layerv_broker.py",
+    "upstream_cleanup.py", "layerv_broker.py", "schedules.py",
 )
 
 
@@ -67,7 +67,7 @@ def sqlite_schema_evidence(root):
             schemas[filename] = db.execute(
                 "SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY type,name"
             ).fetchall()
-    if total != 115 or any(not schema for schema in schemas.values()):
+    if total != 146 or any(not schema for schema in schemas.values()):
         raise ValueError("SQLite consumers/schema changed; reassessment required")
     return {"sql_calls": total, "schemas": schemas}
 

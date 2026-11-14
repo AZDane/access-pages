@@ -23,6 +23,7 @@ profile access_pages flags=(attach_disconnected,mediate_deleted) {
   /etc/group r,
   /etc/resolv.conf r,
   /etc/ssl/certs/{,**} r,
+  /usr/share/zoneinfo/{,**} r,
   /var/lib/dbus/machine-id r,
 
   # Home Assistant-owned configuration and Gateway persistence.

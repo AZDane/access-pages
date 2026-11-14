@@ -23,6 +23,7 @@ from pages import PageNotFoundError, PageStore
 from guest_resources import GuestResources
 from guest_request import clock_ns
 from themes import DEFAULT_THEME, THEMES
+from schedules import ScheduleStore
 
 
 DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/data"))
@@ -430,6 +431,7 @@ def _admin_gateway_environment(options: dict, config: dict) -> dict:
         "HA_BROKER_TOKEN": config["ha_broker_admin_token"],
         "ADMIN_TOKEN": config["admin_token"],
         "GATEWAY_DATA_DIR": str(DATA_DIR),
+        "TZ": os.getenv("TZ", "UTC"),
         "ACTIVITY_DB_FILE": str(ACTIVITY_DB_FILE),
         "PAGE_FILE_MODE": "640",
         "GATEWAY_VERSION": os.getenv("GATEWAY_VERSION", "development"),
@@ -1118,6 +1120,8 @@ def main() -> int:
                         options,
                         retained_admin_token,
                     )
+                    _prepare_runtime_permissions()
+                    ScheduleStore(ADMIN_RUNTIME_DIR / "schedules.sqlite3").check_recovery(PageStore(DATA_DIR / "pages"))
                     _prepare_runtime_permissions()
                     _seed_authoritative_policy()
                     page_store = PageStore(DATA_DIR / "pages")

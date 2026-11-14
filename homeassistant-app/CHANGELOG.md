@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.152
+
+- Add SMTP-only scheduled guest invitations with one-time dates, weekday recurrence, explicit timezones, overnight windows, upcoming previews, and guest activity settings.
+- Create a fresh grant per occurrence, preserve the original end for open sessions, and retry email using the same invitation. Show delivery outcomes and bounded retries without secrets.
+- Persist scheduling and recovery across restarts; block restored schedules and revoke their restored grants before guest services start. Home Assistant cold backups exclude the scheduling authorization marker.
+- Pause future invitations when all guests are revoked, the page is deleted, or the LayerV connection is reset. Add explicit pause-and-revoke controls.
+
 ## 0.1.151
 
 - Increase the default maximum qURL lifetime from 3 days to 30 days across

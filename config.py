@@ -78,6 +78,8 @@ HA_ENTITY_EXCLUDE_DEVICE_CLASSES = csv_env(
 HA_ENTITY_EXCLUDE_ENTITIES = csv_env("HA_ENTITY_EXCLUDE_ENTITIES")
 
 DATA_DIR = Path(os.getenv("GATEWAY_DATA_DIR", "/data"))
+SCHEDULE_DB_FILE = DATA_DIR / "admin-runtime" / "schedules.sqlite3"
+SCHEDULE_TIMEZONE = os.getenv("TZ", "UTC")
 PAGES_DIR = DATA_DIR / "pages"
 ACTIVITY_DB_FILE = Path(
     os.getenv(

@@ -223,3 +223,24 @@ not retire the shared resource while another guest still needs it.
 
 - `SECURITY.md` defines the concise credential and authorization contract.
 - `REVIEW_GUIDE.md` maps critical invariants to code and tests.
+
+## Scheduled invitations
+
+`schedules.py` owns an Admin-only SQLite journal and separate creation/email
+workers. A process lock prevents multiple workers sharing one store; page locks
+serialize commitment/delivery with owner changes. `schedule_routes.py` exposes
+only authenticated owner operations. `invitations.py` constructs grants shared
+with manual issuance. Existing HA broker grant checks remain authoritative.
+
+Pending mint identities precede remote side effects. Uncertain mints are retired
+through broker ownership before replacement; email ambiguity retries the same
+link. A committing journal distinguishes interrupted local writes from later
+owner revocation, preventing recovery from restoring revoked grants. SMTP
+acceptance clears the saved link and outbox secret. Cancellation retains its
+cleanup identity until the broker accepts durable retirement.
+
+Cold backups exclude the scheduling authorization permit. The root App runner
+checks it after validating existing persistence paths and before starting guest
+services, locally revokes restored scheduled grants, then repairs ownership.
+Manual copies must omit the permit too. Ordinary process restarts preserve
+schedule cursors and occurrence uniqueness.
