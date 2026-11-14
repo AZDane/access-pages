@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.159
 
 - Separate scheduled invitation delivery from access, using absolute LayerV start/end timestamps and local start enforcement. Add delivery choices and an email/access preview; migrate existing schedules to their original send-at-start behavior.
 - Cancel outstanding future links on edit, pause, or delete while preserving active access by default. Keep canceled/replaced occurrences in guest history and wait for confirmed retirement before same-date replacements.
