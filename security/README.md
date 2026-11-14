@@ -43,7 +43,7 @@ The upstream reproducer requires an FTS5 virtual table with `detail=none`,
 negative rowids and a prefix `MATCH` query:
 https://sqlite.org/bugs/info/2026-08-04T08:49:27Z
 
-All 147 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
+All 173 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
 `upstream_cleanup.py`, `layerv_broker.py` and `schedules.py` use constant SQL. Values are bound
 as parameters. There is no FTS table, MATCH query, extension loading or database
 deserialization. The probe executes the declared CREATE statements with the
@@ -275,3 +275,20 @@ listing for the owner's selector. The route's reviewed source hash is refreshed;
 this uses the existing read-only timezone data and introduces no SQL, schema,
 permission, native-library or guest-route changes. Existing vulnerability
 assessment scope, binary fingerprints and expiry dates remain unchanged.
+
+### Guest identities and retained timelines (0.1.154)
+
+The six SQLite consumers now contain 173 reviewed constant SQL calls. The
+schedule store adds page-scoped guest identities and a transactionally migrated
+guest association; the activity store adds a metadata-only association table and
+a first-visit flag. Timeline queries use bound page/guest/window/cursor parameters,
+fixed CTEs and UNION ALL, with bounded results. They do not grant access or expose
+invitation links. Retention deletes expired activity and retired schedule metadata;
+cleanup work is retained until local denial and durable upstream handoff.
+
+These changes add no FTS, virtual table, MATCH, uploaded database, extension, native
+bridge, or session/changeset interface. The packaged schema evidence is refreshed
+for these tables and indexes. Binary pins, confinement, advisory assessments and
+the existing review deadline remain unchanged. Migration, identity isolation,
+pagination, cleanup outages, and once-only first-login behavior have focused tests;
+the packaged probe also verifies timeline associations under the shipped runtime.

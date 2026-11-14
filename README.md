@@ -187,6 +187,31 @@ provided through [LayerV](https://layerv.ai).
 
 See [DOCS.md](homeassistant-app/DOCS.md) for complete setup and operating instructions.
 
+## Scheduled guests and activity
+
+With SMTP configured, choose **Add guest → Scheduled access** to email a fresh
+qURL automatically for a one-time date or selected weekdays. Set the access times,
+optional recurrence dates, and timezone. New schedules default to your browser's
+local timezone; you can select another. Each invitation expires at its original
+end time, including sessions already open.
+
+Scheduled guests appear in collapsible cards showing their next access window
+and delivery status. Expand a guest to manage schedules and view a combined
+activity and invitation timeline, filter by access window, or load older entries.
+Email acceptance and guest activity are shown separately. Add another schedule to
+an existing guest, or duplicate a schedule, to keep its history together. Matching
+names or email addresses alone never combine guests; each qURL remains an
+independent access grant.
+
+Activity is automatically removed after 30 days. Invitation records are retained
+for 30 days after the access window ends, with pending cleanup retained until it
+can be handed off safely. Record limits can remove activity sooner. Existing
+schedules get separate guest identities on upgrade; older activity that cannot be
+reliably associated remains in the previous guest history view.
+
+See [scheduled invitation documentation](homeassistant-app/DOCS.md#scheduled-guest-invitations)
+for retries, retention limits, and backup/restore behavior.
+
 ## License and branding
 
 Access Pages LLC owns the founder-owned Access Pages intellectual property

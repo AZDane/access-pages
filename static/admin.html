@@ -230,7 +230,7 @@
         <div class="editor-actions"><button id="refresh-schedules" class="secondary" type="button">Refresh schedules</button>
           <button id="pause-schedules" class="secondary" type="button">Pause all schedules</button></div>
         <div id="schedule-list" class="grant-list"></div>
-        <details><summary>Scheduled invitation history (30 days)</summary><div id="schedule-history" class="activity-list"></div></details>
+        <p class="retention-note">Expand a guest for schedules and activity. Activity is kept for 30 days; invitation records for 30 days after the access window ends. Older entries may be removed sooner when storage limits are reached.</p>
 
         <div class="grant-heading revoked-heading">
           <div>
@@ -566,6 +566,7 @@
       <div class="secure-access-heading"><h2 id="schedule-title">Schedule guest</h2><button id="close-schedule" class="secondary" type="button">Close</button></div>
       <p>A fresh invitation is created and emailed when each window begins. Permissions and proximity follow this Access Page. Delivery may arrive late; access always ends at the original time.</p>
       <div class="schedule-fields">
+        <label class="wide">Guest<select id="schedule-guest"><option value="">New guest</option></select><small id="schedule-guest-help">Choose an existing guest to add another schedule to their timeline.</small></label>
         <label>Guest name<input id="schedule-name" required maxlength="120" autocomplete="name"></label>
         <label>Guest email<input id="schedule-email" required type="email" maxlength="254" autocomplete="email"></label>
         <label>Schedule<select id="schedule-kind"><option value="once">One-time date</option><option value="weekly">Repeat weekly</option></select></label>

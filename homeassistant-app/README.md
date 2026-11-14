@@ -187,6 +187,31 @@ provided through [LayerV](https://layerv.ai).
 
 See [DOCS.md](https://github.com/AZDane/access-pages-app/blob/main/access_pages/DOCS.md) for complete setup and operating instructions.
 
+## Scheduled guests and activity
+
+With SMTP configured, choose **Add guest → Scheduled access** to email a fresh
+qURL automatically for a one-time date or selected weekdays. Set the access times,
+optional recurrence dates, and timezone. New schedules default to your browser's
+local timezone; you can select another. Each invitation expires at its original
+end time, including sessions already open.
+
+Scheduled guests appear in collapsible cards showing their next access window
+and delivery status. Expand a guest to manage schedules and view a combined
+activity and invitation timeline, filter by access window, or load older entries.
+Email acceptance and guest activity are shown separately. Add another schedule to
+an existing guest, or duplicate a schedule, to keep its history together. Matching
+names or email addresses alone never combine guests; each qURL remains an
+independent access grant.
+
+Activity is automatically removed after 30 days. Invitation records are retained
+for 30 days after the access window ends, with pending cleanup retained until it
+can be handed off safely. Record limits can remove activity sooner. Existing
+schedules get separate guest identities on upgrade; older activity that cannot be
+reliably associated remains in the previous guest history view.
+
+See [scheduled invitation documentation](DOCS.md#scheduled-guest-invitations)
+for retries, retention limits, and backup/restore behavior.
+
 ## License and branding
 
 Access Pages LLC owns the founder-owned Access Pages intellectual property
@@ -210,8 +235,3 @@ official status without prior written permission from LayerV.
 
 See [BRAND_ASSETS.md](https://github.com/AZDane/access-pages/blob/main/BRAND_ASSETS.md)
 for the full notice. For brand-use questions, visit [LayerV](https://layerv.ai).
-
-With SMTP configured, schedule a named guest for a one-time date or selected
-weekdays. Each access window receives a fresh emailed invitation and ends at its
-original deadline, including already-open sessions. Review timezone, delivery,
-and backup-recovery behavior in the documentation before enabling schedules.

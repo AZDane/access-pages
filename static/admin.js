@@ -1688,17 +1688,18 @@ async function finishSharing(pageId, grant, button) {
 }
 
 function renderAccessGrants(page) {
-  const grants = page?.access_grants || [];
+  const scheduled = scheduleData.page_id === page?.id ? scheduleData.scheduled_grants || {} : {};
+  const grants = (page?.access_grants || []).filter(grant => !scheduled[grant.id]);
   grantCount.textContent = String(grants.length);
   grantList.replaceChildren();
-  revokeQurlsButton.disabled = grants.length === 0;
+  revokeQurlsButton.disabled = (page?.access_grants || []).length === 0;
   renderRevokedGuests();
 
   if (!grants.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state compact";
     empty.textContent =
-      "No qURLs have been generated for this page.";
+      "No immediate-access invitations. Scheduled guests appear below.";
     grantList.appendChild(empty);
     return;
   }
@@ -1769,7 +1770,7 @@ function renderAccessGrants(page) {
 }
 
 function renderRevokedGuests() {
-  const revoked = activityGuests.filter((guest) => guest.revoked_at);
+  const revoked = activityGuests.filter((guest) => guest.revoked_at && !guest.scheduled_guest_id);
   revokedCount.textContent = String(revoked.length);
   revokedList.replaceChildren();
 
@@ -2753,7 +2754,8 @@ previewLink.addEventListener("click", (event) => {
 });
 
 // Scheduled invitations have durable server-owned timing and delivery state.
-let scheduleData = {schedules: [], occurrences: [], timezone: "UTC"};
+let scheduleData = {schedules: [], guests: [], timezone: "UTC"};
+const expandedScheduledGuests = new Set();
 let editingSchedule = null;
 const scheduleDialog = document.getElementById("schedule-dialog");
 const guestChoiceDialog = document.getElementById("guest-choice-dialog");
@@ -2799,11 +2801,16 @@ function updateScheduleKind() {
 
 function scheduleTime(value, zone) {
   if (value == null) return "Daylight-saving boundary";
-  return new Intl.DateTimeFormat(undefined, {timeZone: zone, dateStyle: "medium", timeStyle: "long"}).format(new Date(value * 1000));
+  return new Intl.DateTimeFormat(undefined, {timeZone: zone, dateStyle: "medium", timeStyle: "short"}).format(new Date(value * 1000));
 }
 
 function scheduleWindowText(window, zone) {
-  return window.reason || `${scheduleTime(window.start, zone)} – ${scheduleTime(window.end, zone)} · ${zone}`;
+  if (window.start == null) return window.reason || "Daylight-saving boundary";
+  const date = new Intl.DateTimeFormat(undefined, {timeZone: zone, dateStyle: "medium"});
+  const time = new Intl.DateTimeFormat(undefined, {timeZone: zone, timeStyle: "short"});
+  const start = new Date(window.start * 1000), end = new Date(window.end * 1000);
+  const endDate = date.format(start) === date.format(end) ? "" : `${date.format(end)} · `;
+  return `${date.format(start)} · ${time.format(start)}–${endDate}${time.format(end)} · ${zone}`;
 }
 
 function localScheduleTimezone() {
@@ -2838,6 +2845,20 @@ async function scheduleRequest(payload, id = editingSchedule) {
   return data;
 }
 
+function selectScheduleGuest() {
+  const id = document.getElementById("schedule-guest").value;
+  const guest = (scheduleData.guests || []).find(row => row.id === id);
+  const fixed = Boolean(guest && !editingSchedule);
+  for (const field of ["schedule-name", "schedule-email"]) document.getElementById(field).readOnly = fixed;
+  if (guest) {
+    document.getElementById("schedule-name").value = guest.label;
+    document.getElementById("schedule-email").value = guest.email;
+  }
+  document.getElementById("schedule-guest-help").textContent = editingSchedule
+    ? "Name or email changes apply to this guest’s future schedules. Already-issued invitations keep their original recipient."
+    : "Choose an existing guest to add another schedule to their timeline. Names and email addresses are never matched automatically.";
+}
+
 function openSchedule(row = null, duplicate = false) {
   editingSchedule = duplicate ? null : row?.id || null;
   const d = row?.definition || {
@@ -2847,7 +2868,16 @@ function openSchedule(row = null, duplicate = false) {
     notifications: {targets: [], events: []},
   };
   populateScheduleTimezones(d.timezone);
+  const guests = document.getElementById("schedule-guest");
+  guests.replaceChildren();
+  const fresh = document.createElement("option"); fresh.value = ""; fresh.textContent = "New guest"; guests.append(fresh);
+  for (const guest of scheduleData.guests || []) {
+    const option = document.createElement("option"); option.value = guest.id; option.textContent = `${guest.label} · ${guest.email}`; guests.append(option);
+  }
+  guests.value = row?.guest_id || "";
+  guests.disabled = Boolean(editingSchedule);
   for (const [key, id] of Object.entries(scheduleValueFields)) document.getElementById(id).value = d[key] || "";
+  selectScheduleGuest();
   for (const [key, id] of Object.entries(scheduleChecks)) document.getElementById(id).checked = Boolean(d[key]);
   for (const input of document.querySelectorAll('input[name="schedule-weekday"]')) input.checked = d.weekdays.includes(Number(input.value));
   for (const input of document.querySelectorAll('input[name="schedule-event"]')) input.checked = d.notifications.events.includes(input.value);
@@ -2879,6 +2909,164 @@ async function previewSchedule() {
   return data;
 }
 
+function scheduleRuleText(row) {
+  const d = row.definition;
+  const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const recurrence = d.kind === "weekly"
+    ? (d.weekdays.length === 7 ? "Every day" : d.weekdays.map(day => days[day]).join(", "))
+    : d.date;
+  return `${recurrence} · ${d.start_time}–${d.end_time}${d.next_day ? " next day" : ""} · ${d.timezone}`;
+}
+
+function scheduleControl(label, callback) {
+  const control = document.createElement("button");
+  control.type = "button"; control.className = "secondary"; control.textContent = label;
+  control.addEventListener("click", () => Promise.resolve().then(callback).catch(error => setStatus(error.message, "error")));
+  return control;
+}
+
+function deliveryDescription(row) {
+  if (row.accepted_at) return `Email accepted${row.state === "ended" ? " · Access ended" : row.state === "cancelled" ? " · Access cancelled" : ""}`;
+  return {pending: "Waiting to create invitation", creating: "Creating invitation", created: "Invitation created",
+    committing: "Preparing invitation", ready: "Email pending", sending: "Sending email", skipped: "Invitation skipped",
+    failed: "Invitation failed", cancelled: "Invitation cancelled", ended: "Access ended"}[row.state] || row.state;
+}
+
+async function loadScheduledTimeline(state, more = false) {
+  const request = ++state.request;
+  const pageId = currentPage?.id;
+  state.more.disabled = true;
+  state.status.textContent = "Loading history…";
+  if (!more) { state.cursor = null; state.entries.replaceChildren(); }
+  try {
+    const data = await scheduleRequest({action: "timeline", guest_id: state.guest.id,
+      kind: state.filter.value, occurrence_id: state.occurrence, cursor: state.cursor}, null);
+    if (request !== state.request || currentPage?.id !== pageId) return;
+    for (const event of data.events) {
+      const item = document.createElement("article"); item.className = "activity-entry";
+      const title = document.createElement("strong");
+      title.textContent = event.type === "delivery" ? `Invitation · ${deliveryDescription(event)}`
+        : event.type === "action" ? `${event.title} · ${humanize(event.action_id)} · ${event.outcome}`
+          : humanize(event.title);
+      const when = document.createElement("span"); when.textContent = `${scheduleTime(event.at, event.timezone)} · ${event.timezone}`;
+      const window = document.createElement("small"); window.textContent = `Access window: ${scheduleWindowText(event, event.timezone)}`;
+      const detail = document.createElement("p");
+      detail.textContent = event.type === "delivery"
+        ? `${event.reason || ""} · Creation attempts: ${event.attempts || 0}; email attempts: ${event.email_attempts || 0}` +
+          (event.due > Date.now() / 1000 ? ` · Retry: ${scheduleTime(event.due, event.timezone)}` : "")
+        : [event.type === "action" ? activityParameters(event.details) : humanize(event.details?.reason || ""), event.error || ""].filter(Boolean).join(" · ");
+      item.append(title, when, window, detail);
+      if (!state.occurrence) item.append(scheduleControl("Show this access window", () => {
+        state.occurrence = event.occurrence_id; state.clear.classList.remove("hidden");
+        state.windowLabel.textContent = `Showing ${scheduleWindowText(event, event.timezone)}`;
+        return loadScheduledTimeline(state);
+      }));
+      state.entries.append(item);
+    }
+    state.cursor = data.next_cursor;
+    state.more.textContent = "Load older entries";
+    state.more.classList.toggle("hidden", !state.cursor);
+    state.status.textContent = state.entries.children.length ? "Newest first · Email acceptance does not confirm inbox delivery or a guest visit." : "No retained entries for this filter.";
+  } catch (error) {
+    if (request !== state.request || currentPage?.id !== pageId) return;
+    state.status.textContent = error.message;
+    state.more.textContent = "Retry loading history"; state.more.classList.remove("hidden");
+  } finally { if (request === state.request) state.more.disabled = false; }
+}
+
+function renderScheduledGuests(data) {
+  const list = document.getElementById("schedule-list"); list.replaceChildren();
+  for (const guest of data.guests || []) {
+    const rows = data.schedules.filter(row => row.guest_id === guest.id);
+    const card = document.createElement("details"); card.className = "scheduled-guest";
+    const key = `${currentPage.id}/${guest.id}`;
+    card.open = expandedScheduledGuests.has(key);
+    const summary = document.createElement("summary");
+    const title = document.createElement("strong");
+    const statuses = [...new Set(rows.map(row => row.status))];
+    title.textContent = `${guest.label} · ${statuses.length ? statuses.map(humanize).join(" / ") : "Schedules removed"}`;
+    const contact = document.createElement("span"); contact.textContent = guest.email;
+    const rule = document.createElement("span"); rule.textContent = rows.length === 1 ? scheduleRuleText(rows[0]) : `${rows.length} schedules`;
+    const windows = rows.flatMap(row => (row.upcoming || []).filter(window => window.start != null).map(window => ({...window, timezone: row.definition.timezone}))).sort((a,b) => a.start-b.start);
+    const next = document.createElement("span"); next.textContent = windows.length ? `Next: ${scheduleWindowText(windows[0], windows[0].timezone)}` : "No upcoming access windows";
+    summary.append(title, contact, rule, next);
+    if (guest.latest_delivery) {
+      const last = document.createElement("span"); last.textContent = `Last invitation: ${deliveryDescription(guest.latest_delivery)}`; summary.append(last);
+    }
+    if (guest.needs_attention || statuses.includes("blocked")) {
+      const alert = document.createElement("strong"); alert.className = "schedule-warning";
+      alert.textContent = "Needs attention — expand for delivery details"; summary.append(alert);
+    }
+    card.append(summary);
+    const body = document.createElement("div"); body.className = "scheduled-guest-body";
+    const active = (data.active_invitations || []).filter(grant => data.scheduled_grants?.[grant.id] === guest.id && Date.parse(grant.expires_at) > Date.now());
+    if (active.length) {
+      const badge = document.createElement("span"); badge.textContent = `${active.length} current invitation${active.length === 1 ? "" : "s"}`; summary.append(badge);
+      const heading = document.createElement("h4"); heading.textContent = "Current invitations"; body.append(heading);
+      for (const grant of active) {
+        const line = document.createElement("p"); line.textContent = `Access ends ${formatExpiry(grant.expires_at)}`;
+        body.append(line, scheduleControl("Revoke this invitation", async () => { await revokeGrant(grant); await loadSchedules(); }));
+      }
+    }
+    for (const row of rows) {
+      const section = document.createElement("section"); section.className = "guest-schedule";
+      const heading = document.createElement("h4"); heading.textContent = `${scheduleRuleText(row)} · ${humanize(row.status)}`;
+      section.append(heading);
+      if (row.upcoming?.length) {
+        const upcoming = document.createElement("details"), caption = document.createElement("summary");
+        caption.textContent = "Upcoming access windows"; upcoming.append(caption);
+        for (const window of row.upcoming) {
+          const line = document.createElement("p"); line.textContent = scheduleWindowText(window, row.definition.timezone); upcoming.append(line);
+        }
+        section.append(upcoming);
+      }
+      const actions = document.createElement("div"); actions.className = "editor-actions";
+      actions.append(scheduleControl("Edit", () => openSchedule(row)), scheduleControl(row.status === "enabled" ? "Pause" : "Resume", async () => {
+        await scheduleRequest({action: row.status === "enabled" ? "pause" : "resume"}, row.id); await loadSchedules();
+      }));
+      const menu = document.createElement("details"); menu.className = "schedule-more";
+      const caption = document.createElement("summary"); caption.textContent = "More"; menu.append(caption);
+      const options = document.createElement("div"); options.className = "editor-actions";
+      if (data.smtp_configured) options.append(scheduleControl("Duplicate schedule", () => openSchedule(row, true)));
+      options.append(scheduleControl("Pause and end current access", async () => {
+        if (!await confirmAction(`Pause this schedule for ${guest.label} and end its current access? Other schedules for this guest are unaffected.`)) return;
+        await scheduleRequest({action: "pause", revoke_active: true}, row.id); await loadSchedules();
+      }), scheduleControl("Delete schedule", async () => {
+        if (!await confirmAction("Delete this schedule? Already-issued invitations keep their original end. Retained history is removed automatically after 30 days and cleanup completes.")) return;
+        await scheduleRequest({action: "delete"}, row.id); await loadSchedules();
+      }));
+      menu.append(options); actions.append(menu); section.append(actions); body.append(section);
+    }
+    if (!rows.length) {
+      const note = document.createElement("p"); note.textContent = "Schedules removed. Retained history and guest details are removed automatically after the retention period and cleanup finish."; body.append(note);
+    }
+    const heading = document.createElement("h4"); heading.textContent = "Activity and invitation history";
+    const filter = document.createElement("select"); filter.setAttribute("aria-label", `History filter for ${guest.label}`);
+    for (const [value, label] of [["all", "All activity and invitations"], ["activity", "Guest activity"], ["delivery", "Invitations and delivery"]]) {
+      const option = document.createElement("option"); option.value = value; option.textContent = label; filter.append(option);
+    }
+    filter.value = "all";
+    const entries = document.createElement("div"); entries.className = "activity-list";
+    const status = document.createElement("p"); status.setAttribute("role", "status");
+    const windowLabel = document.createElement("p");
+    const state = {guest, filter, entries, status, windowLabel, occurrence: null, cursor: null, request: 0};
+    const clear = scheduleControl("Show all access windows", () => {
+      state.occurrence = null; windowLabel.textContent = ""; clear.classList.add("hidden"); return loadScheduledTimeline(state);
+    }); clear.classList.add("hidden"); state.clear = clear;
+    const more = scheduleControl("Load older entries", () => loadScheduledTimeline(state, Boolean(state.cursor))); state.more = more; more.classList.add("hidden");
+    filter.addEventListener("change", () => loadScheduledTimeline(state));
+    body.append(heading, filter, windowLabel, clear, entries, status, more); card.append(body); list.append(card);
+    let loaded = false;
+    card.addEventListener("toggle", () => {
+      if (card.open) {
+        expandedScheduledGuests.add(key);
+        if (!loaded) { loaded = true; loadScheduledTimeline(state); }
+      } else expandedScheduledGuests.delete(key);
+    });
+  }
+  if (!data.guests?.length) list.textContent = "No scheduled guests yet. Use Add guest → Scheduled access.";
+}
+
 async function loadSchedules() {
   if (!currentPage) return;
   const pageId = currentPage.id;
@@ -2886,7 +3074,7 @@ async function loadSchedules() {
   const data = await responseJson(response, "Could not load schedules");
   if (!response.ok) throw new Error(data.error || "Could not load schedules");
   if (currentPage?.id !== pageId) return;
-  scheduleData = data;
+  scheduleData = {...data, page_id: pageId};
   document.getElementById("add-schedule").disabled = !data.smtp_configured || !data.supported;
   document.getElementById("guest-schedule-help").textContent = !data.supported
     ? "Scheduled access requires the Home Assistant App Connector."
@@ -2896,47 +3084,8 @@ async function loadSchedules() {
     ? "Scheduling requires the Home Assistant App Connector."
     : !data.smtp_configured ? "Configure SMTP to enable scheduled invitations. Existing schedules remain visible."
       : "A new link for every occurrence. Times use each schedule’s saved timezone. Refresh to see delivery and retry progress.";
-  const list = document.getElementById("schedule-list"); list.replaceChildren();
-  for (const row of data.schedules) {
-    const card = document.createElement("article");
-    const title = document.createElement("h4"); title.textContent = `${row.definition.label} · ${row.status}`;
-    const detail = document.createElement("p");
-    detail.textContent = `${row.definition.email} · ${row.definition.kind === "once" ? "One-time" : "Weekly"} · ${row.definition.timezone}`;
-    card.append(title, detail);
-    for (const window of row.upcoming || []) {
-      const line = document.createElement("p"); line.textContent = scheduleWindowText(window, row.definition.timezone); card.append(line);
-    }
-    const actions = document.createElement("div"); actions.className = "editor-actions";
-    const button = (label, callback) => {
-      const control = document.createElement("button"); control.type = "button"; control.className = "secondary"; control.textContent = label;
-      control.addEventListener("click", () => Promise.resolve().then(callback).catch(error => setStatus(error.message, "error"))); actions.append(control);
-    };
-    button("Edit", () => openSchedule(row));
-    if (data.smtp_configured) button("Duplicate", () => openSchedule(row, true));
-    button(row.status === "enabled" ? "Pause" : "Resume future invitations", async () => {
-      await scheduleRequest({action: row.status === "enabled" ? "pause" : "resume"}, row.id); await loadSchedules();
-    });
-    button("Pause and end current access", async () => {
-      if (!await confirmAction(`Pause ${row.definition.label} and revoke their scheduled invitations?`)) return;
-      await scheduleRequest({action: "pause", revoke_active: true}, row.id); await loadSchedules();
-    });
-    button("Delete schedule", async () => {
-      if (!await confirmAction("Delete future invitations? Already-emailed invitations keep their original end. Use Pause and end current access first to revoke them.")) return;
-      await scheduleRequest({action: "delete"}, row.id); await loadSchedules();
-    });
-    card.append(actions); list.append(card);
-  }
-  if (!data.schedules.length) list.textContent = "No scheduled guests yet.";
-  const historyList = document.getElementById("schedule-history"); historyList.replaceChildren();
-  for (const row of data.occurrences) {
-    const line = document.createElement("article"); line.className = "activity-entry";
-    const title = document.createElement("strong"); title.textContent = `${row.label} · ${row.state === "accepted" ? "Accepted by email server" : row.state}`;
-    const detail = document.createElement("p");
-    detail.textContent = `${scheduleTime(row.start, row.timezone)} · ${row.reason || "Waiting"} · Creation attempts: ${row.attempts || 0}; email attempts: ${row.email_attempts || 0}` +
-      (row.due > Date.now() / 1000 ? ` · Retry: ${scheduleTime(row.due, row.timezone)}` : "");
-    line.append(title, detail); historyList.append(line);
-  }
-  if (!data.occurrences.length) historyList.textContent = "No occurrences yet.";
+  renderScheduledGuests(data);
+  renderAccessGrants(currentPage);
 }
 
 document.getElementById("add-schedule").addEventListener("click", () => {
@@ -2952,6 +3101,7 @@ guestChoiceDialog.addEventListener("click", event => {
   if (event.target === guestChoiceDialog) guestChoiceDialog.close();
 });
 document.getElementById("close-schedule").addEventListener("click", () => scheduleDialog.close());
+document.getElementById("schedule-guest").addEventListener("change", selectScheduleGuest);
 document.getElementById("schedule-kind").addEventListener("change", updateScheduleKind);
 for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {
   const input = document.getElementById(id);
@@ -2974,7 +3124,13 @@ document.getElementById("schedule-form").addEventListener("submit", async event 
     const data = await previewSchedule();
     if (!data.upcoming.length) throw new Error("Choose a future occurrence before saving.");
     if (data.warning && !await confirmAction(data.warning)) return;
-    await scheduleRequest({action: "save", definition: scheduleFields()});
+    const definition = scheduleFields();
+    const guestId = document.getElementById("schedule-guest").value || null;
+    const guest = scheduleData.guests?.find(item => item.id === guestId);
+    if (editingSchedule && guest && (guest.label !== definition.label || guest.email !== definition.email) &&
+        scheduleData.schedules.filter(row => row.guest_id === guestId).length > 1 &&
+        !await confirmAction("Update this guest's contact details for all their future schedules on this Access Page? Already-issued invitations keep their original recipient.")) return;
+    await scheduleRequest({action: "save", definition, guest_id: guestId});
     scheduleDialog.close(); await loadSchedules(); setStatus("Schedule saved. Invitations will be emailed when access begins.", "success");
   } catch (error) { scheduleFormStatus.textContent = error.message; }
   finally { button.disabled = false; }

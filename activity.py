@@ -68,7 +68,8 @@ class GuestActivityStore:
                 expires_at TEXT NOT NULL,
                 revoked_at TEXT,
                 purge_after TEXT,
-                first_access_at TEXT
+                first_access_at TEXT,
+                initial_access_recorded INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS actions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -99,6 +100,17 @@ class GuestActivityStore:
                 ON security_events(grant_id, occurred_at DESC);
             CREATE INDEX IF NOT EXISTS guest_page_state
                 ON guests(page_id, revoked_at);
+            CREATE TABLE IF NOT EXISTS scheduled_activity_links (
+                grant_id TEXT PRIMARY KEY REFERENCES guests(grant_id) ON DELETE CASCADE,
+                page_id TEXT NOT NULL,
+                guest_id TEXT NOT NULL,
+                occurrence_id TEXT NOT NULL,
+                starts REAL NOT NULL,
+                ends REAL NOT NULL,
+                timezone TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS scheduled_activity_guest
+                ON scheduled_activity_links(page_id, guest_id);
             """
         )
         columns = {
@@ -109,6 +121,9 @@ class GuestActivityStore:
             connection.execute(
                 "ALTER TABLE guests ADD COLUMN first_access_at TEXT"
             )
+        if "initial_access_recorded" not in columns:
+            connection.execute("ALTER TABLE guests ADD COLUMN initial_access_recorded INTEGER NOT NULL DEFAULT 0")
+            connection.execute("UPDATE guests SET initial_access_recorded=1 WHERE first_access_at IS NOT NULL")
 
     def register_guest(self, page_id: str, grant: dict) -> None:
         with self._lock, self._connect() as connection:
@@ -214,8 +229,8 @@ class GuestActivityStore:
         """Record a broker-confirmed visit without recreating a removed grant."""
         with self._lock, self._connect() as connection:
             cursor = connection.execute(
-                """UPDATE guests SET first_access_at = ?
-                   WHERE page_id = ? AND grant_id = ? AND first_access_at IS NULL""",
+                """UPDATE guests SET first_access_at = ?, initial_access_recorded=1
+                   WHERE page_id = ? AND grant_id = ? AND initial_access_recorded=0""",
                 (_iso(_now()), page_id, grant_id),
             )
             self._purge(connection)
@@ -273,10 +288,12 @@ class GuestActivityStore:
             self._purge(connection)
             rows = connection.execute(
                 """
-                SELECT guests.*, COUNT(actions.id) AS action_count,
+                SELECT guests.*, scheduled_activity_links.guest_id AS scheduled_guest_id,
+                       COUNT(actions.id) AS action_count,
                        MAX(actions.occurred_at) AS last_activity
                 FROM guests
                 LEFT JOIN actions ON actions.grant_id = guests.grant_id
+                LEFT JOIN scheduled_activity_links ON scheduled_activity_links.grant_id = guests.grant_id
                 WHERE guests.page_id = ?
                 GROUP BY guests.grant_id
                 ORDER BY guests.revoked_at IS NULL DESC,
@@ -391,3 +408,49 @@ class GuestActivityStore:
             "DELETE FROM security_events WHERE occurred_at <= ?",
             (_iso(event_cutoff),),
         )
+        connection.execute("DELETE FROM actions WHERE occurred_at <= ?", (_iso(event_cutoff),))
+        connection.execute("UPDATE guests SET first_access_at=NULL WHERE first_access_at <= ?", (_iso(event_cutoff),))
+
+    def purge(self):
+        """Run rolling retention even when nobody opens the activity screen."""
+        with self._lock, self._connect() as connection:
+            self._purge(connection)
+
+    def link_scheduled_guest(self, page, grant_id, guest_id, occurrence):
+        """Metadata only: this association never grants or extends access."""
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """INSERT OR IGNORE INTO scheduled_activity_links
+                   SELECT grant_id, page_id, ?, ?, ?, ?, ? FROM guests
+                   WHERE grant_id=? AND page_id=?""",
+                (guest_id, occurrence["id"], occurrence["start"], occurrence["end"],
+                 occurrence["record"]["timezone"], grant_id, page),
+            )
+
+    def scheduled_timeline(self, page, guest_id, occurrence_id, before, limit=51):
+        with self._lock, self._connect() as connection:
+            self._purge(connection)
+            rows = connection.execute(
+                """WITH events AS (
+                    SELECT grant_id, unixepoch(occurred_at) AS at, 'action:' || id AS key,
+                           'action' AS type, entity_name AS title, outcome,
+                           parameters_json AS details, action_id, error FROM actions
+                    UNION ALL
+                    SELECT grant_id, unixepoch(occurred_at), 'security:' || id,
+                           'security', event_type, '', details_json, '', '' FROM security_events
+                    UNION ALL
+                    SELECT grant_id, unixepoch(first_access_at), 'visit:' || grant_id,
+                           'visit', 'First successful access', '', '{}', '', '' FROM guests
+                           WHERE first_access_at IS NOT NULL
+                ) SELECT events.*, links.occurrence_id, links.starts AS start, links.ends AS end,
+                         links.timezone FROM events JOIN scheduled_activity_links links
+                         ON links.grant_id=events.grant_id
+                  WHERE links.page_id=? AND links.guest_id=?
+                    AND (? IS NULL OR links.occurrence_id=?)
+                    AND (at<? OR (at=? AND key<?))
+                  ORDER BY at DESC, key DESC LIMIT ?""",
+                (page, guest_id, occurrence_id, occurrence_id, before[0], before[0], before[1], limit),
+            ).fetchall()
+        return [{key: row[key] for key in ("at", "key", "type", "title", "outcome", "action_id", "error",
+                                          "occurrence_id", "start", "end", "timezone")} |
+                {"details": json.loads(row["details"])} for row in rows]

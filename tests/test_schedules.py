@@ -376,3 +376,261 @@ class ScheduleRoutesTests(unittest.TestCase):
         reply = self.route({"definition": once}, "/" + self.schedule_id)
         self.assertEqual(reply.call_args.args[0], 400)
         self.client.create_qurl.assert_called_once()
+
+
+    def test_timeline_requires_admin_and_guest_on_page(self):
+        guest_id = self.store.get(self.schedule_id)["guest_id"]
+        payload = {"action": "timeline", "guest_id": guest_id}
+        self.route(payload, authorized=False).assert_not_called()
+        self.assertEqual(self.route(payload).call_args.args[0], 200)
+        other = self.store.save("other-page", definition(), self.now)
+        foreign = self.store.get(other)["guest_id"]
+        self.assertEqual(self.route({**payload, "guest_id": foreign}).call_args.args[0], 400)
+        for extra in ({"kind": []}, {"cursor": {"at": 10**400, "key": ""}}, {"occurrence_id": []}):
+            self.assertEqual(self.route({**payload, **extra}).call_args.args[0], 400)
+        self.assertEqual(self.route({"definition": definition(), "guest_id": foreign}).call_args.args[0], 400)
+
+
+class GuestTimelineTests(unittest.TestCase):
+    setUp = SchedulerTests.setUp
+    mint = SchedulerTests.mint
+    start_window = SchedulerTests.start_window
+    grants = SchedulerTests.grants
+
+    def guest_id(self):
+        return self.store.get(self.schedule_id)["guest_id"]
+
+    def action(self, grant_id, at):
+        with patch(
+            "activity._now", return_value=datetime.fromtimestamp(at, timezone.utc)
+        ):
+            self.r.ACTIVITY_STORE.record_action(
+                grant_id=grant_id,
+                entity_id="light.kitchen",
+                entity_name="Kitchen",
+                action_id="turn_on",
+                parameters={},
+                outcome="success",
+                error="",
+            )
+
+    def test_same_contact_is_not_identity_and_explicit_guest_is_page_bound(self):
+        other = self.store.save("cat-sitter", definition(), self.now)
+        self.assertNotEqual(self.guest_id(), self.store.get(other)["guest_id"])
+        duplicate = self.store.save(
+            "cat-sitter", definition(), self.now, guest_id=self.guest_id()
+        )
+        self.assertEqual(self.guest_id(), self.store.get(duplicate)["guest_id"])
+        with self.assertRaises(ValueError):
+            self.store.save(
+                "other-page", definition(), self.now, guest_id=self.guest_id()
+            )
+        with self.assertRaises(ValueError):
+            self.store.save(
+                "cat-sitter", definition(), self.now, other, self.guest_id()
+            )
+        self.assertEqual(
+            self.guest_id(),
+            ScheduleStore(self.store.path).get(self.schedule_id)["guest_id"],
+        )
+
+    def test_timeline_combines_windows_without_affecting_expiry_and_survives_retirement(
+        self,
+    ):
+        self.start_window()
+        self.scheduler.tick(delivery=True)
+        first = self.grants()[0]
+        self.action(first["id"], self.now + 30)
+        with patch(
+            "activity._now",
+            return_value=datetime.fromtimestamp(self.now + 30, timezone.utc),
+        ):
+            self.r.ACTIVITY_STORE.record_registered_initial_access(
+                "cat-sitter", first["id"]
+            )
+        self.now = instant("2026-11-14T12:00:00+00:00")
+        self.scheduler.tick()
+        self.assertEqual(self.grants(), [])
+        self.now = instant("2026-11-15T09:00:00+00:00")
+        self.scheduler.tick()
+        self.scheduler.tick(delivery=True)
+        second = self.grants()[0]
+        self.assertNotEqual(first["id"], second["id"])
+        self.action(second["id"], self.now + 30)
+        with patch(
+            "activity._now",
+            return_value=datetime.fromtimestamp(self.now + 60, timezone.utc),
+        ):
+            timeline = self.store.timeline(
+                self.r.ACTIVITY_STORE, "cat-sitter", self.guest_id()
+            )
+            events = timeline["events"]
+            self.assertEqual(len([e for e in events if e["type"] == "action"]), 2)
+            self.assertEqual(len([e for e in events if e["type"] == "delivery"]), 2)
+            self.assertEqual(len({e["occurrence_id"] for e in events}), 2)
+            window = events[0]["occurrence_id"]
+            filtered = self.store.timeline(
+                self.r.ACTIVITY_STORE,
+                "cat-sitter",
+                self.guest_id(),
+                occurrence_id=window,
+            )
+            self.assertTrue(
+                all(e["occurrence_id"] == window for e in filtered["events"])
+            )
+            delivery = self.store.timeline(
+                self.r.ACTIVITY_STORE, "cat-sitter", self.guest_id(), kind="delivery"
+            )
+            self.assertTrue(all(e["type"] == "delivery" for e in delivery["events"]))
+            self.assertNotIn("qurl.invalid", json.dumps(events))
+            self.assertNotIn("token_hash", json.dumps(events))
+            self.assertNotIn("grant_id", json.dumps(events))
+            self.assertNotIn("guest@example", json.dumps(events))
+
+    def test_pagination_ties_do_not_omit_or_duplicate_actions(self):
+        self.start_window()
+        grant = self.grants()[0]
+        for _ in range(125):
+            self.action(grant["id"], self.now)
+        with patch(
+            "activity._now", return_value=datetime.fromtimestamp(self.now, timezone.utc)
+        ):
+            result = []
+            cursor = None
+            while True:
+                page = self.store.timeline(
+                    self.r.ACTIVITY_STORE,
+                    "cat-sitter",
+                    self.guest_id(),
+                    kind="activity",
+                    cursor=cursor,
+                )
+                result.extend(e["key"] for e in page["events"])
+                cursor = page["next_cursor"]
+                if cursor is None:
+                    break
+            self.assertEqual(len(result), 125)
+            self.assertEqual(len(set(result)), 125)
+        for cursor in ({"at": float("nan"), "key": ""}, {"at": 1, "key": []}, "bad"):
+            with self.assertRaises(ValueError):
+                self.store.timeline(
+                    self.r.ACTIVITY_STORE, "cat-sitter", self.guest_id(), cursor=cursor
+                )
+        with self.assertRaises(ValueError):
+            self.store.timeline(self.r.ACTIVITY_STORE, "other-page", self.guest_id())
+
+    def test_contact_edit_updates_future_schedules_but_not_accepted_occurrence(self):
+        self.start_window()
+        self.scheduler.tick(delivery=True)
+        duplicate = self.store.save(
+            "cat-sitter",
+            definition(start_time="13:00", end_time="14:00"),
+            self.now,
+            guest_id=self.guest_id(),
+        )
+        self.store.save(
+            "cat-sitter",
+            definition(label="Updated", email="new@example.test"),
+            self.now,
+            self.schedule_id,
+        )
+        self.assertEqual(
+            self.store.get(duplicate)["definition"]["email"], "new@example.test"
+        )
+        self.assertEqual(self.store.work()[0]["record"]["email"], "guest@example.test")
+        self.assertEqual(self.store.work()[0]["state"], "accepted")
+        self.assertEqual(len(self.grants()), 1)
+
+    def test_deleted_profiles_wait_for_history_and_cleanup_and_active_profiles_remain(
+        self,
+    ):
+        self.start_window()
+        self.scheduler.tick(delivery=True)
+        self.store.status(self.schedule_id, "deleted", self.now)
+        self.now += 31 * 86400
+        self.store.housekeeping(self.now)
+        self.assertEqual(
+            len(self.store.guests("cat-sitter")), 1
+        )  # Unfinished remote handoff retained.
+        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.scheduler.tick()
+        self.assertEqual(len(self.store.guests("cat-sitter")), 1)
+        self.client.queue_revocation.side_effect = None
+        self.scheduler.tick()
+        self.scheduler.tick()
+        self.assertEqual(self.store.guests("cat-sitter"), [])
+        active = self.store.save("cat-sitter", definition(), self.now)
+        self.store.status(active, "paused", self.now)
+        self.store.housekeeping(self.now + 90 * 86400)
+        self.assertEqual(len(self.store.guests("cat-sitter")), 1)
+
+    def test_old_schedule_migration_preserves_jobs_and_never_matches_contacts(self):
+        import sqlite3
+
+        path = self.root / "v1.sqlite3"
+        with sqlite3.connect(path) as db:
+            db.execute(
+                "CREATE TABLE schedules (id TEXT PRIMARY KEY,page TEXT,definition TEXT,status TEXT,revision INTEGER,cursor REAL)"
+            )
+            for id_ in ("schedule_a", "schedule_b"):
+                db.execute(
+                    "INSERT INTO schedules VALUES(?,?,?,?,?,?)",
+                    (
+                        id_,
+                        "cat-sitter",
+                        json.dumps(definition()),
+                        "enabled",
+                        7,
+                        self.now,
+                    ),
+                )
+            db.execute("PRAGMA user_version=1")
+        migrated = ScheduleStore(path)
+        rows = migrated.schedules("cat-sitter")
+        self.assertEqual(len({r["guest_id"] for r in rows}), 2)
+        self.assertTrue(
+            all(
+                r["revision"] == 7
+                and r["status"] == "enabled"
+                and r["cursor"] == self.now
+                for r in rows
+            )
+        )
+        self.assertEqual(len(migrated.guests("cat-sitter")), 2)
+        self.assertEqual(rows, migrated.schedules("cat-sitter"))
+
+    def test_delivery_history_pages_beyond_old_hundred_row_limit(self):
+        self.start_window()
+        original = self.store.work()[0]
+        with self.store.connect() as db:
+            for i in range(125):
+                db.execute(
+                    "INSERT INTO occurrences VALUES(?,?,?,?,?,?,?,?,?)",
+                    (
+                        f"occ_test{i}",
+                        self.schedule_id,
+                        "cat-sitter",
+                        f"date{i}",
+                        self.now + i,
+                        self.now + 3600,
+                        "failed",
+                        0,
+                        json.dumps(original["record"]),
+                    ),
+                )
+        result = []
+        cursor = None
+        while True:
+            page = self.store.timeline(
+                self.r.ACTIVITY_STORE,
+                "cat-sitter",
+                self.guest_id(),
+                kind="delivery",
+                cursor=cursor,
+            )
+            result.extend(e["key"] for e in page["events"])
+            cursor = page["next_cursor"]
+            if cursor is None:
+                break
+        self.assertEqual(len(result), 126)
+        self.assertEqual(len(set(result)), 126)
