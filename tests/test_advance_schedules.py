@@ -45,6 +45,10 @@ class AdvanceDeliveryTests(SchedulerTests):
     def test_near_term_queues_after_save_and_no_synchronous_email(self):
         self.advance(kind='once', date='2026-11-14')
         self.sender.assert_not_called()
+        preview = self.store.upcoming(self.store.get(self.schedule_id)['definition'], self.now)[0]
+        self.assertTrue(preview['send_immediately'])
+        self.assertTrue(preview['delivery_overdue'])
+        self.assertEqual(preview['send_at'], self.now)
         self.scheduler.tick()
         self.assertEqual(len(self.grants()), 1)
         self.assertLess(self.row()['send_at'], self.now)
@@ -56,6 +60,8 @@ class AdvanceDeliveryTests(SchedulerTests):
         d = validate_schedule(d, now=self.now)
         preview = self.store.upcoming(d, self.now, editing=True)
         self.assertEqual(preview[0]['send_at'], self.now)
+        self.assertTrue(preview[0]['send_immediately'])
+        self.assertFalse(preview[0]['delivery_overdue'])
         with self.assertRaisesRegex(ValueError, 'configured 30-day horizon'):
             validate_schedule({**d, 'date': '2026-12-20'}, now=self.now)
         # A far future event is valid when delivery occurs close enough to its start.

@@ -275,7 +275,10 @@ class ScheduleStore:
             used = {row[0] for row in db.execute("SELECT local_date FROM occurrences WHERE schedule=? AND start<=?", (schedule_id, now))}
         rows = [row for row in upcoming(definition, now, limit=6) if row["local_date"] not in used][:5]
         for row in rows:
-            row["send_at"] = max(now, intended_send(definition, row["start"], now)) if row["start"] is not None else None
+            planned = intended_send(definition, row["start"], now) if row["start"] is not None else None
+            row["send_at"] = max(now, planned) if planned is not None else None
+            row["send_immediately"] = planned is not None and planned <= now
+            row["delivery_overdue"] = planned is not None and planned < now and definition.get("delivery") != "immediate"
         return rows
 
     def impact(self, page, schedule_id=None, guest_id=None, now=None):

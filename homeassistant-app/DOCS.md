@@ -680,6 +680,10 @@ before; migrated schedules retain When access starts, including when edited,
 unless you change it. Immediate and already-due delivery runs in the durable
 background worker after saving, not inside the save request. The confirmation
 shows the email date/time, access start/end, and named timezone.
+If the chosen email time has already passed, a highlighted notice and the save
+confirmation explain that the invitation will be queued for immediate delivery.
+Saving confirms it is queued; it does not claim email acceptance or change the
+scheduled access window.
 
 The configured invitation lifetime horizon (default 30 days) applies from link
 creation through expiration, separately from the access-window duration. Far-future

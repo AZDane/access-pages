@@ -3035,6 +3035,13 @@ async function previewSchedule() {
   const data = await scheduleRequest({action: "preview", definition});
   const preview = document.getElementById("schedule-preview");
   preview.replaceChildren();
+  const overdue = data.upcoming.some(window => window.delivery_overdue);
+  if (overdue) {
+    const notice = document.createElement("p"); notice.className = "schedule-delivery-notice";
+    notice.setAttribute("role", "status");
+    notice.textContent = "The chosen email time has already passed. This invitation will be queued for immediate delivery after saving. Access still begins and ends at the times below.";
+    preview.append(notice);
+  }
   for (const window of data.upcoming) {
     const item = document.createElement("p"); item.textContent = `Email: ${scheduleTime(window.send_at, definition.timezone)} · ${definition.timezone}. Access: ${scheduleWindowText(window, definition.timezone)}`; preview.append(item);
   }
@@ -3311,7 +3318,7 @@ document.getElementById("schedule-form").addEventListener("submit", async event 
     validateScheduleInputs();
     setGuestBusy(scheduleDialog, true);
     const data = await previewSchedule();
-    const previewText = data.upcoming.map(window => `Email: ${scheduleTime(window.send_at, scheduleFields().timezone)}. Access: ${scheduleWindowText(window, scheduleFields().timezone)}`).join("\n");
+    const previewText = data.upcoming.map(window => `${window.delivery_overdue ? "The chosen email time has already passed. " : ""}Email: ${window.send_immediately ? "Immediately after saving (queued)" : scheduleTime(window.send_at, scheduleFields().timezone)}. Access: ${scheduleWindowText(window, scheduleFields().timezone)}`).join("\n");
     if (!await confirmAction(`${previewText}\n${data.warning || ""}\n${editingSchedule ? scheduleImpactText(data.impact) : "Invitations are sent in the background after saving when due."}`, {title: "Save scheduled invitations?", acceptLabel: "Save schedule"})) return;
     const definition = scheduleFields();
     const guestId = document.getElementById("schedule-guest").value || null;
@@ -3322,7 +3329,9 @@ document.getElementById("schedule-form").addEventListener("submit", async event 
     await scheduleRequest({action: "save", definition, guest_id: guestId});
     guestSaved(scheduleDialog);
     scheduleDialog.close();
-    setStatus("Schedule saved. Invitations will be emailed at the chosen delivery time.", "success");
+    setStatus(data.upcoming.some(window => window.send_immediately)
+      ? "Schedule saved. The invitation is queued for immediate delivery; access times are unchanged."
+      : "Schedule saved. Invitations will be emailed at the chosen delivery time.", "success");
   } catch (error) {
     setGuestBusy(scheduleDialog, false);
     showGuestError(scheduleDialog, scheduleFormStatus, error);

@@ -637,11 +637,11 @@ function descendants(element) {
 }
 
 async function testGuestDraftAndValidation() {
-  let failSave = false, previewEmpty = false, holdSave = null, requests = 0;
+  let failSave = false, previewEmpty = false, overdue = false, holdSave = null, requests = 0;
   const fixture = harness("admin", {async fetch(route, options) {
     requests++;
     const payload = JSON.parse(options.body);
-    if (payload.action === "preview") return jsonResponse(200, {upcoming: previewEmpty ? [] : [{start: 4102444800, end: 4102455600}]});
+    if (payload.action === "preview") return jsonResponse(200, {upcoming: previewEmpty ? [] : [{start: 4102444800, end: 4102455600, send_immediately: overdue, delivery_overdue: overdue}]});
     if (holdSave) await holdSave;
     if (failSave) return jsonResponse(503, {error: "Storage unavailable"});
     if (route.endsWith("/qurls")) return jsonResponse(200, {grant: {id: "test", qurl_link: "synthetic", expires_at: "2099-01-01T12:00:00Z"}});
@@ -662,7 +662,13 @@ async function testGuestDraftAndValidation() {
   };
   vm.runInContext("currentPage = {id: 'fixture', access_grants: []}; editingExisting = true; layerVApiConfigured = true; loadSchedules = async () => {};", fixture.context);
   let confirms = 0, discard = false;
-  fixture.context.confirmAction = async (_message, options) => { if (options?.acceptLabel === "Save schedule") return true; confirms++; return discard; };
+  fixture.context.confirmAction = async (message, options) => {
+    if (options?.acceptLabel === "Save schedule") {
+      if (overdue) assert.match(message, /email time has already passed.*Immediately after saving/);
+      return true;
+    }
+    confirms++; return discard;
+  };
   const open = () => vm.runInContext("openSchedule()", fixture.context);
   const close = () => e("close-schedule").listeners.get("click")();
   open(); await close(); assert.equal(confirms, 0, "Untouched form closes silently");
@@ -685,6 +691,10 @@ async function testGuestDraftAndValidation() {
   previewEmpty = true; await preview();
   assert.equal(e("schedule-date").getAttribute("aria-invalid"), "true");
   previewEmpty = false;
+  overdue = true; await preview();
+  const deliveryNotice = e("schedule-preview").children.find(child => child.className === "schedule-delivery-notice");
+  assert.match(deliveryNotice.textContent, /queued for immediate delivery after saving/);
+  assert.equal(deliveryNotice.getAttribute("role"), "status");
   const submit = () => e("schedule-form").listeners.get("submit")({preventDefault() {}});
   failSave = true; await submit(); await close();
   assert.equal(confirms, 3, "Failed saves retain edits");
