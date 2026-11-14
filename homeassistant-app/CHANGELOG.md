@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.156
+
+- Move revoked scheduled guests out of Scheduled guests into Recently ended guests, clearly labeled Revoked, with expandable retained history and no redundant Revoke guest button.
+- Keep Pause distinct from Revoke. Explicitly resuming a revoked schedule returns the guest to Scheduled guests; refreshes, restarts, and Pause all preserve revocation.
+- Remove revoked schedule/contact records after 30 days once occurrence retention and cleanup handoff finish. Intentionally paused guests remain available.
+- Earlier versions recorded guest revocation as Paused. After updating, click Revoke guest once more on those cards to move them to Recently ended guests; existing pauses are preserved.
+
 ## 0.1.155
 
 - Make scheduled guest cards compact like regular guest cards, with details collapsed when opening the Guests view.

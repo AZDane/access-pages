@@ -275,14 +275,14 @@ class ScheduleStore:
         return schedule_id
 
     def status(self, schedule_id, status, now, revoke=False):
-        if status not in {"enabled", "paused", "blocked", "deleted"}:
+        if status not in {"enabled", "paused", "blocked", "deleted", "revoked"}:
             raise ValueError("Invalid schedule status")
         with self.connect() as db:
             db.execute("UPDATE schedules SET status=?,cursor=?,revision=revision+1 WHERE id=?", (status, now, schedule_id))
             db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND (state NOT IN ('accepted','ended','skipped','failed','cancelled') OR (? AND state='accepted'))", (schedule_id, revoke))
 
     def revoke_guest(self, page, guest_id, now):
-        """Pause all future schedules and journal current denial atomically.
+        """Revoke all future schedules and journal current denial atomically.
 
         Deleted schedules stay deleted, but their outstanding invitations are
         included. The caller holds the page lock through synchronous local denial.
@@ -291,7 +291,7 @@ class ScheduleStore:
             db.execute("BEGIN IMMEDIATE")
             if not db.execute("SELECT 1 FROM scheduled_guests WHERE page=? AND id=?", (page, guest_id)).fetchone():
                 raise ValueError("Guest not found on this Access Page")
-            db.execute("UPDATE schedules SET status='paused',cursor=?,revision=revision+1 WHERE page=? AND guest_id=? AND status!='deleted'", (now, page, guest_id))
+            db.execute("UPDATE schedules SET status='revoked',cursor=?,revision=revision+1 WHERE page=? AND guest_id=? AND status!='deleted'", (now, page, guest_id))
             db.execute("""UPDATE occurrences SET state='cancelling',due=0
                           WHERE page=? AND schedule IN (SELECT id FROM schedules WHERE page=? AND guest_id=?)
                             AND state NOT IN ('ended','skipped','failed','cancelled')""", (page, page, guest_id))
@@ -304,7 +304,8 @@ class ScheduleStore:
         if not self.path.exists():
             return
         for schedule in self.schedules(page):
-            self.status(schedule["id"], "paused", now, revoke)
+            if schedule["status"] != "revoked":
+                self.status(schedule["id"], "revoked" if revoke else "paused", now, revoke)
 
     def work(self):
         with self.connect() as db:
@@ -435,7 +436,7 @@ class ScheduleStore:
                 db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE state NOT IN ('ended','skipped','failed','cancelled')")
             db.execute("INSERT INTO schedule_meta VALUES('last_tick',?) ON CONFLICT(key) DO UPDATE SET value=MAX(value,excluded.value)", (now,))
             db.execute("DELETE FROM occurrences WHERE end<? AND state IN ('ended','skipped','failed','cancelled')", (now - 30 * 86400,))
-            db.execute("DELETE FROM schedules WHERE status='deleted' AND cursor<? AND NOT EXISTS (SELECT 1 FROM occurrences WHERE occurrences.schedule=schedules.id)", (now - 30 * 86400,))
+            db.execute("DELETE FROM schedules WHERE status IN ('deleted','revoked') AND cursor<? AND NOT EXISTS (SELECT 1 FROM occurrences WHERE occurrences.schedule=schedules.id)", (now - 30 * 86400,))
             db.execute("DELETE FROM scheduled_guests WHERE NOT EXISTS (SELECT 1 FROM schedules WHERE schedules.guest_id=scheduled_guests.id)")
 
 

@@ -73,7 +73,10 @@ def handle(handler, path, runtime, payload=None):
                     raise ValueError("Choose a schedule")
                 if action == "resume" and (not supported or not runtime.SMTP_CONFIG_STORE.configured()):
                     raise ValueError("Configure SMTP and the App Connector before resuming")
-                store.status(schedule_id, {"pause": "paused", "resume": "enabled", "delete": "deleted"}[action], now,
+                status = {"pause": "paused", "resume": "enabled", "delete": "deleted"}[action]
+                if action == "pause" and current["status"] == "revoked":
+                    status = "revoked"
+                store.status(schedule_id, status, now,
                              revoke=payload.get("revoke_active") is True)
             elif action == "pause_all":
                 store.pause_page(page_id, now, revoke=payload.get("revoke_active") is True)

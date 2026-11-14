@@ -197,7 +197,9 @@ end time, including sessions already open.
 
 Scheduled guests appear in compact cards, collapsed by default, showing their
 next access window and access status. **Revoke guest** ends current access and
-pauses every schedule for that guest on this Access Page, while retaining history.
+stops every schedule for that guest on this Access Page, then moves the card to
+**Recently ended guests**, labeled **Revoked**, with retained history. **Pause**
+keeps the guest in the scheduled list. Explicitly resuming a schedule restores it.
 Use **View details** to manage schedules and view a combined
 activity and invitation timeline, filter by access window, or load older entries.
 Email acceptance and guest activity are shown separately. Add another schedule to
