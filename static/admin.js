@@ -2651,7 +2651,7 @@ editorUsersButton.addEventListener("click", () => {
 editorUsersBottomButton.addEventListener("click", () => {
   if (currentPage) manageUsers(currentPage.id);
 });
-addUserButton.addEventListener("click", openUserDialog);
+addUserButton.addEventListener("click", openGuestChoice);
 closeUserDialogButton.addEventListener("click", () => userDialog.close());
 closeActivityDialogButton.addEventListener(
   "click",
@@ -2756,6 +2756,7 @@ previewLink.addEventListener("click", (event) => {
 let scheduleData = {schedules: [], occurrences: [], timezone: "UTC"};
 let editingSchedule = null;
 const scheduleDialog = document.getElementById("schedule-dialog");
+const guestChoiceDialog = document.getElementById("guest-choice-dialog");
 const scheduleFormStatus = document.getElementById("schedule-form-status");
 const scheduleValueFields = {
   label: "schedule-name", email: "schedule-email", kind: "schedule-kind",
@@ -2766,6 +2767,14 @@ const scheduleChecks = {
   next_day: "schedule-next-day", verification_required: "schedule-verification",
   one_time_use: "schedule-single-use",
 };
+
+async function openGuestChoice() {
+  document.getElementById("add-schedule").disabled = true;
+  document.getElementById("guest-schedule-help").textContent = "Checking scheduled access availability…";
+  guestChoiceDialog.showModal();
+  try { await loadSchedules(); }
+  catch { document.getElementById("guest-schedule-help").textContent = "Could not check scheduling availability. Close and reopen Add guest to retry."; }
+}
 
 function scheduleFields() {
   const definition = {};
@@ -2797,6 +2806,28 @@ function scheduleWindowText(window, zone) {
   return window.reason || `${scheduleTime(window.start, zone)} – ${scheduleTime(window.end, zone)} · ${zone}`;
 }
 
+function localScheduleTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || scheduleData.timezone || "UTC";
+  } catch {
+    return scheduleData.timezone || "UTC";
+  }
+}
+
+function populateScheduleTimezones(selected) {
+  const local = localScheduleTimezone();
+  const select = document.getElementById("schedule-timezone");
+  const zones = [...new Set([local, selected, scheduleData.timezone, "UTC", ...(scheduleData.timezones || [])].filter(Boolean))];
+  select.replaceChildren();
+  for (const zone of zones) {
+    const option = document.createElement("option");
+    option.value = zone;
+    option.textContent = `${zone.replaceAll("_", " ")}${zone === local ? " (local)" : ""}`;
+    select.append(option);
+  }
+  document.getElementById("schedule-timezone-help").textContent = `Local timezone: ${local}. Choose another zone if needed; saved schedules keep their timezone.`;
+}
+
 async function scheduleRequest(payload, id = editingSchedule) {
   const suffix = id ? `/${encodeURIComponent(id)}` : "";
   const response = await adminApi.fetch(`api/admin/pages/${encodeURIComponent(currentPage.id)}/schedules${suffix}`, {
@@ -2810,11 +2841,12 @@ async function scheduleRequest(payload, id = editingSchedule) {
 function openSchedule(row = null, duplicate = false) {
   editingSchedule = duplicate ? null : row?.id || null;
   const d = row?.definition || {
-    label: "", email: "", kind: "once", timezone: scheduleData.timezone,
+    label: "", email: "", kind: "once", timezone: localScheduleTimezone(),
     date: "", start_time: "09:00", end_time: "12:00", first_date: "", last_date: "",
     weekdays: [], next_day: false, verification_required: true, one_time_use: false,
     notifications: {targets: [], events: []},
   };
+  populateScheduleTimezones(d.timezone);
   for (const [key, id] of Object.entries(scheduleValueFields)) document.getElementById(id).value = d[key] || "";
   for (const [key, id] of Object.entries(scheduleChecks)) document.getElementById(id).checked = Boolean(d[key]);
   for (const input of document.querySelectorAll('input[name="schedule-weekday"]')) input.checked = d.weekdays.includes(Number(input.value));
@@ -2856,6 +2888,10 @@ async function loadSchedules() {
   if (currentPage?.id !== pageId) return;
   scheduleData = data;
   document.getElementById("add-schedule").disabled = !data.smtp_configured || !data.supported;
+  document.getElementById("guest-schedule-help").textContent = !data.supported
+    ? "Scheduled access requires the Home Assistant App Connector."
+    : !data.smtp_configured ? "Configure SMTP in Email settings to enable scheduled access."
+      : "Scheduled invitations are emailed automatically when access begins.";
   document.getElementById("schedule-availability").textContent = !data.supported
     ? "Scheduling requires the Home Assistant App Connector."
     : !data.smtp_configured ? "Configure SMTP to enable scheduled invitations. Existing schedules remain visible."
@@ -2903,9 +2939,27 @@ async function loadSchedules() {
   if (!data.occurrences.length) historyList.textContent = "No occurrences yet.";
 }
 
-document.getElementById("add-schedule").addEventListener("click", () => openSchedule());
+document.getElementById("add-schedule").addEventListener("click", () => {
+  guestChoiceDialog.close();
+  openSchedule();
+});
+document.getElementById("add-guest-now").addEventListener("click", () => {
+  guestChoiceDialog.close();
+  openUserDialog();
+});
+document.getElementById("close-guest-choice").addEventListener("click", () => guestChoiceDialog.close());
+guestChoiceDialog.addEventListener("click", event => {
+  if (event.target === guestChoiceDialog) guestChoiceDialog.close();
+});
 document.getElementById("close-schedule").addEventListener("click", () => scheduleDialog.close());
 document.getElementById("schedule-kind").addEventListener("change", updateScheduleKind);
+for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {
+  const input = document.getElementById(id);
+  input.addEventListener("click", () => {
+    try { input.showPicker?.(); }
+    catch { /* Keep native activation and keyboard editing in restricted frames. */ }
+  });
+}
 document.getElementById("preview-schedule").addEventListener("click", () => previewSchedule().catch(error => { scheduleFormStatus.textContent = error.message; }));
 document.getElementById("refresh-schedules").addEventListener("click", () => loadSchedules().catch(error => setStatus(error.message, "error")));
 document.getElementById("pause-schedules").addEventListener("click", async () => {

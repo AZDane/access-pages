@@ -1477,11 +1477,25 @@ input:disabled {
 }
 
 /* Scheduled invitations use native date and time inputs. */
+#guest-choice-dialog { width: min(640px, 95vw); height: fit-content; max-height: 90vh; overflow-y: auto; }
+#guest-choice-dialog .user-dialog-shell { height: auto; }
+#guest-schedule-help { margin-top: 1rem; }
+.guest-invitation-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.guest-invitation-options button { padding: 1rem; text-align: left; }
+.guest-invitation-options strong, .guest-invitation-options small { display: block; }
+.guest-invitation-options small { margin-top: .5rem; line-height: 1.5; font-weight: 400; }
 .schedule-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .schedule-fields > label { display: flex; flex-direction: column; gap: .4rem; }
+.schedule-fields > label.schedule-check { flex-direction: row; align-items: center; min-height: 44px; gap: .65rem; }
 .schedule-fields .wide { grid-column: 1 / -1; }
 .schedule-fields fieldset label { display: inline-flex; gap: .4rem; margin: .4rem; align-items: center; }
+.schedule-fields fieldset { min-width: 0; padding: .75rem; border: 1px solid var(--line); border-radius: 11px; }
+.schedule-fields fieldset label { min-height: 32px; }
 #schedule-dialog { width: min(760px, 95vw); max-height: 90vh; overflow-y: auto; }
-#schedule-dialog input[type="checkbox"] { width: auto; }
+#schedule-dialog input[type="checkbox"] { width: 18px; height: 18px; min-height: 18px; padding: 0; margin: 0; flex: 0 0 18px; accent-color: var(--accent); }
+#schedule-dialog input[type="date"], #schedule-dialog input[type="time"] { color-scheme: dark; min-width: 0; }
+/* Native activation also works where an embedded browser disallows showPicker(). */
+#schedule-dialog input[type="date"] { position: relative; cursor: pointer; }
+#schedule-dialog input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; background-size: 18px 18px; background-position: right 13px center; cursor: pointer; }
 #schedule-list article { padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
-@media (max-width: 600px) { .schedule-fields { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .schedule-fields, .guest-invitation-options { grid-template-columns: 1fr; } }

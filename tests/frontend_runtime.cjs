@@ -647,18 +647,56 @@ async function testScheduledGuestWorkflow() {
     }
     return jsonResponse(200, {...rows, smtp_configured: smtp});
   }});
+  vm.runInContext(`Intl.DateTimeFormat = function () { return {
+    resolvedOptions: () => ({timeZone: "America/Los_Angeles"}), format: () => "local time"
+  }; };`, fixture.context);
+  rows.timezones = ["America/Phoenix", "America/Los_Angeles", "Europe/London", "UTC"];
   vm.runInContext("currentPage = {id: 'fixture'}; confirmAction = async () => true;", fixture.context);
   await vm.runInContext("loadSchedules()", fixture.context);
   assert.equal(fixture.elements.get("add-schedule").disabled, true);
   assert.match(fixture.elements.get("schedule-availability").textContent, /Configure SMTP/);
+  await fixture.elements.get("add-user").listeners.get("click")();
+  assert.equal(fixture.elements.get("guest-choice-dialog").open, true);
+  assert.equal(fixture.elements.get("user-dialog").open, false);
+  assert.equal(fixture.elements.get("add-schedule").disabled, true);
+  assert.match(fixture.elements.get("guest-schedule-help").textContent, /Configure SMTP/);
+  fixture.elements.get("add-guest-now").listeners.get("click")();
+  assert.equal(fixture.elements.get("guest-choice-dialog").open, false);
+  assert.equal(fixture.elements.get("user-dialog").open, true);
+  fixture.elements.get("close-user-dialog").listeners.get("click")();
   assert.ok(descendants(fixture.elements.get("schedule-list")).some(e => e.textContent?.includes("America/Phoenix")));
   smtp = true;
   await vm.runInContext("loadSchedules()", fixture.context);
   assert.equal(fixture.elements.get("add-schedule").disabled, false);
+  await fixture.elements.get("add-user").listeners.get("click")();
   fixture.elements.get("add-schedule").listeners.get("click")();
+  assert.equal(fixture.elements.get("guest-choice-dialog").open, false);
+  assert.equal(fixture.elements.get("schedule-dialog").open, true);
   assert.equal(fixture.elements.get("schedule-verification").checked, true);
   assert.equal(fixture.elements.get("schedule-single-use").checked, false);
+  assert.equal(fixture.elements.get("schedule-timezone").value, "America/Los_Angeles");
+  assert.ok(fixture.elements.get("schedule-timezone").children.some(option => option.value === "Europe/London"));
+  assert.match(fixture.elements.get("schedule-timezone-help").textContent, /America\/Los_Angeles/);
+  const saved = JSON.parse(vm.runInContext("JSON.stringify(scheduleFields())", fixture.context));
+  saved.timezone = "Europe/London";
+  fixture.context.savedSchedule = {id: "saved", definition: saved};
+  vm.runInContext("openSchedule(savedSchedule)", fixture.context);
+  assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");
+  vm.runInContext("openSchedule(savedSchedule, true)", fixture.context);
+  assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");
+  vm.runInContext("Intl.DateTimeFormat = () => { throw new Error('unavailable'); }; openSchedule();", fixture.context);
   assert.equal(fixture.elements.get("schedule-timezone").value, "America/Phoenix");
+  for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {
+    const field = fixture.elements.get(id);
+    let opened = false;
+    field.showPicker = () => { opened = true; };
+    field.listeners.get("click")();
+    assert.equal(opened, true);
+    field.showPicker = () => { throw new Error("Restricted iframe"); };
+    assert.doesNotThrow(() => field.listeners.get("click")());
+    delete field.showPicker;
+    assert.doesNotThrow(() => field.listeners.get("click")());
+  }
   fixture.elements.get("schedule-kind").value = "weekly";
   fixture.elements.get("schedule-kind").listeners.get("change")();
   assert.equal(fixture.elements.get("schedule-weekdays").classList.contains("hidden"), false);
