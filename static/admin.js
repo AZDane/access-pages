@@ -3294,13 +3294,15 @@ document.getElementById("schedule-form").addEventListener("submit", async event 
     guestSaved(scheduleDialog);
     scheduleDialog.close();
     setStatus("Schedule saved. Invitations will be emailed when access begins.", "success");
-    try { await loadSchedules(); }
-    catch { setStatus("Schedule saved, but the list could not refresh. Refresh schedules to see it.", "error"); }
   } catch (error) {
     setGuestBusy(scheduleDialog, false);
     showGuestError(scheduleDialog, scheduleFormStatus, error);
+    return;
   }
   finally { setGuestBusy(scheduleDialog, false); }
+  // Restore controls before refreshing: the owner may open another dialog meanwhile.
+  try { await loadSchedules(); }
+  catch { setStatus("Schedule saved, but the list could not refresh. Refresh schedules to see it.", "error"); }
 });
 
 for (const dialog of [userDialog, scheduleDialog]) {

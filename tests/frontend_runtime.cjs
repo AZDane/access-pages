@@ -697,7 +697,15 @@ async function testGuestDraftAndValidation() {
   release(); await pending; holdSave = null;
   assert.equal(e("schedule-dialog").open, false);
   await close(); assert.equal(confirms, 3, "Successful saves clear the draft");
-  open(); e("schedule-name").value = "Unsaved";
+  let finishRefresh;
+  fixture.context.refreshPending = new Promise(resolve => { finishRefresh = resolve; });
+  vm.runInContext("loadSchedules = () => refreshPending;", fixture.context);
+  open(); e("schedule-name").value = "Another guest"; e("schedule-date").value = "2099-01-01";
+  const refreshing = submit(); await settle();
+  assert.equal(e("schedule-dialog").open, false);
+  open(); assert.equal(Boolean(e("close-schedule").disabled), false, "Next dialog is usable during background refresh");
+  finishRefresh(); await refreshing;
+  e("schedule-name").value = "Unsaved";
   let prevented = false;
   e("schedule-dialog").listeners.get("cancel")({preventDefault() { prevented = true; }}); await settle();
   assert.equal(prevented, true); assert.equal(e("schedule-dialog").open, true);
