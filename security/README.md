@@ -43,7 +43,7 @@ The upstream reproducer requires an FTS5 virtual table with `detail=none`,
 negative rowids and a prefix `MATCH` query:
 https://sqlite.org/bugs/info/2026-08-04T08:49:27Z
 
-All 146 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
+All 147 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
 `upstream_cleanup.py`, `layerv_broker.py` and `schedules.py` use constant SQL. Values are bound
 as parameters. There is no FTS table, MATCH query, extension loading or database
 deserialization. The probe executes the declared CREATE statements with the
@@ -247,7 +247,7 @@ acceptance. Do not call an untested live workflow beta-ready.
 ### Scheduled invitations reassessment — 2026-11-14
 
 App 0.1.152 adds `schedules.py` as a sixth SQLite consumer. Review covers all
-146 constant SQL calls and the new schedules, occurrences, schedule_meta and
+147 constant SQL calls and the new schedules, occurrences, schedule_meta and
 work-index schema. Guest inputs cannot select SQL or upload databases; all
 schedule administration requires the existing admin authentication. The database,
 outbox recipient/link material, and authorization permit are in Admin's private

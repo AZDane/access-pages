@@ -363,3 +363,14 @@ class ScheduleRoutesTests(unittest.TestCase):
         self.assertEqual(reply.call_args.args[0], 200)
         self.assertTrue(reply.call_args.args[1]["warning"])
         self.client.create_qurl.assert_not_called()
+
+    def test_edit_preview_does_not_advertise_processed_date(self):
+        self.start_window()
+        self.scheduler.tick(delivery=True)
+        revised = definition(start_time="10:00")
+        reply = self.route({"action": "preview", "definition": revised}, "/" + self.schedule_id)
+        self.assertEqual(reply.call_args.args[1]["upcoming"][0]["local_date"], "2026-11-15")
+        once = definition(kind="once", date="2026-11-14", start_time="10:00")
+        reply = self.route({"definition": once}, "/" + self.schedule_id)
+        self.assertEqual(reply.call_args.args[0], 400)
+        self.client.create_qurl.assert_called_once()

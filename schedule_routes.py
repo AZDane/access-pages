@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from email_delivery import EmailConfigError
 from layerv import BrokerLayerVClient
-from schedules import Scheduler, upcoming, validate_schedule
+from schedules import Scheduler, validate_schedule
 
 
 def handle(handler, path, runtime, payload=None):
@@ -23,7 +23,7 @@ def handle(handler, path, runtime, payload=None):
         if payload is None:
             rows = store.schedules(page_id)
             for row in rows:
-                row["upcoming"] = upcoming(row["definition"], now) if row["status"] == "enabled" else []
+                row["upcoming"] = store.upcoming(row["definition"], now, row["id"]) if row["status"] == "enabled" else []
             default_zone = runtime.SCHEDULE_TIMEZONE
             try:
                 ZoneInfo(default_zone)
@@ -56,7 +56,7 @@ def handle(handler, path, runtime, payload=None):
                 overlaps = [s for s in store.schedules(page_id)
                             if s["id"] != schedule_id and s["status"] == "enabled"
                             and s["definition"]["email"].casefold() == definition["email"].casefold()]
-                handler._send_json(200, {"upcoming": upcoming(definition, now),
+                handler._send_json(200, {"upcoming": store.upcoming(definition, now, schedule_id),
                                          "warning": "Other schedules exist for this guest on this page; check for overlapping access." if overlaps else ""})
                 return True
             elif action == "save":
@@ -65,8 +65,8 @@ def handle(handler, path, runtime, payload=None):
                 if not schedule_id and not runtime.SMTP_CONFIG_STORE.configured():
                     raise ValueError("Configure SMTP before scheduling invitations")
                 definition = validate_schedule(payload.get("definition"))
-                if definition["kind"] == "once" and not upcoming(definition, now):
-                    raise ValueError("Choose a future access start")
+                if definition["kind"] == "once" and not store.upcoming(definition, now, schedule_id):
+                    raise ValueError("Choose a future unprocessed date, or duplicate the schedule for another invitation")
                 available = set(runtime.NOTIFICATION_TARGET_STORE.load())
                 if runtime.SMTP_CONFIG_STORE.configured():
                     available.add("email")

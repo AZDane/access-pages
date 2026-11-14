@@ -705,6 +705,8 @@ prevent all guests receiving an invitation within the grace period.
 
 **Edit**, **Pause**, and **Delete** affect future or not-yet-emailed invitations.
 Already-emailed invitations retain their original recipient and end time. Use
+**Duplicate** for another invitation on a date this schedule already processed;
+editing or resuming does not issue that date a second time. Use
 **Pause and end current access** to revoke them immediately. Revoking all guests
 also pauses schedules. Page deletion or connection reset prevents scheduled
 reissuance. Other schedules for the same email/page are flagged for overlap

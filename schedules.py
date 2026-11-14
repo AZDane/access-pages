@@ -215,6 +215,12 @@ class ScheduleStore:
             raise ValueError("Schedule not found")
         return {**dict(row), "definition": json.loads(row["definition"])}
 
+    def upcoming(self, definition, now, schedule_id=None):
+        """An edit never reissues a date already processed by this schedule."""
+        with self.connect() as db:
+            used = {row[0] for row in db.execute("SELECT local_date FROM occurrences WHERE schedule=?", (schedule_id,))}
+        return [row for row in upcoming(definition, now, limit=6) if row["local_date"] not in used][:5]
+
     def save(self, page, definition, now, schedule_id=None):
         validate_page_id(page)
         with self.connect() as db:
