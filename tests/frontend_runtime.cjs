@@ -70,6 +70,8 @@ class Element {
   setAttribute(name, value) { this.attributes.set(name, value); }
   getAttribute(name) { return name === "src" ? this.src || null : this.attributes.get(name) || null; }
   removeAttribute(name) { this.attributes.delete(name); if (name === "src") this.src = ""; }
+  insertAdjacentElement(_position, element) { this.adjacent = element; }
+  remove() {}
   close() { this.open = false; }
   showModal() { this.open = true; }
   focus() {}
@@ -87,7 +89,7 @@ function harness(name, api) {
     baseURI: "https://ha.example/api/hassio_ingress/session/",
     documentElement: {dataset: {pageId: "fixture"}},
     getElementById(id) {
-      if (!elements.has(id)) elements.set(id, new Element());
+      if (!elements.has(id)) { const element = new Element(); element.id = id; elements.set(id, element); }
       return elements.get(id);
     },
     createElement() { return new Element(); },
@@ -634,6 +636,99 @@ function descendants(element) {
   return [element, ...element.children.flatMap(descendants)];
 }
 
+async function testGuestDraftAndValidation() {
+  let failSave = false, previewEmpty = false, holdSave = null, requests = 0;
+  const fixture = harness("admin", {async fetch(route, options) {
+    requests++;
+    const payload = JSON.parse(options.body);
+    if (payload.action === "preview") return jsonResponse(200, {upcoming: previewEmpty ? [] : [{start: 4102444800, end: 4102455600}]});
+    if (holdSave) await holdSave;
+    if (failSave) return jsonResponse(503, {error: "Storage unavailable"});
+    if (route.endsWith("/qurls")) return jsonResponse(200, {grant: {id: "test", qurl_link: "synthetic", expires_at: "2099-01-01T12:00:00Z"}});
+    assert.equal(payload.action, "save");
+    return jsonResponse(200, {success: true});
+  }});
+  const e = id => fixture.document.getElementById(id);
+  const scheduleIds = ["schedule-name", "schedule-email", "schedule-kind", "schedule-date", "schedule-start", "schedule-end", "schedule-guest"];
+  const manualIds = ["qurl-label", "verification-email", "send-invitation", "activity-notifications"];
+  let targets = [], events = [];
+  fixture.document.querySelectorAll = selector => {
+    if (selector === "#schedule-dialog input, #schedule-dialog select") return scheduleIds.map(e);
+    if (selector === "#user-dialog input, #user-dialog select") return manualIds.map(e);
+    if (selector === '#schedule-dialog button') return [e("save-schedule"), e("close-schedule")];
+    if (selector === 'input[name="schedule-target"]:checked') return targets;
+    if (selector === 'input[name="schedule-event"]:checked') return events;
+    return [];
+  };
+  vm.runInContext("currentPage = {id: 'fixture', access_grants: []}; editingExisting = true; layerVApiConfigured = true; loadSchedules = async () => {};", fixture.context);
+  let confirms = 0, discard = false;
+  fixture.context.confirmAction = async () => { confirms++; return discard; };
+  const open = () => vm.runInContext("openSchedule()", fixture.context);
+  const close = () => e("close-schedule").listeners.get("click")();
+  open(); await close(); assert.equal(confirms, 0, "Untouched form closes silently");
+  open(); e("schedule-name").value = "Edited"; await close();
+  assert.equal(confirms, 1); assert.equal(e("schedule-dialog").open, true);
+  e("schedule-name").value = ""; await close();
+  assert.equal(confirms, 1, "Reverting an edit is clean");
+  open(); e("schedule-name").value = "Visitor"; e("schedule-email").value = "guest@example.invalid"; e("schedule-date").value = "2099-01-01";
+  targets = [{value: "email"}];
+  const preview = () => e("preview-schedule").listeners.get("click")();
+  await preview();
+  assert.equal(requests, 0, "Incomplete alerts are caught before the request");
+  assert.match(e("schedule-form-status").className, /error/);
+  assert.match(e("schedule-form-status").textContent, /at least one activity/);
+  assert.equal(e("schedule-alerts").getAttribute("aria-invalid"), "true");
+  events = [{value: "initial_login"}];
+  await preview(); await close(); assert.equal(confirms, 2, "A preview is not a successful save");
+  previewEmpty = true; await preview();
+  assert.equal(e("schedule-date").getAttribute("aria-invalid"), "true");
+  previewEmpty = false;
+  const submit = () => e("schedule-form").listeners.get("submit")({preventDefault() {}});
+  failSave = true; await submit(); await close();
+  assert.equal(confirms, 3, "Failed saves retain edits");
+  assert.equal(e("schedule-dialog").open, true);
+  assert.match(e("schedule-form-status").textContent, /Storage unavailable/);
+  failSave = false;
+  let release;
+  holdSave = new Promise(resolve => { release = resolve; });
+  const pending = submit(); await settle(); await close();
+  assert.equal(confirms, 3, "Saving cannot be dismissed mid-request");
+  assert.equal(e("close-schedule").disabled, true);
+  release(); await pending; holdSave = null;
+  assert.equal(e("schedule-dialog").open, false);
+  await close(); assert.equal(confirms, 3, "Successful saves clear the draft");
+  open(); e("schedule-name").value = "Unsaved";
+  let prevented = false;
+  e("schedule-dialog").listeners.get("cancel")({preventDefault() { prevented = true; }}); await settle();
+  assert.equal(prevented, true); assert.equal(e("schedule-dialog").open, true);
+  discard = true;
+  e("schedule-dialog").listeners.get("click")({target: e("schedule-dialog")}); await settle();
+  assert.equal(e("schedule-dialog").open, false, "Confirmed backdrop dismissal closes");
+  discard = false;
+  vm.runInContext("openSchedule({id: 'existing', definition: {...scheduleFields(), notifications: {targets: [], events: []}}})", fixture.context);
+  const beforeEdit = confirms;
+  await close(); assert.equal(confirms, beforeEdit, "Untouched edit dialog closes silently");
+  vm.runInContext("openSchedule({id: 'existing', definition: {...scheduleFields(), notifications: {targets: [], events: []}}})", fixture.context);
+  e("schedule-name").value = "Changed existing guest";
+  await close(); assert.equal(confirms, beforeEdit + 1, "Changed edit dialog warns");
+  discard = true; await close(); discard = false;
+  vm.runInContext("openUserDialog()", fixture.context);
+  await e("close-user-dialog").listeners.get("click")();
+  const before = confirms;
+  vm.runInContext("openUserDialog()", fixture.context);
+  e("qurl-label").value = "Visitor";
+  await e("close-user-dialog").listeners.get("click")();
+  assert.equal(confirms, before + 1); assert.equal(e("user-dialog").open, true);
+  vm.runInContext("selectedLifetime = () => '1h'; buildSharePanel = () => document.createElement('div'); finishedSharingButton = () => document.createElement('button'); loadPages = async () => {}; loadGuestActivitySummaries = async () => {}; renderAccessGrants = () => {}; window.requestAnimationFrame = callback => callback();", fixture.context);
+  failSave = true; await vm.runInContext("generateQurl()", fixture.context);
+  await e("close-user-dialog").listeners.get("click")();
+  assert.equal(confirms, before + 2, "Failed immediate invitation retains the draft");
+  failSave = false; await vm.runInContext("generateQurl()", fixture.context);
+  await e("close-user-dialog").listeners.get("click")();
+  assert.equal(confirms, before + 2, "Created invitation clears draft protection");
+  assert.equal(e("user-dialog").open, false);
+}
+
 async function testScheduledGuestWorkflow() {
   let smtp = false;
   const timelineRequests = [];
@@ -928,6 +1023,7 @@ async function testCompatibilityRepairAndTilt() {
   await testCompatibilityRepairAndTilt();
   await testVerificationOptionAvailability();
   await testScheduledGuestWorkflow();
+  await testGuestDraftAndValidation();
   await testExplicitFinishedSharing();
   await testActionFreshState();
   await testPrecommandReadCannotFinalizeAction();

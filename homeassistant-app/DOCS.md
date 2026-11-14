@@ -717,6 +717,25 @@ reissuance. Other schedules for the same email/page are flagged for overlap
 review; independent grants remain independent, so revoking one does not end
 another. No windows are silently combined.
 
+### Guest form errors and unsaved changes
+
+Guest add/edit forms show a red error panel and outline the field or group that
+needs attention, with an explanation beside it. For activity alerts, choose both
+a destination and at least one activity, or leave both unselected to disable alerts.
+Server or connection errors appear in the form without erasing your entries.
+
+Closing with the close button, Escape, or the dialog backdrop asks **Discard
+unsaved changes?** only if current values differ from when the form opened or was
+last saved successfully. **Cancel** returns to the form with edits intact;
+**Discard changes** closes it. Untouched forms and edits reverted to their original
+values close silently. Fields and dismissal are temporarily disabled while saving.
+
+**Review upcoming times** is a preview, not a save. Failed saves leave changes
+unsaved. **Save schedule** closes the dialog after the server confirms success.
+A successful save remains successful even if the subsequent list refresh fails;
+use **Refresh schedules** in that case. For immediate guests, successful link
+creation clears the unsaved-change warning even if invitation email delivery fails.
+
 ### Guest cards, combined history, and retention
 
 Each scheduled guest has a compact card matching the regular guest layout. Cards

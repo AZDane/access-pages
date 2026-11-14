@@ -193,7 +193,7 @@ function settleConfirmation(accepted) {
   resolve(accepted);
 }
 
-function confirmAction(message, {title = "Confirm this action", acceptLabel = "Confirm"} = {}) {
+function confirmAction(message, {title = "Confirm this action", acceptLabel = "Confirm", safeDefault = false} = {}) {
   if (confirmationResolver) {
     return Promise.resolve(false);
   }
@@ -203,7 +203,7 @@ function confirmAction(message, {title = "Confirm this action", acceptLabel = "C
     confirmMessage.textContent = message;
     acceptConfirmButton.textContent = acceptLabel;
     confirmDialog.showModal();
-    acceptConfirmButton.focus();
+    (safeDefault ? cancelConfirmButton : acceptConfirmButton).focus();
   });
 }
 
@@ -242,8 +242,8 @@ activityNotificationsInput.addEventListener("change", () => {
     "hidden", !activityNotificationsInput.checked,
   );
 });
-configureNotificationsButton.addEventListener("click", () => {
-  userDialog.close();
+configureNotificationsButton.addEventListener("click", async () => {
+  if (!await requestGuestClose(userDialog)) return;
   openEmailSettings().catch((error) => setStatus(`Error: ${error.message}`, "error"));
 });
 
@@ -1343,7 +1343,7 @@ function selectedLifetime() {
 
   const amount = Number(customLifetimeValue.value);
   if (!Number.isInteger(amount) || amount < 1) {
-    throw new Error("Enter a whole-number custom lifetime.");
+    throw guestInputError("Enter a whole-number custom lifetime.", ["custom-lifetime-value"]);
   }
 
   const secondsPerUnit = {
@@ -1353,8 +1353,8 @@ function selectedLifetime() {
   };
   const seconds = amount * secondsPerUnit[customLifetimeUnit.value];
   if (seconds > qurlMaxLifetimeDays * 24 * 60 * 60) {
-    throw new Error(
-      `Lifetime exceeds the configured ${qurlMaxLifetimeDays}-day maximum.`,
+    throw guestInputError(
+      `Lifetime exceeds the configured ${qurlMaxLifetimeDays}-day maximum.`, ["custom-lifetime-value", "custom-lifetime-unit"],
     );
   }
   return `${amount}${customLifetimeUnit.value}`;
@@ -1969,12 +1969,117 @@ async function deleteSelectedActivity() {
   setStatus("Revoked guest and activity history deleted.", "success");
 }
 
-function setUserDialogStatus(message, kind = "") {
+// Track actual form values, so reverting an edit is clean and previews never save.
+const guestDrafts = new WeakMap();
+function guestInputs(dialog) {
+  return [...document.querySelectorAll(`#${dialog.id} input, #${dialog.id} select`)];
+}
+function guestSnapshot(dialog) {
+  return JSON.stringify(guestInputs(dialog).map(input => [input.id || input.name, input.value, Boolean(input.checked)]));
+}
+function rememberGuestDraft(dialog) {
+  guestDrafts.set(dialog, {baseline: guestSnapshot(dialog), busy: false, closing: false});
+}
+function setGuestBusy(dialog, busy) {
+  const state = guestDrafts.get(dialog);
+  if (!state) return;
+  state.busy = busy;
+  if (busy) {
+    state.controls = [...guestInputs(dialog), ...document.querySelectorAll(`#${dialog.id} button`)];
+    state.disabled = state.controls.map(input => input.disabled);
+    state.controls.forEach(input => { input.disabled = true; });
+  } else {
+    state.controls?.forEach((input, i) => { input.disabled = state.disabled[i]; });
+  }
+}
+function guestSaved(dialog) {
+  const state = guestDrafts.get(dialog);
+  if (state) state.baseline = guestSnapshot(dialog);
+}
+async function requestGuestClose(dialog) {
+  const state = guestDrafts.get(dialog);
+  if (state?.busy || state?.closing) return false;
+  if (state && state.baseline !== guestSnapshot(dialog)) {
+    state.closing = true;
+    const discard = await confirmAction("Your guest changes have not been saved. Discard them and close?", {
+      title: "Discard unsaved changes?", acceptLabel: "Discard changes", safeDefault: true,
+    });
+    state.closing = false;
+    if (!discard) return false;
+  }
+  dialog.close();
+  return true;
+}
+function clearGuestErrors(dialog) {
+  for (const element of document.querySelectorAll(`#${dialog.id} .guest-field-error`)) {
+    element.classList.remove("guest-field-error");
+    element.removeAttribute("aria-invalid");
+    const described = (element.getAttribute("aria-describedby") || "").split(" ").filter(id => id && id !== `${element.id}-error`);
+    if (described.length) element.setAttribute("aria-describedby", described.join(" "));
+    else element.removeAttribute("aria-describedby");
+  }
+  for (const note of document.querySelectorAll(`#${dialog.id} .guest-field-message`)) note.remove();
+}
+function guestInputError(message, fields = []) {
+  return Object.assign(new Error(message), {fields});
+}
+function showGuestError(dialog, status, error) {
+  clearGuestErrors(dialog);
+  status.textContent = error.message;
+  status.className = "status error guest-form-error";
+  status.setAttribute("role", "alert");
+  status.setAttribute("aria-live", "assertive");
+  const fields = (error.fields || []).map(id => document.getElementById(id));
+  for (const field of fields) {
+    field.classList.add("guest-field-error"); field.setAttribute("aria-invalid", "true");
+    const note = document.createElement("small"); note.id = `${field.id}-error`;
+    note.className = "guest-field-message wide"; note.textContent = error.message;
+    field.setAttribute("aria-describedby", [field.getAttribute("aria-describedby"), note.id].filter(Boolean).join(" "));
+    field.insertAdjacentElement("afterend", note);
+  }
+  const first = fields[0];
+  const focus = first?.querySelector?.("input, select") || first || status;
+  focus.focus(); (first || status).scrollIntoView({block: "center", behavior: "smooth"});
+}
+function setScheduleStatus(message, kind = "") {
+  scheduleFormStatus.textContent = message;
+  scheduleFormStatus.className = `status ${kind}`;
+  scheduleFormStatus.setAttribute("role", "status");
+  scheduleFormStatus.setAttribute("aria-live", "polite");
+}
+function validateScheduleInputs() {
+  for (const input of guestInputs(scheduleDialog)) {
+    if (input.willValidate && !input.checkValidity()) {
+      throw guestInputError(input.validationMessage, [input.id]);
+    }
+  }
+  const d = scheduleFields();
+  if (!d.label.trim()) throw guestInputError("Enter a guest name.", ["schedule-name"]);
+  if (d.kind === "weekly" && !d.weekdays.length) throw guestInputError("Choose at least one day of the week.", ["schedule-weekdays"]);
+  if (d.first_date && d.last_date && d.last_date < d.first_date) throw guestInputError("The last date must be on or after the first date.", ["schedule-first", "schedule-last"]);
+  const minutes = value => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
+  const duration = minutes(d.end_time) - minutes(d.start_time) + (d.next_day ? 1440 : 0);
+  if (duration < 2 || duration > 1440) throw guestInputError("Access must last 2 minutes to 24 hours. Select Ends next day for overnight access.", ["schedule-start", "schedule-end", "schedule-next-day"]);
+  if (Boolean(d.notifications.targets.length) !== Boolean(d.notifications.events.length)) {
+    throw guestInputError(d.notifications.targets.length
+      ? "Choose at least one activity to be notified about, or turn off the alert destinations."
+      : "Choose an alert destination, or turn off the selected activities.", ["schedule-alerts"]);
+  }
+}
+
+function setUserDialogStatus(message, kind = "", fields = []) {
+  if (kind === "error") {
+    showGuestError(userDialog, userDialogStatus, guestInputError(message, fields));
+    return;
+  }
+  userDialogStatus.setAttribute("role", "status");
+  userDialogStatus.setAttribute("aria-live", "polite");
   userDialogStatus.textContent = message;
   userDialogStatus.className = message ? `status ${kind}` : "status hidden";
 }
 
 function openUserDialog() {
+  clearGuestErrors(userDialog);
   setUserDialogStatus("");
   qurlLabelInput.value = "";
   verificationRequiredInput.checked = false;
@@ -1986,12 +2091,14 @@ function openUserDialog() {
   verificationEmailInput.value = "";
   verificationEmailField.classList.add("hidden");
   qurlResult.classList.add("hidden");
+  rememberGuestDraft(userDialog);
   userDialog.showModal();
   qurlLabelInput.focus();
 }
 
 async function generateQurl() {
   if (generateQurlButton.disabled) return;
+  clearGuestErrors(userDialog);
   if (!currentPage || !editingExisting) {
     setUserDialogStatus("Save the page before generating a qURL.", "error");
     return;
@@ -2007,7 +2114,7 @@ async function generateQurl() {
 
   const userName = qurlLabelInput.value.trim();
   if (!userName) {
-    setUserDialogStatus("Enter a guest name before creating the link.", "error");
+    setUserDialogStatus("Enter a guest name before creating the link.", "error", ["qurl-label"]);
     qurlLabelInput.focus();
     return;
   }
@@ -2020,21 +2127,23 @@ async function generateQurl() {
     events: [...document.querySelectorAll('input[name="notification-event"]:checked')].map((input) => input.value),
   } : null;
   if (activityNotificationsInput.checked && !notificationSettings.targets.length) {
-    setUserDialogStatus("Choose a configured email or mobile notification target.", "error");
+    setUserDialogStatus("Choose a configured email or mobile notification target.", "error", ["notification-target-field"]);
     activityNotificationOptions.classList.remove("hidden");
     return;
   }
   if (activityNotificationsInput.checked && !notificationSettings.events.length) {
-    setUserDialogStatus("Choose at least one guest activity to be notified about.", "error");
+    setUserDialogStatus("Choose at least one guest activity to be notified about.", "error", ["notification-event-field"]);
     return;
   }
 
   if (invitationRequested && (!verificationEmail || !verificationEmailInput.checkValidity())) {
-    setUserDialogStatus("Enter a valid email address for the invitation.", "error");
+    setUserDialogStatus("Enter a valid email address for the invitation.", "error", ["verification-email"]);
     verificationEmailInput.focus();
     return;
   }
 
+  let guestCreated = false;
+  setGuestBusy(userDialog, true);
   generateQurlButton.disabled = true;
   setUserDialogStatus(`Creating access for ${userName}… Initial setup can take a few minutes.`);
   try {
@@ -2044,7 +2153,7 @@ async function generateQurl() {
       ? Number(duration[1]) * {m: 60, h: 3600, d: 86400}[duration[2]]
       : 0;
     if (oneTimeUseInput.checked && lifetimeSeconds > 86400) {
-      throw new Error("Single-use guest access supports at most 24 hours. Choose a shorter lifetime or turn off One-time use.");
+      throw guestInputError("Single-use guest access supports at most 24 hours. Choose a shorter lifetime or turn off One-time use.", ["lifetime-fieldset", "one-time-use"]);
     }
     const response = await adminApi.fetch(
       `api/admin/pages/${encodeURIComponent(currentPage.id)}/qurls`,
@@ -2069,6 +2178,8 @@ async function generateQurl() {
       throw new Error(data.error || "Could not generate qURL");
     }
 
+    guestCreated = true;
+    guestSaved(userDialog);
     currentPage.access_grants = [
       data.grant,
       ...(currentPage.access_grants || []),
@@ -2160,6 +2271,7 @@ async function generateQurl() {
     });
 
     qurlLabelInput.value = "";
+    guestSaved(userDialog);
     await loadPages();
     await loadGuestActivitySummaries(currentPage.id);
     renderAccessGrants(currentPage);
@@ -2180,8 +2292,10 @@ async function generateQurl() {
       );
     }
   } catch (error) {
-    setUserDialogStatus(`Error: ${error.message}`, "error");
+    setGuestBusy(userDialog, false);
+    setUserDialogStatus(guestCreated ? `Guest link created, but the display could not finish updating: ${error.message}` : `Error: ${error.message}`, "error", error.fields || []);
   } finally {
+    setGuestBusy(userDialog, false);
     generateQurlButton.disabled = false;
   }
 }
@@ -2656,7 +2770,7 @@ editorUsersBottomButton.addEventListener("click", () => {
   if (currentPage) manageUsers(currentPage.id);
 });
 addUserButton.addEventListener("click", openGuestChoice);
-closeUserDialogButton.addEventListener("click", () => userDialog.close());
+closeUserDialogButton.addEventListener("click", () => requestGuestClose(userDialog));
 closeActivityDialogButton.addEventListener(
   "click",
   () => activityDialog.close(),
@@ -2705,7 +2819,7 @@ pickerDialog.addEventListener("click", (event) => {
 });
 userDialog.addEventListener("click", (event) => {
   if (event.target === userDialog) {
-    userDialog.close();
+    requestGuestClose(userDialog);
   }
 });
 openResetDialogButton.addEventListener("click", () => {
@@ -2894,13 +3008,17 @@ function openSchedule(row = null, duplicate = false) {
     label.append(input, document.createTextNode(option.label)); targets.append(label);
   }
   document.getElementById("schedule-title").textContent = editingSchedule ? "Edit future invitations" : "Schedule guest";
-  scheduleFormStatus.textContent = duplicate ? "Choose another date or time for this guest." : "";
+  clearGuestErrors(scheduleDialog);
+  setScheduleStatus(duplicate ? "Choose another date or time for this guest." : "");
   document.getElementById("schedule-preview").replaceChildren();
   updateScheduleKind();
+  rememberGuestDraft(scheduleDialog);
   scheduleDialog.showModal();
 }
 
 async function previewSchedule() {
+  clearGuestErrors(scheduleDialog);
+  validateScheduleInputs();
   const definition = scheduleFields();
   const data = await scheduleRequest({action: "preview", definition});
   const preview = document.getElementById("schedule-preview");
@@ -2908,7 +3026,8 @@ async function previewSchedule() {
   for (const window of data.upcoming) {
     const item = document.createElement("p"); item.textContent = scheduleWindowText(window, definition.timezone); preview.append(item);
   }
-  scheduleFormStatus.textContent = data.warning || (data.upcoming.length ? "Review these times before saving." : "No future occurrences. Choose a future date.");
+  if (!data.upcoming.length) throw guestInputError("No future occurrences. Choose a future unprocessed date or access window.", [document.getElementById("schedule-kind").value === "once" ? "schedule-date" : "schedule-last-field"]);
+  setScheduleStatus(data.warning || "Review these times, then choose Save schedule. This preview has not saved your changes.");
   return data;
 }
 
@@ -3129,7 +3248,7 @@ document.getElementById("close-guest-choice").addEventListener("click", () => gu
 guestChoiceDialog.addEventListener("click", event => {
   if (event.target === guestChoiceDialog) guestChoiceDialog.close();
 });
-document.getElementById("close-schedule").addEventListener("click", () => scheduleDialog.close());
+document.getElementById("close-schedule").addEventListener("click", () => requestGuestClose(scheduleDialog));
 document.getElementById("schedule-guest").addEventListener("change", selectScheduleGuest);
 document.getElementById("schedule-kind").addEventListener("change", updateScheduleKind);
 for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {
@@ -3139,7 +3258,18 @@ for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {
     catch { /* Keep native activation and keyboard editing in restricted frames. */ }
   });
 }
-document.getElementById("preview-schedule").addEventListener("click", () => previewSchedule().catch(error => { scheduleFormStatus.textContent = error.message; }));
+document.getElementById("preview-schedule").addEventListener("click", async () => {
+  if (guestDrafts.get(scheduleDialog)?.busy) return;
+  try {
+    validateScheduleInputs();
+    setGuestBusy(scheduleDialog, true);
+    await previewSchedule();
+  } catch (error) {
+    setGuestBusy(scheduleDialog, false);
+    showGuestError(scheduleDialog, scheduleFormStatus, error);
+  }
+  finally { setGuestBusy(scheduleDialog, false); }
+});
 document.getElementById("refresh-schedules").addEventListener("click", () => loadSchedules().catch(error => setStatus(error.message, "error")));
 document.getElementById("pause-schedules").addEventListener("click", async () => {
   if (!await confirmAction("Pause future scheduled invitations for this page? Already-emailed invitations keep their original end.")) return;
@@ -3148,10 +3278,11 @@ document.getElementById("pause-schedules").addEventListener("click", async () =>
 });
 document.getElementById("schedule-form").addEventListener("submit", async event => {
   event.preventDefault();
-  const button = document.getElementById("save-schedule"); button.disabled = true;
+  if (guestDrafts.get(scheduleDialog)?.busy) return;
   try {
+    validateScheduleInputs();
+    setGuestBusy(scheduleDialog, true);
     const data = await previewSchedule();
-    if (!data.upcoming.length) throw new Error("Choose a future occurrence before saving.");
     if (data.warning && !await confirmAction(data.warning)) return;
     const definition = scheduleFields();
     const guestId = document.getElementById("schedule-guest").value || null;
@@ -3160,7 +3291,32 @@ document.getElementById("schedule-form").addEventListener("submit", async event 
         scheduleData.schedules.filter(row => row.guest_id === guestId).length > 1 &&
         !await confirmAction("Update this guest's contact details for all their future schedules on this Access Page? Already-issued invitations keep their original recipient.")) return;
     await scheduleRequest({action: "save", definition, guest_id: guestId});
-    scheduleDialog.close(); await loadSchedules(); setStatus("Schedule saved. Invitations will be emailed when access begins.", "success");
-  } catch (error) { scheduleFormStatus.textContent = error.message; }
-  finally { button.disabled = false; }
+    guestSaved(scheduleDialog);
+    scheduleDialog.close();
+    setStatus("Schedule saved. Invitations will be emailed when access begins.", "success");
+    try { await loadSchedules(); }
+    catch { setStatus("Schedule saved, but the list could not refresh. Refresh schedules to see it.", "error"); }
+  } catch (error) {
+    setGuestBusy(scheduleDialog, false);
+    showGuestError(scheduleDialog, scheduleFormStatus, error);
+  }
+  finally { setGuestBusy(scheduleDialog, false); }
 });
+
+for (const dialog of [userDialog, scheduleDialog]) {
+  dialog.addEventListener("cancel", event => { event.preventDefault(); requestGuestClose(dialog); });
+  if (dialog === scheduleDialog) dialog.addEventListener("click", event => {
+    if (event.target === dialog) requestGuestClose(dialog);
+  });
+  dialog.addEventListener("input", () => {
+    clearGuestErrors(dialog);
+    const status = dialog === scheduleDialog ? scheduleFormStatus : userDialogStatus;
+    if (status.classList.contains("error")) {
+      status.textContent = ""; status.className = "status"; status.setAttribute("role", "status"); status.setAttribute("aria-live", "polite");
+    }
+    if (dialog === scheduleDialog) {
+      document.getElementById("schedule-preview").replaceChildren();
+      setScheduleStatus("");
+    }
+  });
+}

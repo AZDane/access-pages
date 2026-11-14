@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.157
+
+- Make guest form errors prominent with red messages, outlined fields or groups, accessible descriptions, and focus on the entry needing attention. Explain incomplete alert destinations/activities before submitting.
+- Warn before closing an immediate guest or scheduled guest add/edit dialog only when its current values differ from the opened or successfully saved values. Close buttons, Escape, and backdrop clicks offer Cancel or Discard changes; reverting edits closes silently.
+- Keep failed saves and schedule previews unsaved. A successful save clears the warning, including when a later list refresh fails. Prevent dismissal or edits while a save is in flight.
+- Keep confirmation dialogs compact and document the distinction between previewing and saving.
+
 ## 0.1.156
 
 - Move revoked scheduled guests out of Scheduled guests into Recently ended guests, clearly labeled Revoked, with expandable retained history and no redundant Revoke guest button.
