@@ -712,7 +712,7 @@ Already-emailed invitations retain their original recipient and end time. Use
 **Duplicate** for another invitation on a date this schedule already processed;
 editing or resuming does not issue that date a second time. Use
 **Pause and end current access** to revoke them immediately. Revoking all guests
-also pauses schedules. Page deletion or connection reset prevents scheduled
+also revokes schedules. Page deletion or connection reset prevents scheduled
 reissuance. Other schedules for the same email/page are flagged for overlap
 review; independent grants remain independent, so revoking one does not end
 another. No windows are silently combined.
@@ -726,12 +726,19 @@ reveals the latest invitation status, schedule controls, upcoming windows, and
 **Activity and invitation history**. Refreshing preserves cards you have expanded.
 
 **Revoke guest** is visible without expanding the card. After confirmation it ends
-all current access and pauses every future schedule for that guest on this Access
-Page. This includes outstanding invitations from deleted schedules. History is
+all current access and stops every future schedule for that guest on this Access
+Page. The card moves to **Recently ended guests**, labeled **Revoked**, with
+**View details** for retained history and no redundant revoke button. **Pause**
+keeps the guest in the scheduled list; explicitly resuming a revoked schedule
+returns the guest there. This includes outstanding invitations from deleted schedules. History is
 retained; other guests and manual invitations are unaffected, even if their names
 or email addresses match. The owner can explicitly resume individual schedules
 later. Local access ends before remote cleanup, which can continue retrying.
 Current invitations also have individual revoke controls inside **View details**.
+
+Versions through 0.1.155 saved guest revocation as Paused. These records cannot be
+distinguished from an intentional pause, so upgrading preserves them. Click
+**Revoke guest** once again to move such a guest to Recently ended guests.
 
 Use the history filter to separate guest activity from delivery status, **Show this access window** to inspect an occurrence, and
 **Load older entries** to page through all retained records. Delivery history shows
@@ -764,8 +771,9 @@ or SMTP is unavailable:
 - Invitation records expire 30 days after the scheduled end. Work still awaiting
   safe cleanup is retained until local access is denied and upstream cleanup has
   been durably handed off; the remote cleanup queue may continue retrying.
-- Deleted schedules and their guest contact details are removed once at least
-  30 days have elapsed since deletion and no occurrence records remain. Guests
+- Deleted or revoked schedules and their guest contact details are removed once
+  at least 30 days have elapsed since deletion or revocation and no occurrence
+  records remain. Guests
   with another enabled or paused schedule remain available for future use.
 
 Deleting a schedule preserves already-issued access until its original end. Use

@@ -1497,6 +1497,7 @@ input:disabled {
 /* Native activation also works where an embedded browser disallows showPicker(). */
 #schedule-dialog input[type="date"] { position: relative; cursor: pointer; }
 #schedule-dialog input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; background-size: 18px 18px; background-position: right 13px center; cursor: pointer; }
+#ended-scheduled-list:not(:empty) { margin-top: 12px; }
 .scheduled-heading { flex-wrap: wrap; margin-bottom: 12px; }
 .scheduled-heading .editor-actions { margin-top: 0; }
 .scheduled-guest { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface-low, rgba(5,17,34,.42)); }

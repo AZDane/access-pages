@@ -307,3 +307,15 @@ Source and SQL-call evidence fingerprints are refreshed. Runtime binaries,
 confinement, advisory scope and the November 26 review deadline are unchanged.
 Tests cover authentication, cross-page and same-contact isolation, pending email,
 multiple schedules, deleted schedules, retries, and retained history.
+
+
+### Distinct revoked schedule state (0.1.156)
+
+The same 178 constant SQL calls now persist a distinct revoked status and include
+it in retired schedule retention. No SQL calls, tables, permissions, native APIs,
+or binaries are added. Revocation still journals cancellation and denies access
+under the existing page lock; paused schedules are preserved on upgrade. Source
+hashes are refreshed, while schema evidence, binary fingerprints, confinement,
+advisory scope and the November 26 review deadline remain unchanged. Regression
+tests cover restart persistence, explicit resumption, cleanup outages, retention,
+and separation from intentionally paused guests.

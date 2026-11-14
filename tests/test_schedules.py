@@ -395,7 +395,7 @@ class ScheduleRoutesTests(unittest.TestCase):
         reply = self.route({"action": "revoke_guest", "guest_id": guest})
         self.assertEqual(reply.call_args.args[0], 200)
         self.assertEqual([grant["id"] for grant in self.grants()], [other_grant])
-        self.assertEqual(self.store.get(self.schedule_id)["status"], "paused")
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "revoked")
         self.assertEqual(self.store.get(deleted)["status"], "deleted")
         self.assertEqual(self.store.get(other)["status"], "enabled")
         self.assertEqual(self.r.cleanup_guest_sessions.call_count, 2)
@@ -409,6 +409,36 @@ class ScheduleRoutesTests(unittest.TestCase):
         self.assertEqual(len(self.store.history("cat-sitter")), 3)
         self.assertEqual(self.route({"action": "revoke_guest", "guest_id": guest}).call_args.args[0], 200)
         self.assertEqual([grant["id"] for grant in self.grants()], [other_grant])
+
+    def test_revoked_state_survives_restart_and_pause_all_until_explicit_resume(self):
+        guest = self.store.get(self.schedule_id)["guest_id"]
+        self.route({"action": "revoke_guest", "guest_id": guest})
+        self.store = ScheduleStore(self.store.path)
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "revoked")
+        self.route({"action": "pause_all"})
+        self.route({"action": "pause"}, "/" + self.schedule_id)
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "revoked")
+        self.assertEqual(self.route({"action": "resume"}, "/" + self.schedule_id).call_args.args[0], 200)
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "enabled")
+
+    def test_revoked_history_purges_after_retention_and_cleanup_but_paused_stays(self):
+        self.start_window()
+        self.scheduler.tick(delivery=True)
+        guest = self.store.get(self.schedule_id)["guest_id"]
+        paused = self.store.save("cat-sitter", definition(), self.now)
+        self.store.status(paused, "paused", self.now)
+        self.route({"action": "revoke_guest", "guest_id": guest})
+        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.now += 31 * 86400
+        self.scheduler.tick()
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "revoked")
+        self.client.queue_revocation.side_effect = None
+        self.scheduler.tick()
+        self.scheduler.tick()
+        with self.assertRaises(ValueError):
+            self.store.get(self.schedule_id)
+        self.assertEqual(self.store.get(paused)["status"], "paused")
+        self.assertEqual(len(self.store.guests("cat-sitter")), 1)
 
     def test_revoke_guest_auth_page_isolation_and_pending_delivery(self):
         self.start_window()

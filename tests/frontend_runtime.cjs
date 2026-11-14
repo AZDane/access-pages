@@ -650,11 +650,15 @@ async function testScheduledGuestWorkflow() {
       if (payload.action === "revoke_guest") {
         assert.equal(payload.guest_id, "guest_test");
         assert.ok(route.endsWith("/schedules"), "Guest revoke must not target an editing schedule");
-        revocations.push(payload); rows.schedules[0].status = "paused"; rows.active_invitations = [];
+        revocations.push(payload); rows.schedules[0].status = "revoked"; rows.active_invitations = [];
+        return jsonResponse(200, {success: true});
+      }
+      if (payload.action === "resume") {
+        rows.schedules[0].status = "enabled";
         return jsonResponse(200, {success: true});
       }
       assert.equal(payload.action, "pause_all");
-      rows.schedules[0].status = "paused";
+      if (rows.schedules[0].status !== "revoked") rows.schedules[0].status = "paused";
       return jsonResponse(200, {success: true});
     }
     return jsonResponse(200, {...rows, smtp_configured: smtp});
@@ -710,8 +714,19 @@ async function testScheduledGuestWorkflow() {
   vm.runInContext("confirmAction = async message => { if (!message.includes('all current access') || !message.includes('all future schedules')) throw Error('Missing revoke scope'); return true; }; editingSchedule = 'unrelated';", fixture.context);
   revoke.listeners.get("click")(); await settle();
   assert.equal(revocations.length, 1);
-  card = fixture.elements.get("schedule-list").children[0];
+  assert.equal(fixture.elements.get("schedule-list").children.length, 0);
+  card = fixture.elements.get("ended-scheduled-list").children[0];
   assert.equal(expandButton(card).getAttribute("aria-expanded"), "false", "Revocation does not expand a collapsed card");
+  assert.equal(fixture.elements.get("revoked-count").textContent, "1");
+  assert.ok(descendants(card).some(e => e.textContent?.includes("Scheduled · Revoked")));
+  assert.ok(!descendants(card.children[0]).some(e => e.textContent === "Revoke guest"));
+  await vm.runInContext("loadSchedules()", fixture.context);
+  assert.equal(fixture.elements.get("ended-scheduled-list").children.length, 1, "Revoked placement survives refresh");
+  card = fixture.elements.get("ended-scheduled-list").children[0];
+  expandButton(card).listeners.get("click")(); await settle();
+  descendants(card).find(e => e.textContent === "Resume").listeners.get("click")(); await settle();
+  assert.equal(fixture.elements.get("ended-scheduled-list").children.length, 0);
+  assert.equal(fixture.elements.get("schedule-list").children.length, 1, "Explicit resume returns guest to scheduled list");
   vm.runInContext("confirmAction = async () => true; editingSchedule = null;", fixture.context);
   await fixture.elements.get("add-user").listeners.get("click")();
   fixture.elements.get("add-schedule").listeners.get("click")();

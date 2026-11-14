@@ -1771,9 +1771,11 @@ function renderAccessGrants(page) {
 
 function renderRevokedGuests() {
   const revoked = activityGuests.filter((guest) => guest.revoked_at && !guest.scheduled_guest_id);
-  revokedCount.textContent = String(revoked.length);
+  const scheduledEnded = scheduleData.page_id === currentPage?.id ? document.getElementById("ended-scheduled-list").children.length : 0;
+  revokedCount.textContent = String(revoked.length + scheduledEnded);
   revokedList.replaceChildren();
 
+  if (!revoked.length && scheduledEnded) return;
   if (!revoked.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state compact";
@@ -2977,8 +2979,11 @@ async function loadScheduledTimeline(state, more = false) {
 
 function renderScheduledGuests(data) {
   const list = document.getElementById("schedule-list"); list.replaceChildren();
+  const endedList = document.getElementById("ended-scheduled-list"); endedList.replaceChildren();
   for (const guest of data.guests || []) {
     const rows = data.schedules.filter(row => row.guest_id === guest.id);
+    const active = (data.active_invitations || []).filter(grant => data.scheduled_grants?.[grant.id] === guest.id && Date.parse(grant.expires_at) > Date.now());
+    const ended = !active.length && rows.every(row => row.status === "revoked");
     const card = document.createElement("article"); card.className = "scheduled-guest";
     const key = `${currentPage.id}/${guest.id}`;
     const header = document.createElement("div"); header.className = "grant-card scheduled-guest-header";
@@ -2988,9 +2993,9 @@ function renderScheduledGuests(data) {
     const contact = document.createElement("span");
     contact.textContent = `Scheduled · ${statuses.length ? statuses.map(humanize).join(" / ") : "Schedules removed"} · ${guest.email}`;
     const windows = rows.flatMap(row => (row.upcoming || []).filter(window => window.start != null).map(window => ({...window, timezone: row.definition.timezone}))).sort((a,b) => a.start-b.start);
-    const next = document.createElement("span"); next.textContent = windows.length ? `Next: ${scheduleWindowText(windows[0], windows[0].timezone)}` : "No upcoming access windows";
+    const next = document.createElement("span"); next.textContent = ended ? "Access ended · History retained" : windows.length ? `Next: ${scheduleWindowText(windows[0], windows[0].timezone)}` : "No upcoming access windows";
     copy.append(title, contact, next);
-    if (guest.needs_attention || statuses.includes("blocked")) {
+    if (!ended && (guest.needs_attention || statuses.includes("blocked"))) {
       const alert = document.createElement("span"); alert.className = "schedule-warning";
       alert.textContent = "Needs attention · View details"; copy.append(alert);
     }
@@ -3013,20 +3018,21 @@ function renderScheduledGuests(data) {
       if (open) expandedScheduledGuests.add(key); else expandedScheduledGuests.delete(key);
     }
     const revoke = scheduleControl("Revoke guest", async () => {
-      if (!await confirmAction(`Revoke ${guest.label}? This ends all current access and pauses all future schedules for this guest on this Access Page. History is retained. You can resume schedules later.`)) return;
+      if (!await confirmAction(`Revoke ${guest.label}? This ends all current access, stops all future schedules, and moves this guest to Recently ended guests. History is retained. You can explicitly resume schedules later.`)) return;
       revoke.disabled = true;
       try {
         await scheduleRequest({action: "revoke_guest", guest_id: guest.id}, null);
         await loadSchedules();
-        setStatus("Guest revoked. Current access has ended and all future schedules are paused.", "success");
+        setStatus("Guest revoked and moved to Recently ended guests. Current access and future invitations have stopped.", "success");
       } finally { revoke.disabled = false; }
     });
     revoke.className = "danger"; revoke.setAttribute("aria-label", `Revoke guest ${guest.label}`);
-    controls.append(expand, revoke); header.append(copy, controls); card.append(header);
+    controls.append(expand);
+    if (!ended) controls.append(revoke);
+    header.append(copy, controls); card.append(header);
     if (guest.latest_delivery) {
       const last = document.createElement("p"); last.textContent = `Last invitation: ${deliveryDescription(guest.latest_delivery)}`; body.append(last);
     }
-    const active = (data.active_invitations || []).filter(grant => data.scheduled_grants?.[grant.id] === guest.id && Date.parse(grant.expires_at) > Date.now());
     if (active.length) {
       title.textContent += ` · ${active.length} current invitation${active.length === 1 ? "" : "s"}`;
       const heading = document.createElement("h4"); heading.textContent = "Current invitations"; body.append(heading);
@@ -3082,11 +3088,12 @@ function renderScheduledGuests(data) {
     }); clear.classList.add("hidden"); state.clear = clear;
     const more = scheduleControl("Load older entries", () => loadScheduledTimeline(state, Boolean(state.cursor))); state.more = more; more.classList.add("hidden");
     filter.addEventListener("change", () => loadScheduledTimeline(state));
-    body.append(heading, filter, windowLabel, clear, entries, status, more); card.append(body); list.append(card);
+    body.append(heading, filter, windowLabel, clear, entries, status, more); card.append(body); (ended ? endedList : list).append(card);
     setExpanded(expandedScheduledGuests.has(key));
     if (expandedScheduledGuests.has(key)) { loaded = true; loadScheduledTimeline(state); }
   }
-  if (!data.guests?.length) list.textContent = "No scheduled guests yet. Use Add guest → Scheduled access.";
+  if (!list.children.length) list.textContent = "No scheduled guests. Use Add guest → Scheduled access.";
+  renderRevokedGuests();
 }
 
 async function loadSchedules() {
