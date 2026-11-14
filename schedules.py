@@ -699,12 +699,11 @@ class Scheduler:
         record["email_attempts"] += 1
         self.store.put(row, "sending")
         zone = ZoneInfo(record["timezone"])
-        window = " to ".join(datetime.fromtimestamp(row[key], zone).strftime("%Y-%m-%d %H:%M %Z (%z)") for key in ("start", "end"))
-        text, html = guest_invitation_email_content(record["grant"]["qurl_link"], verification_required=record["verification_required"])
-        text += f"\nScheduled access: {window}\nTimezone: {record['timezone']}\nOpening early displays the start time. Access begins only when this window opens. Access still ends at the original time if this email arrives late.\n"
-        # Plain text and HTML show the same original absolute window.
-        from html import escape
-        html += f"<p>Scheduled access: {escape(window)}. Timezone: {escape(record['timezone'])}. Opening early displays the start time. Access begins only when this window opens. Access ends at the original time even if delivery is late.</p>"
+        start, end = (datetime.fromtimestamp(row[key], zone).strftime("%b %d, %Y at %I:%M %p %Z (%z)") for key in ("start", "end"))
+        text, html = guest_invitation_email_content(
+            record["grant"]["qurl_link"], verification_required=record["verification_required"],
+            access_window=(start, end, record["timezone"]),
+        )
         try:
             send_email(self.r.SMTP_CONFIG_STORE.load(), record["email"], "Your scheduled Access Pages invitation", text, html_body=html,
                        message_id=f'<{row["id"]}@access-pages.invalid>')

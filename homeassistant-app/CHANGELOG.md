@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.160
+
+- Show scheduled invitation start and end dates, local times, timezone, and UTC offsets prominently above the email's invitation button, including overnight windows. Keep the original access window when delivery is late.
+- Explain early opening and expiry of already-open sessions within the email body, with matching plain text.
+- Remove the embedded email logo attachment that could appear as a large downloading placeholder in mail apps; retain text branding.
+
 ## 0.1.159
 
 - Separate scheduled invitation delivery from access, using absolute LayerV start/end timestamps and local start enforcement. Add delivery choices and an email/access preview; migrate existing schedules to their original send-at-start behavior.

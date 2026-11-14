@@ -269,7 +269,6 @@ def _email_shell(title: str, content: str) -> str:
       <tr><td align="center">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #dfe6ef;border-radius:18px;overflow:hidden;">
           <tr><td style="padding:24px 30px;background:#10233f;color:#ffffff;">
-            <img src="cid:access-pages-logo" width="24" height="24" alt="Access Pages" style="display:block;width:24px;height:24px;max-width:24px;margin-bottom:8px;border:0;">
             <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#9fc7ff;">Access Pages</div>
             <h1 style="margin:8px 0 0;font-size:25px;line-height:1.25;">{escape(title)}</h1>
           </td></tr>
@@ -303,6 +302,7 @@ def verification_email_content(code: str) -> tuple[str, str]:
 def guest_invitation_email_content(
     qurl_link: str,
     *, verification_required: bool = True,
+    access_window: tuple[str, str, str] | None = None,
 ) -> tuple[str, str]:
     verification_note = (
         "A separate one-time verification code will be sent to this email address when you open the guest controls."
@@ -314,14 +314,34 @@ def guest_invitation_email_content(
         "background:#1769d2;color:#ffffff;text-decoration:none;"
         "font-size:15px;font-weight:700;"
     )
+    window_text = ""
+    window_html = ""
+    if access_window is not None:
+        start, end, zone = access_window
+        window_note = (
+            "Opening early displays the start time. Access begins only when this window opens. "
+            "Access ends at the time shown, including already-open sessions, even if this email arrives late."
+        )
+        window_text = f"Access window\nStarts: {start}\nEnds: {end}\nTimezone: {zone}\n{window_note}\n\n"
+        window_html = f"""
+          <div style="margin:0 0 24px;padding:18px 20px;border:1px solid #bed4f2;border-radius:12px;background:#f2f7ff;font-size:15px;line-height:1.6;">
+            <strong>Access window</strong><br>
+            <strong>Starts:</strong> {escape(start)}<br>
+            <strong>Ends:</strong> {escape(end)}<br>
+            <strong>Timezone:</strong> {escape(zone)}
+            <p style="margin:12px 0 0;font-size:13px;">{window_note}</p>
+          </div>
+        """
     text = (
         "You have been given temporary access through Access Pages.\n\n"
+        f"{window_text}"
         "Open your private guest link:\n"
         f"{qurl_link}\n\n"
         f"{verification_note}\n"
     )
     content = f"""
       <p style="margin:0 0 24px;font-size:16px;line-height:1.6;">You have been given temporary access to selected Home Assistant controls.</p>
+      {window_html}
       <a href="{safe_qurl}" style="{button}">Open Guest Controls</a>
       <p style="margin:24px 0 0;color:#66758a;font-size:13px;line-height:1.6;">{verification_note}</p>
     """
@@ -347,12 +367,6 @@ def send_email(
     message.set_content(body)
     if html_body:
         message.add_alternative(html_body, subtype="html")
-        if "cid:access-pages-logo" in html_body:
-            message.get_payload()[-1].add_related(
-                (Path(__file__).parent / "static" / "access-pages-mark.png").read_bytes(),
-                maintype="image", subtype="png", cid="<access-pages-logo>",
-                disposition="inline", filename="access-pages.png",
-            )
     context = ssl.create_default_context()
     try:
         if config.security == "tls":

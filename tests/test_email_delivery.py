@@ -126,10 +126,9 @@ class EmailDeliveryTests(unittest.TestCase):
         html_part = message.get_body(preferencelist=("html",)).get_content()
         self.assertIn("123456", html_part)
         self.assertNotIn("<script", html_part.lower())
-        logos = [part for part in message.walk() if part.get("Content-ID") == "<access-pages-logo>"]
-        self.assertEqual(len(logos), 1)
-        self.assertEqual(logos[0].get_content_type(), "image/png")
-        self.assertGreater(len(logos[0].get_payload(decode=True)), 0)
+        self.assertEqual([part.get_content_type() for part in message.iter_parts()], ["text/plain", "text/html"])
+        self.assertNotIn("<img", html_part)
+        self.assertNotIn("cid:", html_part)
 
     def test_invitation_template_escapes_links_in_html(self):
         qurl = 'https://qurl.example/a?x=1&label="test"'
@@ -152,15 +151,38 @@ class EmailDeliveryTests(unittest.TestCase):
         with self.assertRaises(EmailConfigError):
             verification_email_content("12345<script>")
 
-    def test_unverified_invitation_has_button_logo_and_plain_text_link(self):
+    def test_unverified_invitation_has_button_text_branding_and_plain_text_link(self):
         qurl = "https://qurl.example/private"
         text, html = guest_invitation_email_content(qurl, verification_required=False)
         self.assertIn(qurl, text)
         self.assertEqual(html.count(qurl), 1)
         self.assertIn('href="' + qurl + '"', html)
-        self.assertIn("cid:access-pages-logo", html)
+        self.assertIn("Access Pages", html)
+        self.assertNotIn("<img", html)
         self.assertNotIn("verification code", text)
         self.assertNotIn("verification code", html)
+
+    def test_scheduled_window_is_inside_email_before_link_and_escaped(self):
+        qurl = "https://qurl.example/private"
+        window = ("Nov 14, 2026 at 10:00 PM MST (-0700)", "Nov 15, 2026 at 02:00 AM MST (-0700)", "America/Phoenix")
+        text, html = guest_invitation_email_content(qurl, access_window=window)
+        for value in window:
+            self.assertIn(value, text)
+            self.assertIn(value, html)
+            self.assertLess(text.index(value), text.index(qurl))
+            self.assertLess(html.index(value), html.index('href='))
+        self.assertTrue(html.rstrip().endswith("</html>"))
+        self.assertIn("including already-open sessions", html)
+        self.assertIn("Opening early", text)
+        _, escaped = guest_invitation_email_content(qurl, access_window=("<start>", "<end>", "<zone>"))
+        self.assertIn("&lt;start&gt;", escaped)
+        self.assertIn("&lt;end&gt;", escaped)
+        self.assertIn("&lt;zone&gt;", escaped)
+
+    def test_unscheduled_invitation_does_not_invent_access_window(self):
+        text, html = guest_invitation_email_content("https://qurl.example/private")
+        self.assertNotIn("Access window", text)
+        self.assertNotIn("Access window", html)
 
 
 class NotificationTargetStoreTests(unittest.TestCase):

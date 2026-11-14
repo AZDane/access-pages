@@ -128,6 +128,20 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(self.client.create_qurl.call_count, 1)
         self.assertEqual(self.store.history("cat-sitter")[0]["state"], "skipped")
 
+    def test_email_shows_original_overnight_window_inside_card_in_saved_timezone(self):
+        self.store.save("cat-sitter", definition(
+            timezone="America/Phoenix", start_time="22:00", end_time="02:00", next_day=True,
+        ), self.now, self.schedule_id)
+        self.now = instant("2026-11-15T05:10:00+00:00")
+        self.scheduler.tick()
+        self.scheduler.tick(delivery=True)
+        text = self.sender.call_args.args[3]
+        html = self.sender.call_args.kwargs["html_body"]
+        for value in ("Nov 14, 2026 at 10:00 PM MST (-0700)", "Nov 15, 2026 at 02:00 AM MST (-0700)", "America/Phoenix"):
+            self.assertIn(value, text)
+            self.assertLess(html.index(value), html.index("Open Guest Controls"))
+        self.assertTrue(html.rstrip().endswith("</html>"))
+
     def test_missing_smtp_blocks_until_explicit_resume(self):
         self.r.SMTP_CONFIG_STORE.configured.return_value = False
         self.start_window()
