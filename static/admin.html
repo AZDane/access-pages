@@ -226,8 +226,7 @@
         </div>
         <div id="grant-list" class="grant-list"></div>
         <div class="grant-heading revoked-heading"><div><h3>Scheduled guests</h3>
-          <p id="schedule-availability">Loading schedules…</p></div>
-          <button id="add-schedule" class="secondary" type="button">Schedule guest</button></div>
+          <p id="schedule-availability">Loading schedules…</p></div></div>
         <div class="editor-actions"><button id="refresh-schedules" class="secondary" type="button">Refresh schedules</button>
           <button id="pause-schedules" class="secondary" type="button">Pause all schedules</button></div>
         <div id="schedule-list" class="grant-list"></div>
@@ -301,12 +300,29 @@
     </div>
   </dialog>
 
+  <dialog id="guest-choice-dialog" class="user-dialog" aria-labelledby="guest-choice-title">
+    <div class="user-dialog-shell">
+      <header class="picker-header">
+        <div><p class="eyebrow">Secure access</p><h2 id="guest-choice-title">Add guest</h2></div>
+        <button id="close-guest-choice" class="icon-button" type="button" aria-label="Close add guest choices">×</button>
+      </header>
+      <div class="user-dialog-content">
+        <p class="user-dialog-intro">When should this guest have access?</p>
+        <div class="guest-invitation-options">
+          <button id="add-guest-now" class="secondary" type="button"><strong>Access now</strong><small>Create an expiring guest link to share now.</small></button>
+          <button id="add-schedule" class="secondary" type="button" disabled aria-describedby="guest-schedule-help"><strong>Scheduled access</strong><small>Choose a date or weekly schedule. Email a fresh link when each window starts.</small></button>
+        </div>
+        <p id="guest-schedule-help" class="user-dialog-intro" role="status"></p>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="user-dialog" class="user-dialog">
     <div class="user-dialog-shell">
       <header class="picker-header">
         <div>
           <p class="eyebrow">Secure access</p>
-          <h2>Add guest</h2>
+          <h2>Add guest · Access now</h2>
         </div>
         <button id="close-user-dialog" class="icon-button" type="button"
                 aria-label="Close add guest">×</button>

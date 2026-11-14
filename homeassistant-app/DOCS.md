@@ -653,7 +653,7 @@ Some problems will require enabling this mode and reproducing them again.
 ## Scheduled guest invitations
 
 With SMTP configured, open an Access Page's **Guests** view and select
-**Schedule guest**. Enter a name and email address, then choose a one-time date
+**Add guest → Scheduled access**. Enter a name and email address, then choose a one-time date
 or selected weekdays. Set start/end times, an optional next-day end, and optional
 first/last start dates for weekly recurrence. Review the upcoming times before
 saving. Use **Duplicate** for additional individual dates. This release uses

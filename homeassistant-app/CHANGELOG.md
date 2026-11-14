@@ -2,6 +2,8 @@
 
 ## 0.1.153
 
+- Offer Access now or Scheduled access from Add guest, with an SMTP setup explanation when scheduling is unavailable.
+
 - Fix oversized scheduling checkboxes and align each toggle with its label.
 - Open date calendars from the full date field, including embedded views, and improve native picker contrast.
 - Default new schedules to the owner browser's local timezone and provide a timezone selector. Preserve saved timezones when editing or duplicating schedules.

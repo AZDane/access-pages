@@ -2651,7 +2651,7 @@ editorUsersButton.addEventListener("click", () => {
 editorUsersBottomButton.addEventListener("click", () => {
   if (currentPage) manageUsers(currentPage.id);
 });
-addUserButton.addEventListener("click", openUserDialog);
+addUserButton.addEventListener("click", openGuestChoice);
 closeUserDialogButton.addEventListener("click", () => userDialog.close());
 closeActivityDialogButton.addEventListener(
   "click",
@@ -2756,6 +2756,7 @@ previewLink.addEventListener("click", (event) => {
 let scheduleData = {schedules: [], occurrences: [], timezone: "UTC"};
 let editingSchedule = null;
 const scheduleDialog = document.getElementById("schedule-dialog");
+const guestChoiceDialog = document.getElementById("guest-choice-dialog");
 const scheduleFormStatus = document.getElementById("schedule-form-status");
 const scheduleValueFields = {
   label: "schedule-name", email: "schedule-email", kind: "schedule-kind",
@@ -2766,6 +2767,14 @@ const scheduleChecks = {
   next_day: "schedule-next-day", verification_required: "schedule-verification",
   one_time_use: "schedule-single-use",
 };
+
+async function openGuestChoice() {
+  document.getElementById("add-schedule").disabled = true;
+  document.getElementById("guest-schedule-help").textContent = "Checking scheduled access availability…";
+  guestChoiceDialog.showModal();
+  try { await loadSchedules(); }
+  catch { document.getElementById("guest-schedule-help").textContent = "Could not check scheduling availability. Close and reopen Add guest to retry."; }
+}
 
 function scheduleFields() {
   const definition = {};
@@ -2879,6 +2888,10 @@ async function loadSchedules() {
   if (currentPage?.id !== pageId) return;
   scheduleData = data;
   document.getElementById("add-schedule").disabled = !data.smtp_configured || !data.supported;
+  document.getElementById("guest-schedule-help").textContent = !data.supported
+    ? "Scheduled access requires the Home Assistant App Connector."
+    : !data.smtp_configured ? "Configure SMTP in Email settings to enable scheduled access."
+      : "Scheduled invitations are emailed automatically when access begins.";
   document.getElementById("schedule-availability").textContent = !data.supported
     ? "Scheduling requires the Home Assistant App Connector."
     : !data.smtp_configured ? "Configure SMTP to enable scheduled invitations. Existing schedules remain visible."
@@ -2926,7 +2939,18 @@ async function loadSchedules() {
   if (!data.occurrences.length) historyList.textContent = "No occurrences yet.";
 }
 
-document.getElementById("add-schedule").addEventListener("click", () => openSchedule());
+document.getElementById("add-schedule").addEventListener("click", () => {
+  guestChoiceDialog.close();
+  openSchedule();
+});
+document.getElementById("add-guest-now").addEventListener("click", () => {
+  guestChoiceDialog.close();
+  openUserDialog();
+});
+document.getElementById("close-guest-choice").addEventListener("click", () => guestChoiceDialog.close());
+guestChoiceDialog.addEventListener("click", event => {
+  if (event.target === guestChoiceDialog) guestChoiceDialog.close();
+});
 document.getElementById("close-schedule").addEventListener("click", () => scheduleDialog.close());
 document.getElementById("schedule-kind").addEventListener("change", updateScheduleKind);
 for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {

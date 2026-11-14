@@ -1477,6 +1477,13 @@ input:disabled {
 }
 
 /* Scheduled invitations use native date and time inputs. */
+#guest-choice-dialog { width: min(640px, 95vw); height: fit-content; max-height: 90vh; overflow-y: auto; }
+#guest-choice-dialog .user-dialog-shell { height: auto; }
+#guest-schedule-help { margin-top: 1rem; }
+.guest-invitation-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.guest-invitation-options button { padding: 1rem; text-align: left; }
+.guest-invitation-options strong, .guest-invitation-options small { display: block; }
+.guest-invitation-options small { margin-top: .5rem; line-height: 1.5; font-weight: 400; }
 .schedule-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .schedule-fields > label { display: flex; flex-direction: column; gap: .4rem; }
 .schedule-fields > label.schedule-check { flex-direction: row; align-items: center; min-height: 44px; gap: .65rem; }
@@ -1491,4 +1498,4 @@ input:disabled {
 #schedule-dialog input[type="date"] { position: relative; cursor: pointer; }
 #schedule-dialog input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; background-size: 18px 18px; background-position: right 13px center; cursor: pointer; }
 #schedule-list article { padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
-@media (max-width: 600px) { .schedule-fields { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .schedule-fields, .guest-invitation-options { grid-template-columns: 1fr; } }
