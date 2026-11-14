@@ -3189,10 +3189,15 @@ function renderScheduledGuests(data) {
       options.append(scheduleControl("Pause and end current access", async () => {
         if (!await confirmAction(`Pause this schedule for ${guest.label} and end its current access? Other schedules for this guest are unaffected.`)) return;
         await scheduleRequest({action: "pause", revoke_active: true}, row.id); await loadSchedules();
-      }), scheduleControl("Delete schedule", async () => {
-        if (!await confirmAction("Delete this schedule? Already-issued invitations keep their original end. Retained history is removed automatically after 30 days and cleanup completes.")) return;
-        await scheduleRequest({action: "delete"}, row.id); await loadSchedules();
       }));
+      const remove = scheduleControl("Delete schedule", async () => {
+        if (!await confirmAction(`Delete this schedule for ${guest.label} (${scheduleRuleText(row)})? This stops its future invitations. Other schedules for this guest are unaffected. Already-issued invitations keep their original end time. History remains until its normal retention expires.`, {
+          title: "Delete schedule?", acceptLabel: "Delete schedule", safeDefault: true,
+        })) return;
+        await scheduleRequest({action: "delete"}, row.id); await loadSchedules();
+      });
+      remove.className = "danger";
+      actions.append(remove);
       menu.append(options); actions.append(menu); section.append(actions); body.append(section);
     }
     if (!rows.length) {

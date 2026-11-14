@@ -743,6 +743,11 @@ start collapsed when opening the Guests view. The summary shows status and the
 next access window; failures remain visible while collapsed. **View details**
 reveals the latest invitation status, schedule controls, upcoming windows, and
 **Activity and invitation history**. Refreshing preserves cards you have expanded.
+Each schedule has a visible **Delete schedule** button beside **Edit** and
+**Pause/Resume**. It stops only that schedule's future invitations; other schedules
+and retained history are unaffected. The confirmation identifies the schedule and
+explains that already-issued invitations keep their original end time. Use the
+individual invitation's revoke control if that access must end immediately.
 
 **Revoke guest** is visible without expanding the card. After confirmation it ends
 all current access and stops every future schedule for that guest on this Access
