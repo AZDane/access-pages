@@ -207,6 +207,9 @@ stops every schedule for that guest on this Access Page, then moves the card to
 keeps the guest in the scheduled list. Explicitly resuming a schedule restores it.
 Use **View details** to manage schedules and view a combined
 activity and invitation timeline, filter by access window, or load older entries.
+Each schedule has a visible **Delete schedule** button beside Edit and Pause/Resume.
+Deleting it stops only its future invitations; other schedules and retained history
+remain, and already-issued invitations keep their original end time.
 Email acceptance and guest activity are shown separately. Add another schedule to
 an existing guest, or duplicate a schedule, to keep its history together. Matching
 names or email addresses alone never combine guests; each qURL remains an

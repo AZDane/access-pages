@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.158
+
+- Show Delete schedule beside Edit and Pause/Resume for each schedule, including when a guest has multiple schedules, instead of hiding it under More.
+- Identify the selected schedule in the confirmation and explain that other schedules and retained history are unaffected, while already-issued invitations keep their original end time. Cancel is the default confirmation action.
+
 ## 0.1.157
 
 - Make guest form errors prominent with red messages, outlined fields or groups, accessible descriptions, and focus on the entry needing attention. Explain incomplete alert destinations/activities before submitting.
