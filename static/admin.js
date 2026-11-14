@@ -2797,6 +2797,28 @@ function scheduleWindowText(window, zone) {
   return window.reason || `${scheduleTime(window.start, zone)} – ${scheduleTime(window.end, zone)} · ${zone}`;
 }
 
+function localScheduleTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || scheduleData.timezone || "UTC";
+  } catch {
+    return scheduleData.timezone || "UTC";
+  }
+}
+
+function populateScheduleTimezones(selected) {
+  const local = localScheduleTimezone();
+  const select = document.getElementById("schedule-timezone");
+  const zones = [...new Set([local, selected, scheduleData.timezone, "UTC", ...(scheduleData.timezones || [])].filter(Boolean))];
+  select.replaceChildren();
+  for (const zone of zones) {
+    const option = document.createElement("option");
+    option.value = zone;
+    option.textContent = `${zone.replaceAll("_", " ")}${zone === local ? " (local)" : ""}`;
+    select.append(option);
+  }
+  document.getElementById("schedule-timezone-help").textContent = `Local timezone: ${local}. Choose another zone if needed; saved schedules keep their timezone.`;
+}
+
 async function scheduleRequest(payload, id = editingSchedule) {
   const suffix = id ? `/${encodeURIComponent(id)}` : "";
   const response = await adminApi.fetch(`api/admin/pages/${encodeURIComponent(currentPage.id)}/schedules${suffix}`, {
@@ -2810,11 +2832,12 @@ async function scheduleRequest(payload, id = editingSchedule) {
 function openSchedule(row = null, duplicate = false) {
   editingSchedule = duplicate ? null : row?.id || null;
   const d = row?.definition || {
-    label: "", email: "", kind: "once", timezone: scheduleData.timezone,
+    label: "", email: "", kind: "once", timezone: localScheduleTimezone(),
     date: "", start_time: "09:00", end_time: "12:00", first_date: "", last_date: "",
     weekdays: [], next_day: false, verification_required: true, one_time_use: false,
     notifications: {targets: [], events: []},
   };
+  populateScheduleTimezones(d.timezone);
   for (const [key, id] of Object.entries(scheduleValueFields)) document.getElementById(id).value = d[key] || "";
   for (const [key, id] of Object.entries(scheduleChecks)) document.getElementById(id).checked = Boolean(d[key]);
   for (const input of document.querySelectorAll('input[name="schedule-weekday"]')) input.checked = d.weekdays.includes(Number(input.value));
@@ -2906,6 +2929,13 @@ async function loadSchedules() {
 document.getElementById("add-schedule").addEventListener("click", () => openSchedule());
 document.getElementById("close-schedule").addEventListener("click", () => scheduleDialog.close());
 document.getElementById("schedule-kind").addEventListener("change", updateScheduleKind);
+for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {
+  const input = document.getElementById(id);
+  input.addEventListener("click", () => {
+    try { input.showPicker?.(); }
+    catch { /* Keep native activation and keyboard editing in restricted frames. */ }
+  });
+}
 document.getElementById("preview-schedule").addEventListener("click", () => previewSchedule().catch(error => { scheduleFormStatus.textContent = error.message; }));
 document.getElementById("refresh-schedules").addEventListener("click", () => loadSchedules().catch(error => setStatus(error.message, "error")));
 document.getElementById("pause-schedules").addEventListener("click", async () => {

@@ -334,6 +334,8 @@ class ScheduleRoutesTests(unittest.TestCase):
         reply = self.route()
         self.assertEqual(reply.call_args.args[0], 200)
         self.assertNotIn("qurl.invalid", json.dumps(reply.call_args.args[1]))
+        self.assertIn("America/Phoenix", reply.call_args.args[1]["timezones"])
+        self.assertIn("Europe/London", reply.call_args.args[1]["timezones"])
 
     def test_cannot_edit_schedule_from_another_page(self):
         self.r.PAGE_STORE.create({**VALID_PAGE, "id": "other-page"})

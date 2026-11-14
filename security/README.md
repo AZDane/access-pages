@@ -267,3 +267,11 @@ loading, session/changeset binding, ctypes/cffi/APSW bridge, or database-upload
 path was added. Existing qURL and SQLite binary fingerprints, advisory evidence,
 and the November 26 review deadline remain mandatory. Both architectures still
 must reproduce the evidence and pass native packaged checks before publication.
+
+### Schedule form timezone list — 2026-11-14
+
+App 0.1.153 adds the installed IANA timezone names to the authenticated schedule
+listing for the owner's selector. The route's reviewed source hash is refreshed;
+this uses the existing read-only timezone data and introduces no SQL, schema,
+permission, native-library or guest-route changes. Existing vulnerability
+assessment scope, binary fingerprints and expiry dates remain unchanged.

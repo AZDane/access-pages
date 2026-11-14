@@ -553,7 +553,7 @@
         <label>Guest name<input id="schedule-name" required maxlength="120" autocomplete="name"></label>
         <label>Guest email<input id="schedule-email" required type="email" maxlength="254" autocomplete="email"></label>
         <label>Schedule<select id="schedule-kind"><option value="once">One-time date</option><option value="weekly">Repeat weekly</option></select></label>
-        <label>Timezone (IANA name)<input id="schedule-timezone" required placeholder="America/Phoenix"></label>
+        <label>Timezone<select id="schedule-timezone" required aria-describedby="schedule-timezone-help"></select><small id="schedule-timezone-help"></small></label>
         <label id="schedule-date-field">Date<input id="schedule-date" type="date"></label>
         <fieldset id="schedule-weekdays" class="wide hidden"><legend>Access starts on</legend>
           <label><input type="checkbox" name="schedule-weekday" value="0">Mon</label><label><input type="checkbox" name="schedule-weekday" value="1">Tue</label>
@@ -562,11 +562,11 @@
           <label><input type="checkbox" name="schedule-weekday" value="6">Sun</label>
         </fieldset>
         <label>Start time<input id="schedule-start" type="time" required></label><label>End time<input id="schedule-end" type="time" required></label>
-        <label class="wide"><input id="schedule-next-day" type="checkbox">Ends next day</label>
+        <label class="wide schedule-check"><input id="schedule-next-day" type="checkbox">Ends next day</label>
         <label id="schedule-first-field" class="hidden">First start date (optional)<input id="schedule-first" type="date"></label>
         <label id="schedule-last-field" class="hidden">Last start date (optional)<input id="schedule-last" type="date"></label>
-        <label class="wide"><input id="schedule-verification" type="checkbox" checked>Require a verification code when the guest opens controls</label>
-        <label class="wide"><input id="schedule-single-use" type="checkbox">Single-use invitation for each occurrence</label>
+        <label class="wide schedule-check"><input id="schedule-verification" type="checkbox" checked>Require a verification code when the guest opens controls</label>
+        <label class="wide schedule-check"><input id="schedule-single-use" type="checkbox">Single-use invitation for each occurrence</label>
         <fieldset class="wide"><legend>Guest activity alerts</legend><div id="schedule-alert-targets"></div>
           <label><input type="checkbox" name="schedule-event" value="initial_login">First successful login</label>
           <label><input type="checkbox" name="schedule-event" value="successful_action">Successful actions</label>

@@ -1,7 +1,7 @@
 """Authenticated schedule administration, separate from guest-facing routes."""
 
 import time
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, available_timezones
 
 from email_delivery import EmailConfigError
 from layerv import BrokerLayerVClient
@@ -31,7 +31,8 @@ def handle(handler, path, runtime, payload=None):
                 default_zone = "UTC"
             handler._send_json(200, {"schedules": rows, "occurrences": store.history(page_id),
                                      "smtp_configured": runtime.SMTP_CONFIG_STORE.configured(),
-                                     "supported": supported, "timezone": default_zone})
+                                     "supported": supported, "timezone": default_zone,
+                                     "timezones": sorted(available_timezones())})
             return True
         if not isinstance(payload, dict):
             raise ValueError("Request must be an object")

@@ -660,8 +660,12 @@ saving. Use **Duplicate** for additional individual dates. This release uses
 native date/time pickers and an upcoming list; it does not synchronize external
 calendars.
 
-The timezone defaults to the Home Assistant App's `TZ` value (UTC if unavailable)
-and is saved explicitly as an IANA name on each schedule. Check it before saving.
+New schedules default to your browser's local timezone. Choose a different zone
+from the timezone selector if needed; the selected IANA timezone is saved on each
+schedule. If browser detection is unavailable, the App's `TZ` value is used
+(UTC if unavailable). Editing or duplicating a schedule preserves its saved zone.
+Click anywhere in a date field to open its calendar; keyboard date entry also
+remains available. Check the timezone and upcoming windows before saving.
 Changes to the installation or browser timezone do not move existing schedules.
 Weekly schedules follow local wall-clock time. Nonexistent or ambiguous DST
 boundaries are skipped and shown in previews/history. The weekday and final
