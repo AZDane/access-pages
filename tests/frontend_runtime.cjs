@@ -671,6 +671,8 @@ async function testGuestDraftAndValidation() {
   e("schedule-name").value = ""; await close();
   assert.equal(confirms, 1, "Reverting an edit is clean");
   open(); e("schedule-name").value = "Visitor"; e("schedule-email").value = "guest@example.invalid"; e("schedule-date").value = "2099-01-01";
+  e("schedule-first").value = "2099-12-31"; e("schedule-last").value = "2099-01-01";
+  assert.equal(vm.runInContext("scheduleFields().first_date", fixture.context), "", "One-time dates ignore hidden recurrence limits");
   targets = [{value: "email"}];
   const preview = () => e("preview-schedule").listeners.get("click")();
   await preview();

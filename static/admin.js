@@ -2049,7 +2049,7 @@ function setScheduleStatus(message, kind = "") {
 }
 function validateScheduleInputs() {
   for (const input of guestInputs(scheduleDialog)) {
-    if (input.willValidate && !input.checkValidity()) {
+    if (!input.closest?.(".hidden") && input.willValidate && !input.checkValidity()) {
       throw guestInputError(input.validationMessage, [input.id]);
     }
   }
@@ -2904,6 +2904,12 @@ function scheduleFields() {
     targets: [...document.querySelectorAll('input[name="schedule-target"]:checked')].map(x => x.value),
     events: [...document.querySelectorAll('input[name="schedule-event"]:checked')].map(x => x.value),
   };
+  // Switching schedule kinds must not submit or validate hidden, inapplicable dates.
+  if (definition.kind === "once") {
+    definition.first_date = ""; definition.last_date = ""; definition.weekdays = [];
+  } else {
+    definition.date = "";
+  }
   return definition;
 }
 
