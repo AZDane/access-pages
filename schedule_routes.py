@@ -60,7 +60,15 @@ def handle(handler, path, runtime, payload=None):
                 current = store.get(schedule_id)
                 if current["page"] != page_id or current["status"] == "deleted":
                     raise ValueError("Schedule not found")
-            if action in {"pause", "resume", "delete"}:
+            if action == "revoke_guest":
+                guest_id = payload.get("guest_id")
+                if schedule_id or not isinstance(guest_id, str):
+                    raise ValueError("Choose a guest")
+                rows = store.revoke_guest(page_id, guest_id, now)
+                worker = Scheduler(runtime, store)
+                for row in rows:
+                    worker.deny(row)
+            elif action in {"pause", "resume", "delete"}:
                 if not schedule_id:
                     raise ValueError("Choose a schedule")
                 if action == "resume" and (not supported or not runtime.SMTP_CONFIG_STORE.configured()):

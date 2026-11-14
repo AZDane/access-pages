@@ -43,7 +43,7 @@ The upstream reproducer requires an FTS5 virtual table with `detail=none`,
 negative rowids and a prefix `MATCH` query:
 https://sqlite.org/bugs/info/2026-08-04T08:49:27Z
 
-All 173 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
+All 178 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
 `upstream_cleanup.py`, `layerv_broker.py` and `schedules.py` use constant SQL. Values are bound
 as parameters. There is no FTS table, MATCH query, extension loading or database
 deserialization. The probe executes the declared CREATE statements with the
@@ -292,3 +292,18 @@ for these tables and indexes. Binary pins, confinement, advisory assessments and
 the existing review deadline remain unchanged. Migration, identity isolation,
 pagination, cleanup outages, and once-only first-login behavior have focused tests;
 the packaged probe also verifies timeline associations under the shipped runtime.
+
+### Guest-wide revocation (0.1.155)
+
+The six SQLite consumers now contain 178 reviewed constant SQL calls. Five new
+statements atomically verify a page-scoped guest, pause that guest's non-deleted
+schedules, and journal cancellation of all its outstanding occurrences, including
+those on deleted schedules. The authenticated owner route holds the page lock
+through local denial; the existing worker retains remote cleanup for retry. The
+queries bind guest/page identifiers and introduce no new tables, SQL consumers,
+FTS, virtual tables, extensions, native bridges, or session/changeset APIs.
+
+Source and SQL-call evidence fingerprints are refreshed. Runtime binaries,
+confinement, advisory scope and the November 26 review deadline are unchanged.
+Tests cover authentication, cross-page and same-contact isolation, pending email,
+multiple schedules, deleted schedules, retries, and retained history.

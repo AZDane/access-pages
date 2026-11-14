@@ -2323,6 +2323,7 @@ function setGuestCountStatus(page) {
 }
 
 async function manageUsers(pageId) {
+  expandedScheduledGuests.clear();
   setStatus("Loading guests…");
 
   try {
@@ -2978,30 +2979,56 @@ function renderScheduledGuests(data) {
   const list = document.getElementById("schedule-list"); list.replaceChildren();
   for (const guest of data.guests || []) {
     const rows = data.schedules.filter(row => row.guest_id === guest.id);
-    const card = document.createElement("details"); card.className = "scheduled-guest";
+    const card = document.createElement("article"); card.className = "scheduled-guest";
     const key = `${currentPage.id}/${guest.id}`;
-    card.open = expandedScheduledGuests.has(key);
-    const summary = document.createElement("summary");
-    const title = document.createElement("strong");
+    const header = document.createElement("div"); header.className = "grant-card scheduled-guest-header";
+    const copy = document.createElement("div"); copy.className = "grant-copy";
+    const title = document.createElement("strong"); title.textContent = guest.label;
     const statuses = [...new Set(rows.map(row => row.status))];
-    title.textContent = `${guest.label} · ${statuses.length ? statuses.map(humanize).join(" / ") : "Schedules removed"}`;
-    const contact = document.createElement("span"); contact.textContent = guest.email;
-    const rule = document.createElement("span"); rule.textContent = rows.length === 1 ? scheduleRuleText(rows[0]) : `${rows.length} schedules`;
+    const contact = document.createElement("span");
+    contact.textContent = `Scheduled · ${statuses.length ? statuses.map(humanize).join(" / ") : "Schedules removed"} · ${guest.email}`;
     const windows = rows.flatMap(row => (row.upcoming || []).filter(window => window.start != null).map(window => ({...window, timezone: row.definition.timezone}))).sort((a,b) => a.start-b.start);
     const next = document.createElement("span"); next.textContent = windows.length ? `Next: ${scheduleWindowText(windows[0], windows[0].timezone)}` : "No upcoming access windows";
-    summary.append(title, contact, rule, next);
-    if (guest.latest_delivery) {
-      const last = document.createElement("span"); last.textContent = `Last invitation: ${deliveryDescription(guest.latest_delivery)}`; summary.append(last);
-    }
+    copy.append(title, contact, next);
     if (guest.needs_attention || statuses.includes("blocked")) {
-      const alert = document.createElement("strong"); alert.className = "schedule-warning";
-      alert.textContent = "Needs attention — expand for delivery details"; summary.append(alert);
+      const alert = document.createElement("span"); alert.className = "schedule-warning";
+      alert.textContent = "Needs attention · View details"; copy.append(alert);
     }
-    card.append(summary);
-    const body = document.createElement("div"); body.className = "scheduled-guest-body";
+    const body = document.createElement("div"); body.className = "scheduled-guest-body hidden";
+    body.id = `scheduled-guest-details-${guest.id}`;
+    const controls = document.createElement("div"); controls.className = "grant-actions";
+    let loaded = false;
+    const expand = scheduleControl("View details", () => {
+      const open = expand.getAttribute("aria-expanded") !== "true";
+      setExpanded(open);
+      if (open && !loaded) { loaded = true; return loadScheduledTimeline(state); }
+    });
+    expand.setAttribute("aria-controls", body.id);
+    expand.setAttribute("aria-label", `View details for ${guest.label}`);
+    function setExpanded(open) {
+      body.classList.toggle("hidden", !open);
+      expand.setAttribute("aria-expanded", String(open));
+      expand.textContent = open ? "Hide details" : "View details";
+      expand.setAttribute("aria-label", `${open ? "Hide" : "View"} details for ${guest.label}`);
+      if (open) expandedScheduledGuests.add(key); else expandedScheduledGuests.delete(key);
+    }
+    const revoke = scheduleControl("Revoke guest", async () => {
+      if (!await confirmAction(`Revoke ${guest.label}? This ends all current access and pauses all future schedules for this guest on this Access Page. History is retained. You can resume schedules later.`)) return;
+      revoke.disabled = true;
+      try {
+        await scheduleRequest({action: "revoke_guest", guest_id: guest.id}, null);
+        await loadSchedules();
+        setStatus("Guest revoked. Current access has ended and all future schedules are paused.", "success");
+      } finally { revoke.disabled = false; }
+    });
+    revoke.className = "danger"; revoke.setAttribute("aria-label", `Revoke guest ${guest.label}`);
+    controls.append(expand, revoke); header.append(copy, controls); card.append(header);
+    if (guest.latest_delivery) {
+      const last = document.createElement("p"); last.textContent = `Last invitation: ${deliveryDescription(guest.latest_delivery)}`; body.append(last);
+    }
     const active = (data.active_invitations || []).filter(grant => data.scheduled_grants?.[grant.id] === guest.id && Date.parse(grant.expires_at) > Date.now());
     if (active.length) {
-      const badge = document.createElement("span"); badge.textContent = `${active.length} current invitation${active.length === 1 ? "" : "s"}`; summary.append(badge);
+      title.textContent += ` · ${active.length} current invitation${active.length === 1 ? "" : "s"}`;
       const heading = document.createElement("h4"); heading.textContent = "Current invitations"; body.append(heading);
       for (const grant of active) {
         const line = document.createElement("p"); line.textContent = `Access ends ${formatExpiry(grant.expires_at)}`;
@@ -3056,13 +3083,8 @@ function renderScheduledGuests(data) {
     const more = scheduleControl("Load older entries", () => loadScheduledTimeline(state, Boolean(state.cursor))); state.more = more; more.classList.add("hidden");
     filter.addEventListener("change", () => loadScheduledTimeline(state));
     body.append(heading, filter, windowLabel, clear, entries, status, more); card.append(body); list.append(card);
-    let loaded = false;
-    card.addEventListener("toggle", () => {
-      if (card.open) {
-        expandedScheduledGuests.add(key);
-        if (!loaded) { loaded = true; loadScheduledTimeline(state); }
-      } else expandedScheduledGuests.delete(key);
-    });
+    setExpanded(expandedScheduledGuests.has(key));
+    if (expandedScheduledGuests.has(key)) { loaded = true; loadScheduledTimeline(state); }
   }
   if (!data.guests?.length) list.textContent = "No scheduled guests yet. Use Add guest → Scheduled access.";
 }
@@ -3083,7 +3105,7 @@ async function loadSchedules() {
   document.getElementById("schedule-availability").textContent = !data.supported
     ? "Scheduling requires the Home Assistant App Connector."
     : !data.smtp_configured ? "Configure SMTP to enable scheduled invitations. Existing schedules remain visible."
-      : "A new link for every occurrence. Times use each schedule’s saved timezone. Refresh to see delivery and retry progress.";
+      : "Expand a guest for schedules, delivery, and activity.";
   renderScheduledGuests(data);
   renderAccessGrants(currentPage);
 }

@@ -1497,11 +1497,13 @@ input:disabled {
 /* Native activation also works where an embedded browser disallows showPicker(). */
 #schedule-dialog input[type="date"] { position: relative; cursor: pointer; }
 #schedule-dialog input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; background-size: 18px 18px; background-position: right 13px center; cursor: pointer; }
-.scheduled-guest { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-.scheduled-guest > summary { padding: 1rem; cursor: pointer; }
-.scheduled-guest > summary > span { display: block; margin-top: .35rem; color: var(--muted); }
-.scheduled-guest > summary > .schedule-warning { display: block; margin-top: .5rem; color: var(--warning); }
-.scheduled-guest-body { padding: 0 1rem 1rem; }
+.scheduled-heading { flex-wrap: wrap; margin-bottom: 12px; }
+.scheduled-heading .editor-actions { margin-top: 0; }
+.scheduled-guest { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--surface-low, rgba(5,17,34,.42)); }
+.scheduled-guest-header.grant-card { border: 0; border-radius: 0; background: transparent; }
+.scheduled-guest-header .grant-copy { overflow-wrap: anywhere; }
+.scheduled-guest-header .schedule-warning { color: var(--warning); }
+.scheduled-guest-body { padding: 0 14px 14px; border-top: 1px solid var(--line); }
 .guest-schedule { border-top: 1px solid var(--line); padding-block: .75rem; }
 .guest-schedule h4 { margin: .25rem 0 .75rem; }
 .guest-schedule .editor-actions { margin-top: .75rem; }
