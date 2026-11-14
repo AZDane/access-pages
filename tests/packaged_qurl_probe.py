@@ -20,7 +20,7 @@ from layerv import LayerVError
 
 assert os.getuid() == 2103, "Run as the packaged access-pages-broker identity"
 assert ssl.create_default_context().cert_store_stats()["x509_ca"] > 0
-assert subprocess.check_output(["/usr/local/bin/qurl", "--version"], text=True).strip() == "qurl version 3.6.0"
+assert subprocess.check_output(["/usr/local/bin/qurl", "--version"], text=True).strip() == "qurl version 4.2.0"
 
 
 def publisher_at(directory):

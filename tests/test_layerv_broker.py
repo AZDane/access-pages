@@ -201,8 +201,8 @@ class LayerVBrokerPolicyTests(unittest.TestCase):
         self.registry.write_text(json.dumps(registry))
         grant_id = "grant_" + "a" * 16
         target = f"/g/guest/{grant_id}/?bootstrap=" + "s" * 43
-        for isolation in ("guest", "page"):
-            with self.subTest(isolation=isolation):
+        for isolation, advance in (("guest", False), ("page", False), ("guest", True), ("page", True), ("guest", "late"), ("page", "late")):
+            with self.subTest(isolation=isolation, advance=advance):
                 manager = Mock()
                 manager.revoke.return_value = False
                 scoped_client = Mock(resource_id="a" * 59, resource_public_key="verification-key")
@@ -220,7 +220,18 @@ class LayerVBrokerPolicyTests(unittest.TestCase):
                     patch("layerv_broker.GUEST_RESOURCES", manager),
                     patch("layerv_broker.RESOURCE_ISOLATION", isolation),
                 ):
-                    layerv_broker.create_grant("guest", grant_id, "Guest", "1h", target, True, "1h")
+                    start = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(days=1)
+                    end = start + timedelta(hours=1)
+                    timing = {"not_before": start.isoformat(), "expires_at": end.isoformat()} if advance else {}
+                    if advance == "late":
+                        # Catch-up preserves the original end; the configured
+                        # session may outlast the remaining absolute window.
+                        timing = {"expires_at": (start - timedelta(days=1) + timedelta(minutes=10)).isoformat()}
+                    layerv_broker.create_grant("guest", grant_id, "Guest", "25h" if advance else "1h", target, True, "1h", **timing)
+                    for field, value in timing.items():
+                        self.assertEqual(scoped_client.create_qurl.call_args.kwargs[field], value)
+                    if advance == "late":
+                        self.assertNotIn("not_before", scoped_client.create_qurl.call_args.kwargs)
                     manager.ensure.assert_called_once_with(
                         "guest", grant_id, "http://127.88.0.1:8080", isolation=isolation,
                     )

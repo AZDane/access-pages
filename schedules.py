@@ -28,14 +28,18 @@ from pages import PageConfigError, PageNotFoundError, validate_notifications, va
 UTC = timezone.utc
 GRACE = 15 * 60
 MAX_SCHEDULES = 200
+# Hosted Connector creation currently rejects >1 day for both invitation modes.
+# Keep the API transport capable of absolute windows, but never promise unsupported
+# delivery in the owner form. Raise this only with account/Connector live evidence.
+QURL_MAX_LIFETIME_DAYS = min(1, int(os.getenv("QURL_MAX_LIFETIME_DAYS", "30")))
 TERMINAL = {"accepted", "ended", "skipped", "failed", "cancelled"}
 
 
 def stamp(value):
-    return datetime.fromtimestamp(value, UTC).isoformat()
+    return datetime.fromtimestamp(value, UTC).isoformat(timespec="seconds")
 
 
-def validate_schedule(payload):
+def validate_schedule(payload, *, default_delivery="day_before", now=None):
     if not isinstance(payload, dict):
         raise ValueError("Schedule must be an object")
     label = str(payload.get("label", "")).strip()
@@ -51,6 +55,10 @@ def validate_schedule(payload):
         raise ValueError("Choose a one-time or weekly schedule")
     result = {"label": label, "email": validate_email(payload.get("email")),
               "timezone": zone, "kind": kind}
+    delivery = payload.get("delivery", default_delivery)
+    if delivery not in {"immediate", "day_before", "hour_before", "at_start"} or (kind == "weekly" and delivery == "immediate"):
+        raise ValueError("Choose a valid invitation delivery time")
+    result["delivery"] = delivery
     for key, default in (("next_day", False), ("verification_required", True), ("one_time_use", False)):
         value = payload.get(key, default)
         if type(value) is not bool:
@@ -82,7 +90,24 @@ def validate_schedule(payload):
         raise ValueError("Select at least one weekday")
     result["weekdays"] = sorted(set(weekdays))
     result["notifications"] = validate_notifications(payload.get("notifications"))
+    if now is not None:
+        if kind == "once":
+            window = occurrence_window(result, date.fromisoformat(result["date"]))
+            if window["start"] is not None and window["end"] is not None:
+                send = max(now, intended_send(result, window["start"], now))
+                if window["end"] - send > QURL_MAX_LIFETIME_DAYS * 86400:
+                    raise ValueError(f"LayerV scheduled links must expire within {QURL_MAX_LIFETIME_DAYS * 24} hours of sending; choose delivery closer to access")
+        elif minutes * 60 + delivery_lead(result) > QURL_MAX_LIFETIME_DAYS * 86400:
+            raise ValueError("LayerV scheduled links must expire within 24 hours of sending; choose 1 hour before or when access starts and a shorter access window")
     return result
+
+
+def delivery_lead(definition):
+    return {"day_before": 86400, "hour_before": 3600}.get(definition.get("delivery", "at_start"), 0)
+
+
+def intended_send(definition, start, saved_at):
+    return saved_at if definition.get("delivery") == "immediate" else start - delivery_lead(definition)
 
 
 def local_instant(day, clock, zone):
@@ -146,7 +171,7 @@ class ScheduleStore:
         try:
             db.execute("PRAGMA synchronous=FULL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1, 2):
+            if version not in (0, 1, 2, 3):
                 raise ValueError("Unsupported schedule database version")
             db.execute("CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, page TEXT NOT NULL, definition TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, cursor REAL NOT NULL, guest_id TEXT NOT NULL DEFAULT '')")
             db.execute("CREATE TABLE IF NOT EXISTS scheduled_guests (id TEXT PRIMARY KEY, page TEXT NOT NULL, label TEXT NOT NULL, email TEXT NOT NULL)")
@@ -166,6 +191,16 @@ class ScheduleStore:
                     db.execute("INSERT INTO scheduled_guests VALUES(?,?,?,?)", (guest_id, row["page"], definition["label"], definition["email"]))
                     db.execute("UPDATE schedules SET guest_id=? WHERE id=?", (guest_id, row["id"]))
                 db.execute("PRAGMA user_version=2")
+                db.commit()
+            if version < 3:
+                db.execute("BEGIN IMMEDIATE")
+                db.execute("ALTER TABLE occurrences RENAME TO occurrences_old")
+                db.execute("CREATE TABLE occurrences (id TEXT PRIMARY KEY, schedule TEXT NOT NULL, page TEXT NOT NULL, local_date TEXT NOT NULL, start REAL NOT NULL, end REAL NOT NULL, state TEXT NOT NULL, due REAL NOT NULL, record TEXT NOT NULL, send_at REAL NOT NULL, revision INTEGER NOT NULL, UNIQUE(schedule,local_date,revision))")
+                db.execute("INSERT INTO occurrences SELECT *,start,COALESCE(json_extract(record,'$.revision'),1) FROM occurrences_old")
+                db.execute("DROP TABLE occurrences_old")
+                db.execute("CREATE INDEX schedule_work ON occurrences(state,due)")
+                db.execute("UPDATE schedules SET definition=json_set(definition,'$.delivery','at_start') WHERE json_extract(definition,'$.delivery') IS NULL")
+                db.execute("PRAGMA user_version=3")
                 db.commit()
             with db:
                 yield db
@@ -204,6 +239,13 @@ class ScheduleStore:
                         pages.remove_access_grant(row["page"], grant_id)
                     except PageNotFoundError:
                         pass
+        # Also finish local denial after an ordinary restart interrupted an edit.
+        for row in self.work():
+            if row["state"] == "cancelling" and row["record"].get("grant_id"):
+                try:
+                    pages.remove_access_grant(row["page"], row["record"]["grant_id"])
+                except PageNotFoundError:
+                    pass
         token = "permit_" + secrets.token_hex(32)
         # A crash between the file and database writes causes safe recovery.
         temporary = permit.with_suffix(".tmp")
@@ -229,11 +271,23 @@ class ScheduleStore:
             raise ValueError("Schedule not found")
         return {**dict(row), "definition": json.loads(row["definition"])}
 
-    def upcoming(self, definition, now, schedule_id=None):
-        """An edit never reissues a date already processed by this schedule."""
+    def upcoming(self, definition, now, schedule_id=None, *, editing=False):
         with self.connect() as db:
-            used = {row[0] for row in db.execute("SELECT local_date FROM occurrences WHERE schedule=?", (schedule_id,))}
-        return [row for row in upcoming(definition, now, limit=6) if row["local_date"] not in used][:5]
+            used = {row[0] for row in db.execute("SELECT local_date FROM occurrences WHERE schedule=? AND start<=?", (schedule_id, now))}
+        rows = [row for row in upcoming(definition, now, limit=6) if row["local_date"] not in used][:5]
+        for row in rows:
+            row["send_at"] = max(now, intended_send(definition, row["start"], now)) if row["start"] is not None else None
+        return rows
+
+    def impact(self, page, schedule_id=None, guest_id=None, now=None):
+        now = time.time() if now is None else now
+        with self.connect() as db:
+            rows = db.execute("""SELECT o.start,o.end FROM occurrences o JOIN schedules s ON s.id=o.schedule
+                WHERE o.page=? AND (? IS NULL OR o.schedule=?) AND (? IS NULL OR s.guest_id=?)
+                  AND o.state NOT IN ('ended','skipped','failed','cancelled')
+                  AND json_extract(o.record,'$.grant_id') IS NOT NULL AND o.end>?""",
+                (page, schedule_id, schedule_id, guest_id, guest_id, now)).fetchall()
+        return {"future": sum(row["start"] > now for row in rows), "active": sum(row["start"] <= now for row in rows)}
 
     def save(self, page, definition, now, schedule_id=None, guest_id=None):
         validate_page_id(page)
@@ -257,7 +311,7 @@ class ScheduleStore:
                         updated = json.loads(other["definition"])
                         updated.update(label=definition["label"], email=definition["email"])
                         db.execute("UPDATE schedules SET definition=?,revision=revision+1,cursor=? WHERE id=?", (json.dumps(updated), now, other["id"]))
-                        db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND state NOT IN ('accepted','ended','skipped','failed','cancelled')", (other["id"],))
+                        db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND (state NOT IN ('accepted','ended','skipped','failed','cancelled') OR (state='accepted' AND start>?))", (other["id"], now))
                     db.execute("UPDATE scheduled_guests SET label=?,email=? WHERE id=?", (definition["label"], definition["email"], guest_id))
                 elif not schedule_id:
                     definition = {**definition, "label": guest["label"], "email": guest["email"]}
@@ -266,7 +320,7 @@ class ScheduleStore:
                 db.execute("INSERT INTO scheduled_guests VALUES(?,?,?,?)", (guest_id, page, definition["label"], definition["email"]))
             if schedule_id:
                 db.execute("UPDATE schedules SET definition=?,revision=revision+1,cursor=? WHERE id=?", (json.dumps(definition), now, schedule_id))
-                db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND state NOT IN ('accepted','ended','skipped','failed','cancelled')", (schedule_id,))
+                db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND (state NOT IN ('accepted','ended','skipped','failed','cancelled') OR (state='accepted' AND start>?))", (schedule_id, now))
             else:
                 if db.execute("SELECT count(*) FROM schedules WHERE status!='deleted'").fetchone()[0] >= MAX_SCHEDULES:
                     raise ValueError("Maximum of 200 schedules reached")
@@ -279,7 +333,7 @@ class ScheduleStore:
             raise ValueError("Invalid schedule status")
         with self.connect() as db:
             db.execute("UPDATE schedules SET status=?,cursor=?,revision=revision+1 WHERE id=?", (status, now, schedule_id))
-            db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND (state NOT IN ('accepted','ended','skipped','failed','cancelled') OR (? AND state='accepted'))", (schedule_id, revoke))
+            db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND (state NOT IN ('accepted','ended','skipped','failed','cancelled') OR (state='accepted' AND (? OR start>?)))", (schedule_id, revoke, now))
 
     def revoke_guest(self, page, guest_id, now):
         """Revoke all future schedules and journal current denial atomically.
@@ -324,7 +378,7 @@ class ScheduleStore:
         result = []
         for row in rows:
             record = json.loads(row["record"])
-            result.append({key: row[key] for key in ("id", "schedule", "local_date", "start", "end", "state", "due")} |
+            result.append({key: row[key] for key in ("id", "schedule", "local_date", "start", "end", "state", "due", "send_at", "revision")} |
                           {key: record.get(key) for key in ("label", "reason", "attempts", "email_attempts", "accepted_at", "timezone")})
         return result
 
@@ -363,7 +417,7 @@ class ScheduleStore:
         result = []
         for row in rows:
             record = json.loads(row["record"])
-            result.append({key: row[key] for key in ("at", "key", "start", "end", "state", "due")} |
+            result.append({key: row[key] for key in ("at", "key", "start", "end", "state", "due", "send_at")} |
                           {"type": "delivery", "occurrence_id": row["id"]} |
                           {key: record.get(key) for key in ("label", "reason", "attempts", "email_attempts", "accepted_at", "timezone")})
         return result
@@ -404,29 +458,34 @@ class ScheduleStore:
         d = schedule["definition"]
         zone = ZoneInfo(d["timezone"])
         today = datetime.fromtimestamp(now, zone).date()
-        cursor = schedule["cursor"]
-        # Record at most 30 days of missed occurrences; older ones are never replayed.
-        first = max(datetime.fromtimestamp(cursor, zone).date() - timedelta(days=1), today - timedelta(days=30))
+        first = max(datetime.fromtimestamp(schedule["cursor"], zone).date() - timedelta(days=1), today - timedelta(days=30))
+        last = today + timedelta(days=2)  # 24-hour lead across timezone/DST boundaries.
+        if d["kind"] == "once":
+            first = last = date.fromisoformat(d["date"])
         with self.connect() as db:
-            for offset in range((today - first).days + 1):
+            for offset in range((last - first).days + 1):
                 window = occurrence_window(d, first + timedelta(days=offset))
                 if not window:
                     continue
                 start, end = window["start"], window["end"]
                 if start is None or end is None:
-                    # Use a nominal boundary only to timestamp the skipped event;
-                    # never mint access for an ambiguous/nonexistent wall time.
                     start = datetime.combine(first + timedelta(days=offset), wall_time.fromisoformat(d["start_time"]), zone).timestamp()
                     end = start
-                if not cursor < start <= now:
+                if start <= schedule["cursor"]:
+                    continue
+                # A previously opened occurrence cannot be reissued by an edit/resume.
+                if db.execute("SELECT 1 FROM occurrences WHERE schedule=? AND local_date=? AND start<=?", (schedule["id"], window["local_date"], now)).fetchone():
                     continue
                 reason = window["reason"]
                 if not reason and (now >= start + GRACE or end - now < 60):
                     reason = "Skipped: start grace period passed while unavailable"
+                send_at = intended_send(d, start, schedule["cursor"])
+                if send_at > now:
+                    continue
                 record = {**d, "revision": schedule["revision"], "attempts": 0, "email_attempts": 0, "reason": reason}
-                occurrence_id = "occ_" + sha256(f'{schedule["id"]}:{window["local_date"]}'.encode()).hexdigest()[:32]
-                db.execute("INSERT OR IGNORE INTO occurrences VALUES(?,?,?,?,?,?,?,?,?)", (occurrence_id, schedule["id"], schedule["page"], window["local_date"], start, end, "skipped" if reason else "pending", now, json.dumps(record)))
-            db.execute("UPDATE schedules SET cursor=? WHERE id=?", (now, schedule["id"]))
+                occurrence_id = "occ_" + sha256(f'{schedule["id"]}:{window["local_date"]}:{schedule["revision"]}'.encode()).hexdigest()[:32]
+                db.execute("INSERT OR IGNORE INTO occurrences VALUES(?,?,?,?,?,?,?,?,?,?,?)", (occurrence_id, schedule["id"], schedule["page"], window["local_date"], start, end, "skipped" if reason else "pending", max(send_at, schedule["cursor"]), json.dumps(record), send_at, schedule["revision"]))
+            # Cursor is the revision's authorization boundary, not a polling watermark.
 
     def housekeeping(self, now):
         with self.connect() as db:
@@ -473,7 +532,7 @@ class Scheduler:
         if not grant_id:
             return
         self.deny(row)
-        self.r.LAYERV_CLIENT.queue_revocation(page_id=row["page"], grant_id=grant_id)
+        self.r.LAYERV_CLIENT.retire_grant(page_id=row["page"], grant_id=grant_id)
         row["record"].pop("grant", None)
         row["record"].pop("grant_id", None)
 
@@ -572,12 +631,17 @@ class Scheduler:
             return
         if now < self.creation_after:
             return
+        # Cancellation keeps its grant ID until upstream retirement succeeds.
+        # Block replacements across this named guest while reconciliation is pending.
+        for old in self.store.work():
+            if old["state"] == "cancelling" and old["record"].get("grant_id") and self.store.get(old["schedule"])["guest_id"] == schedule["guest_id"]:
+                return
         record["attempts"] += 1
         record["grant_id"] = "grant_" + secrets.token_urlsafe(12)
         secret = secrets.token_urlsafe(32)
         self.store.put(row, "creating")
-        duration = min(86400, row["end"] - now)
-        lifetime = f"{math.ceil(duration / 60)}m"
+        duration = min(86400, row["end"] - row["start"])
+        lifetime = f"{math.ceil((row["end"] - now) / 60)}m"
         try:
             qurl = self.r.LAYERV_CLIENT.create_qurl(
                 label=record["label"], expires_in=lifetime,
@@ -585,13 +649,14 @@ class Scheduler:
                 grant_id=record["grant_id"],
                 target_path=f'/g/{row["page"]}/{record["grant_id"]}/?bootstrap={secret}',
                 target_path_supported=True, session_duration=f"{int(duration)}s",
+                not_before=stamp(row["start"]) if row["start"] > self.clock() else None, expires_at=stamp(row["end"]),
             )
         except LayerVError as error:
             delay = error.retry_after or min(300, 5 * 2 ** min(record["attempts"], 6))
             self.creation_after = self.clock() + max(5, delay) + secrets.randbelow(5)
-            record["reason"] = "LayerV creation failed; reconciling before retry"
+            record["reason"] = str(error) if error.status in {400, 401, 403, 404, 422} else "LayerV creation failed; reconciling before retry"
             self.store.put(row, "creating", self.creation_after)
-            if error.status in {401, 403}:
+            if error.status in {400, 401, 403, 404, 422}:
                 self.store.status(schedule["id"], "blocked", self.clock())
             return
         grant = invitation_grant(qurl, grant_id=record["grant_id"], secret=secret,
@@ -600,7 +665,7 @@ class Scheduler:
                                  label=record["label"], lifetime=lifetime,
                                  one_time_use=record["one_time_use"],
                                  verification_required=record["verification_required"],
-                                 notifications=record["notifications"])
+                                 notifications=record["notifications"], not_before=stamp(row["start"]))
         record["grant"] = grant
         self.store.put(row, "created")
         self.commit(row, self.clock())
@@ -634,10 +699,10 @@ class Scheduler:
         zone = ZoneInfo(record["timezone"])
         window = " to ".join(datetime.fromtimestamp(row[key], zone).strftime("%Y-%m-%d %H:%M %Z (%z)") for key in ("start", "end"))
         text, html = guest_invitation_email_content(record["grant"]["qurl_link"], verification_required=record["verification_required"])
-        text += f"\nScheduled access: {window}\nTimezone: {record['timezone']}\nAccess still ends at the original time if this email arrives late.\n"
+        text += f"\nScheduled access: {window}\nTimezone: {record['timezone']}\nOpening early displays the start time. Access begins only when this window opens. Access still ends at the original time if this email arrives late.\n"
         # Plain text and HTML show the same original absolute window.
         from html import escape
-        html += f"<p>Scheduled access: {escape(window)}. Timezone: {escape(record['timezone'])}. Access ends at the original time even if delivery is late.</p>"
+        html += f"<p>Scheduled access: {escape(window)}. Timezone: {escape(record['timezone'])}. Opening early displays the start time. Access begins only when this window opens. Access ends at the original time even if delivery is late.</p>"
         try:
             send_email(self.r.SMTP_CONFIG_STORE.load(), record["email"], "Your scheduled Access Pages invitation", text, html_body=html,
                        message_id=f'<{row["id"]}@access-pages.invalid>')

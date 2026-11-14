@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Separate scheduled invitation delivery from access, using absolute LayerV start/end timestamps and local start enforcement. Add delivery choices and an email/access preview; migrate existing schedules to their original send-at-start behavior.
+- Cancel outstanding future links on edit, pause, or delete while preserving active access by default. Keep canceled/replaced occurrences in guest history and wait for confirmed retirement before same-date replacements.
+- Reject combinations exceeding the live-tested 24-hour Connector creation horizon; keep the 24-hours-before choice visible with a clear limitation, without changing access times or falling back to immediate access.
+- Show delivery and access status separately and retain durable retry/restore protections. SMTP retries use the same link and Message-ID.
+- Update the pinned qURL CLI to 4.2.0 and supply a generic public resource name required by the deployed API, with exact checksums, refreshed licenses, and packaged compatibility/security checks.
+
 ## 0.1.158
 
 - Show Delete schedule beside Edit and Pause/Resume for each schedule, including when a guest has multiple schedules, instead of hiding it under More.

@@ -23,7 +23,7 @@ def instant(value):
 
 def definition(**changes):
     return validate_schedule({"label": "Visitor", "email": "guest@example.test", "timezone": "UTC", "kind": "weekly",
-                              "weekdays": list(range(7)), "start_time": "09:00", "end_time": "12:00", **changes})
+                              "delivery": "at_start", "weekdays": list(range(7)), "start_time": "09:00", "end_time": "12:00", **changes})
 
 
 class CalendarTests(unittest.TestCase):
@@ -90,7 +90,7 @@ class SchedulerTests(unittest.TestCase):
     def mint(self, **kwargs):
         return {"qurl_link": "https://qurl.invalid/#synthetic", "qurl_id": "q_synthetic", "resource_id": "synthetic-resource",
                 "resource_crid": "synthetic-crid", "upstream_scope": "guest", "target_path_applied": True,
-                "expires_at": datetime.fromtimestamp(self.now + 86400, timezone.utc).isoformat()}
+                "expires_at": kwargs.get("expires_at") or datetime.fromtimestamp(self.now + 86400, timezone.utc).isoformat()}
 
     def start_window(self):
         self.now = instant("2026-11-14T09:00:00+00:00")
@@ -159,7 +159,7 @@ class SchedulerTests(unittest.TestCase):
         failure = EmailConfigError("synthetic rejection")
         failure.permanent = True
         self.sender.side_effect = failure
-        self.client.queue_revocation.side_effect = lambda **kw: self.assertEqual(self.grants(), [])
+        self.client.retire_grant.side_effect = lambda **kw: self.assertEqual(self.grants(), [])
         self.scheduler.tick(delivery=True)
         self.assertEqual(self.grants(), [])
         self.assertEqual(self.store.history("cat-sitter")[0]["state"], "failed")
@@ -172,7 +172,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual(self.grants(), [])
         self.now += 100
         self.scheduler.tick()
-        self.client.queue_revocation.assert_called_with(page_id="cat-sitter", grant_id=old_id)
+        self.client.retire_grant.assert_called_with(page_id="cat-sitter", grant_id=old_id)
         self.client.create_qurl.side_effect = self.mint
         self.now += 10
         self.scheduler.tick()
@@ -181,11 +181,11 @@ class SchedulerTests(unittest.TestCase):
     def test_cleanup_outage_retries_without_reenabling_access(self):
         self.start_window()
         self.store.status(self.schedule_id, "paused", self.now)
-        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.client.retire_grant.side_effect = LayerVError("offline")
         self.scheduler.tick()
         self.assertEqual(self.grants(), [])
         self.assertEqual(self.row()["state"], "cancelling")
-        self.client.queue_revocation.side_effect = None
+        self.client.retire_grant.side_effect = None
         self.scheduler.tick()
         self.assertEqual(self.store.history("cat-sitter")[0]["state"], "cancelled")
 
@@ -390,7 +390,7 @@ class ScheduleRoutesTests(unittest.TestCase):
         self.assertEqual(len(self.grants()), 3)
         other_grant = next(row["record"]["grant_id"] for row in self.store.work() if row["schedule"] == other)
         self.store.status(deleted, "deleted", self.now)
-        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.client.retire_grant.side_effect = LayerVError("offline")
         self.r.SMTP_CONFIG_STORE.configured.return_value = False
         reply = self.route({"action": "revoke_guest", "guest_id": guest})
         self.assertEqual(reply.call_args.args[0], 200)
@@ -404,7 +404,7 @@ class ScheduleRoutesTests(unittest.TestCase):
         self.assertTrue(all(row["state"] == "cancelling" for row in pending))
         self.scheduler.tick()
         self.assertEqual(len([row for row in self.store.work() if row["schedule"] != other]), 2)
-        self.client.queue_revocation.side_effect = None
+        self.client.retire_grant.side_effect = None
         self.scheduler.tick()
         self.assertEqual(len(self.store.history("cat-sitter")), 3)
         self.assertEqual(self.route({"action": "revoke_guest", "guest_id": guest}).call_args.args[0], 200)
@@ -428,11 +428,11 @@ class ScheduleRoutesTests(unittest.TestCase):
         paused = self.store.save("cat-sitter", definition(), self.now)
         self.store.status(paused, "paused", self.now)
         self.route({"action": "revoke_guest", "guest_id": guest})
-        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.client.retire_grant.side_effect = LayerVError("offline")
         self.now += 31 * 86400
         self.scheduler.tick()
         self.assertEqual(self.store.get(self.schedule_id)["status"], "revoked")
-        self.client.queue_revocation.side_effect = None
+        self.client.retire_grant.side_effect = None
         self.scheduler.tick()
         self.scheduler.tick()
         with self.assertRaises(ValueError):
@@ -631,10 +631,10 @@ class GuestTimelineTests(unittest.TestCase):
         self.assertEqual(
             len(self.store.guests("cat-sitter")), 1
         )  # Unfinished remote handoff retained.
-        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.client.retire_grant.side_effect = LayerVError("offline")
         self.scheduler.tick()
         self.assertEqual(len(self.store.guests("cat-sitter")), 1)
-        self.client.queue_revocation.side_effect = None
+        self.client.retire_grant.side_effect = None
         self.scheduler.tick()
         self.scheduler.tick()
         self.assertEqual(self.store.guests("cat-sitter"), [])
@@ -684,7 +684,7 @@ class GuestTimelineTests(unittest.TestCase):
         with self.store.connect() as db:
             for i in range(125):
                 db.execute(
-                    "INSERT INTO occurrences VALUES(?,?,?,?,?,?,?,?,?)",
+                    "INSERT INTO occurrences(id,schedule,page,local_date,start,end,state,due,record,send_at,revision) VALUES(?,?,?,?,?,?,?,?,?,0,1)",
                     (
                         f"occ_test{i}",
                         self.schedule_id,

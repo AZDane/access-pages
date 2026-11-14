@@ -49,7 +49,7 @@ def sqlite_schema_evidence(root):
     for filename in SQL_FILES:
         tree = ast.parse((root / filename).read_text())
         with sqlite3.connect(":memory:") as db:
-            for node in ast.walk(tree):
+            for node in sorted(ast.walk(tree), key=lambda node: getattr(node, "lineno", 0)):
                 if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
                     continue
                 if node.func.attr in {"load_extension", "enable_load_extension", "deserialize"}:
@@ -62,12 +62,15 @@ def sqlite_schema_evidence(root):
                 if not isinstance(sql, str) or re.search(r"\b(fts[345]|match|virtual|load_extension)\b", sql, re.I):
                     raise ValueError(f"Unreviewed SQL in {filename}:{node.lineno}")
                 total += 1
-                if sql.lstrip().upper().startswith("CREATE"):
+                if sql.lstrip().upper().startswith("CREATE") or sql in {
+                    "ALTER TABLE occurrences RENAME TO occurrences_old",
+                    "DROP TABLE occurrences_old",
+                }:
                     db.executescript(sql)
             schemas[filename] = db.execute(
                 "SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY type,name"
             ).fetchall()
-    if total != 178 or any(not schema for schema in schemas.values()):
+    if total != 187 or any(not schema for schema in schemas.values()):
         raise ValueError("SQLite consumers/schema changed; reassessment required")
     return {"sql_calls": total, "schemas": schemas}
 
@@ -89,7 +92,7 @@ def sqlite_session_evidence(root):
         raise ValueError("SQLite session API exposed; reassessment required")
     for path in root.glob("*.py"):
         tree = ast.parse(path.read_text())
-        for node in ast.walk(tree):
+        for node in sorted(ast.walk(tree), key=lambda node: getattr(node, "lineno", 0)):
             modules = ([a.name for a in node.names] if isinstance(node, ast.Import)
                        else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
             if any(m.split(".")[0] in {"ctypes", "cffi", "apsw"} for m in modules):

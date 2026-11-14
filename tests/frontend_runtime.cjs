@@ -662,7 +662,7 @@ async function testGuestDraftAndValidation() {
   };
   vm.runInContext("currentPage = {id: 'fixture', access_grants: []}; editingExisting = true; layerVApiConfigured = true; loadSchedules = async () => {};", fixture.context);
   let confirms = 0, discard = false;
-  fixture.context.confirmAction = async () => { confirms++; return discard; };
+  fixture.context.confirmAction = async (_message, options) => { if (options?.acceptLabel === "Save schedule") return true; confirms++; return discard; };
   const open = () => vm.runInContext("openSchedule()", fixture.context);
   const close = () => e("close-schedule").listeners.get("click")();
   open(); await close(); assert.equal(confirms, 0, "Untouched form closes silently");
@@ -816,7 +816,7 @@ async function testScheduledGuestWorkflow() {
   vm.runInContext("confirmAction = async () => false", fixture.context);
   revoke.listeners.get("click")(); await settle();
   assert.equal(revocations.length, 0);
-  vm.runInContext("confirmAction = async message => { if (!message.includes('all current access') || !message.includes('all future schedules')) throw Error('Missing revoke scope'); return true; }; editingSchedule = 'unrelated';", fixture.context);
+  vm.runInContext("confirmAction = async message => { if (!message.includes('outstanding future invitation(s)') || !message.includes('all future schedules')) throw Error('Missing revoke scope'); return true; }; editingSchedule = 'unrelated';", fixture.context);
   revoke.listeners.get("click")(); await settle();
   assert.equal(revocations.length, 1);
   assert.equal(fixture.elements.get("schedule-list").children.length, 0);
@@ -837,6 +837,7 @@ async function testScheduledGuestWorkflow() {
   fixture.elements.get("add-schedule").listeners.get("click")();
   assert.equal(fixture.elements.get("guest-choice-dialog").open, false);
   assert.equal(fixture.elements.get("schedule-dialog").open, true);
+  assert.equal(fixture.elements.get("schedule-delivery").value, "day_before");
   assert.equal(fixture.elements.get("schedule-verification").checked, true);
   assert.equal(fixture.elements.get("schedule-single-use").checked, false);
   assert.equal(fixture.elements.get("schedule-timezone").value, "America/Los_Angeles");
@@ -844,8 +845,10 @@ async function testScheduledGuestWorkflow() {
   assert.match(fixture.elements.get("schedule-timezone-help").textContent, /America\/Los_Angeles/);
   const saved = JSON.parse(vm.runInContext("JSON.stringify(scheduleFields())", fixture.context));
   saved.timezone = "Europe/London";
+  delete saved.delivery; // Existing schedules have no delivery field before migration.
   fixture.context.savedSchedule = {id: "saved", guest_id: "guest_test", definition: saved};
   vm.runInContext("openSchedule(savedSchedule)", fixture.context);
+  assert.equal(fixture.elements.get("schedule-delivery").value, "at_start", "Old definitions keep at-start delivery on edit");
   assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");
   vm.runInContext("openSchedule(savedSchedule, true)", fixture.context);
   assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");

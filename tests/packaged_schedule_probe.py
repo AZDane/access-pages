@@ -27,7 +27,7 @@ pages.create({"id": "scheduled-test", "title": "Scheduled test", "resources": []
 store.check_recovery(pages)
 now = datetime(2099, 1, 1, 8, 59, tzinfo=timezone.utc).timestamp()
 schedule = validate_schedule({"label": "Synthetic guest", "email": "guest@example.invalid", "timezone": "UTC",
-                              "kind": "once", "date": "2099-01-01", "start_time": "09:00", "end_time": "12:00"})
+                              "delivery": "at_start", "kind": "once", "date": "2099-01-01", "start_time": "09:00", "end_time": "12:00"})
 id_ = store.save("scheduled-test", schedule, now)
 client = Mock(spec=BrokerLayerVClient)
 client.create_qurl.return_value = {"qurl_link": "https://qurl.invalid/#synthetic", "qurl_id": "q_fixture",

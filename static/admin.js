@@ -2025,6 +2025,9 @@ function guestInputError(message, fields = []) {
 }
 function showGuestError(dialog, status, error) {
   clearGuestErrors(dialog);
+  if (!error.fields && dialog === scheduleDialog && error.message.startsWith("LayerV scheduled links must expire within")) {
+    error.fields = ["schedule-delivery", "schedule-end"];
+  }
   status.textContent = error.message;
   status.className = "status error guest-form-error";
   status.setAttribute("role", "alert");
@@ -2879,7 +2882,7 @@ const guestChoiceDialog = document.getElementById("guest-choice-dialog");
 const scheduleFormStatus = document.getElementById("schedule-form-status");
 const scheduleValueFields = {
   label: "schedule-name", email: "schedule-email", kind: "schedule-kind",
-  timezone: "schedule-timezone", date: "schedule-date", first_date: "schedule-first",
+  delivery: "schedule-delivery", timezone: "schedule-timezone", date: "schedule-date", first_date: "schedule-first",
   last_date: "schedule-last", start_time: "schedule-start", end_time: "schedule-end",
 };
 const scheduleChecks = {
@@ -2915,6 +2918,9 @@ function scheduleFields() {
 
 function updateScheduleKind() {
   const weekly = document.getElementById("schedule-kind").value === "weekly";
+  const delivery = document.getElementById("schedule-delivery");
+  document.getElementById("schedule-immediate").disabled = weekly;
+  if (weekly && delivery.value === "immediate") delivery.value = "day_before";
   document.getElementById("schedule-date-field").classList.toggle("hidden", weekly);
   document.getElementById("schedule-date").required = !weekly;
   for (const id of ["schedule-weekdays", "schedule-first-field", "schedule-last-field"]) {
@@ -2978,14 +2984,14 @@ function selectScheduleGuest() {
     document.getElementById("schedule-email").value = guest.email;
   }
   document.getElementById("schedule-guest-help").textContent = editingSchedule
-    ? "Name or email changes apply to this guest’s future schedules. Already-issued invitations keep their original recipient."
+    ? "Name or email changes apply to this guest’s future schedules. Invitations that have not started will be canceled and replaced; active invitations keep their original recipient."
     : "Choose an existing guest to add another schedule to their timeline. Names and email addresses are never matched automatically.";
 }
 
 function openSchedule(row = null, duplicate = false) {
   editingSchedule = duplicate ? null : row?.id || null;
   const d = row?.definition || {
-    label: "", email: "", kind: "once", timezone: localScheduleTimezone(),
+    label: "", email: "", delivery: "day_before", kind: "once", timezone: localScheduleTimezone(),
     date: "", start_time: "09:00", end_time: "12:00", first_date: "", last_date: "",
     weekdays: [], next_day: false, verification_required: true, one_time_use: false,
     notifications: {targets: [], events: []},
@@ -2999,7 +3005,7 @@ function openSchedule(row = null, duplicate = false) {
   }
   guests.value = row?.guest_id || "";
   guests.disabled = Boolean(editingSchedule);
-  for (const [key, id] of Object.entries(scheduleValueFields)) document.getElementById(id).value = d[key] || "";
+  for (const [key, id] of Object.entries(scheduleValueFields)) document.getElementById(id).value = d[key] || (key === "delivery" ? "at_start" : "");
   selectScheduleGuest();
   for (const [key, id] of Object.entries(scheduleChecks)) document.getElementById(id).checked = Boolean(d[key]);
   for (const input of document.querySelectorAll('input[name="schedule-weekday"]')) input.checked = d.weekdays.includes(Number(input.value));
@@ -3030,7 +3036,7 @@ async function previewSchedule() {
   const preview = document.getElementById("schedule-preview");
   preview.replaceChildren();
   for (const window of data.upcoming) {
-    const item = document.createElement("p"); item.textContent = scheduleWindowText(window, definition.timezone); preview.append(item);
+    const item = document.createElement("p"); item.textContent = `Email: ${scheduleTime(window.send_at, definition.timezone)} · ${definition.timezone}. Access: ${scheduleWindowText(window, definition.timezone)}`; preview.append(item);
   }
   if (!data.upcoming.length) throw guestInputError("No future occurrences. Choose a future unprocessed date or access window.", [document.getElementById("schedule-kind").value === "once" ? "schedule-date" : "schedule-last-field"]);
   setScheduleStatus(data.warning || "Review these times, then choose Save schedule. This preview has not saved your changes.");
@@ -3054,10 +3060,19 @@ function scheduleControl(label, callback) {
 }
 
 function deliveryDescription(row) {
-  if (row.accepted_at) return `Email accepted${row.state === "ended" ? " · Access ended" : row.state === "cancelled" ? " · Access cancelled" : ""}`;
-  return {pending: "Waiting to create invitation", creating: "Creating invitation", created: "Invitation created",
+  if (["cancelled", "cancelling"].includes(row.state)) return row.state === "cancelling" ? "Canceling invitation; cleanup pending" : "Invitation canceled";
+  if (row.accepted_at) {
+    const now = Date.now() / 1000;
+    const access = now >= row.end ? "Access ended" : now < row.start ? `Access starts ${scheduleTime(row.start, row.timezone)}` : "Access window open";
+    return `Accepted by email server · ${access}`;
+  }
+  return {pending: row.due > Date.now() / 1000 ? "Scheduled to send" : "Preparing invitation", creating: "Preparing invitation", created: "Invitation created",
     committing: "Preparing invitation", ready: "Email pending", sending: "Sending email", skipped: "Invitation skipped",
-    failed: "Invitation failed", cancelled: "Invitation cancelled", ended: "Access ended"}[row.state] || row.state;
+    failed: "Delivery failed; needs attention", ended: "Access ended"}[row.state] || row.state;
+}
+
+function scheduleImpactText(impact = {}) {
+  return `${impact.future || 0} outstanding future invitation(s) will be canceled. ${impact.active || 0} currently active invitation(s) continue to their original end. History is retained.`;
 }
 
 async function loadScheduledTimeline(state, more = false) {
@@ -3143,7 +3158,7 @@ function renderScheduledGuests(data) {
       if (open) expandedScheduledGuests.add(key); else expandedScheduledGuests.delete(key);
     }
     const revoke = scheduleControl("Revoke guest", async () => {
-      if (!await confirmAction(`Revoke ${guest.label}? This ends all current access, stops all future schedules, and moves this guest to Recently ended guests. History is retained. You can explicitly resume schedules later.`)) return;
+      if (!await confirmAction(`Revoke ${guest.label}? This revokes ${guest.impact?.active || 0} active and ${guest.impact?.future || 0} outstanding future invitation(s), stops all future schedules, and moves this guest to Recently ended guests. History is retained. You can explicitly resume schedules later.`)) return;
       revoke.disabled = true;
       try {
         await scheduleRequest({action: "revoke_guest", guest_id: guest.id}, null);
@@ -3159,10 +3174,10 @@ function renderScheduledGuests(data) {
       const last = document.createElement("p"); last.textContent = `Last invitation: ${deliveryDescription(guest.latest_delivery)}`; body.append(last);
     }
     if (active.length) {
-      title.textContent += ` · ${active.length} current invitation${active.length === 1 ? "" : "s"}`;
-      const heading = document.createElement("h4"); heading.textContent = "Current invitations"; body.append(heading);
+      title.textContent += ` · ${active.length} outstanding invitation${active.length === 1 ? "" : "s"}`;
+      const heading = document.createElement("h4"); heading.textContent = "Outstanding invitations"; body.append(heading);
       for (const grant of active) {
-        const line = document.createElement("p"); line.textContent = `Access ends ${formatExpiry(grant.expires_at)}`;
+        const line = document.createElement("p"); line.textContent = grant.not_before && Date.parse(grant.not_before) > Date.now() ? `Access starts ${formatExpiry(grant.not_before)} · ends ${formatExpiry(grant.expires_at)}` : `Access window open · ends ${formatExpiry(grant.expires_at)}`;
         body.append(line, scheduleControl("Revoke this invitation", async () => { await revokeGrant(grant); await loadSchedules(); }));
       }
     }
@@ -3180,6 +3195,7 @@ function renderScheduledGuests(data) {
       }
       const actions = document.createElement("div"); actions.className = "editor-actions";
       actions.append(scheduleControl("Edit", () => openSchedule(row)), scheduleControl(row.status === "enabled" ? "Pause" : "Resume", async () => {
+        if (row.status === "enabled" && !await confirmAction(`Pause this schedule? ${scheduleImpactText(row.impact)}`)) return;
         await scheduleRequest({action: row.status === "enabled" ? "pause" : "resume"}, row.id); await loadSchedules();
       }));
       const menu = document.createElement("details"); menu.className = "schedule-more";
@@ -3187,11 +3203,11 @@ function renderScheduledGuests(data) {
       const options = document.createElement("div"); options.className = "editor-actions";
       if (data.smtp_configured) options.append(scheduleControl("Duplicate schedule", () => openSchedule(row, true)));
       options.append(scheduleControl("Pause and end current access", async () => {
-        if (!await confirmAction(`Pause this schedule for ${guest.label} and end its current access? Other schedules for this guest are unaffected.`)) return;
+        if (!await confirmAction(`Pause this schedule for ${guest.label} and revoke its ${row.impact?.active || 0} active and ${row.impact?.future || 0} outstanding future invitation(s)? Other schedules for this guest are unaffected.`)) return;
         await scheduleRequest({action: "pause", revoke_active: true}, row.id); await loadSchedules();
       }));
       const remove = scheduleControl("Delete schedule", async () => {
-        if (!await confirmAction(`Delete this schedule for ${guest.label} (${scheduleRuleText(row)})? This stops its future invitations. Other schedules for this guest are unaffected. Already-issued invitations keep their original end time. History remains until its normal retention expires.`, {
+        if (!await confirmAction(`Delete this schedule for ${guest.label} (${scheduleRuleText(row)})? This stops future delivery for this schedule. Other schedules for this guest are unaffected. ${scheduleImpactText(row.impact)}`, {
           title: "Delete schedule?", acceptLabel: "Delete schedule", safeDefault: true,
         })) return;
         await scheduleRequest({action: "delete"}, row.id); await loadSchedules();
@@ -3283,7 +3299,8 @@ document.getElementById("preview-schedule").addEventListener("click", async () =
 });
 document.getElementById("refresh-schedules").addEventListener("click", () => loadSchedules().catch(error => setStatus(error.message, "error")));
 document.getElementById("pause-schedules").addEventListener("click", async () => {
-  if (!await confirmAction("Pause future scheduled invitations for this page? Already-emailed invitations keep their original end.")) return;
+  const impact = (scheduleData.guests || []).reduce((total, guest) => ({future: total.future + (guest.impact?.future || 0), active: total.active + (guest.impact?.active || 0)}), {future: 0, active: 0});
+  if (!await confirmAction(`Pause scheduled invitations for this page? ${scheduleImpactText(impact)}`)) return;
   try { await scheduleRequest({action: "pause_all"}, null); await loadSchedules(); }
   catch (error) { setStatus(error.message, "error"); }
 });
@@ -3294,17 +3311,18 @@ document.getElementById("schedule-form").addEventListener("submit", async event 
     validateScheduleInputs();
     setGuestBusy(scheduleDialog, true);
     const data = await previewSchedule();
-    if (data.warning && !await confirmAction(data.warning)) return;
+    const previewText = data.upcoming.map(window => `Email: ${scheduleTime(window.send_at, scheduleFields().timezone)}. Access: ${scheduleWindowText(window, scheduleFields().timezone)}`).join("\n");
+    if (!await confirmAction(`${previewText}\n${data.warning || ""}\n${editingSchedule ? scheduleImpactText(data.impact) : "Invitations are sent in the background after saving when due."}`, {title: "Save scheduled invitations?", acceptLabel: "Save schedule"})) return;
     const definition = scheduleFields();
     const guestId = document.getElementById("schedule-guest").value || null;
     const guest = scheduleData.guests?.find(item => item.id === guestId);
     if (editingSchedule && guest && (guest.label !== definition.label || guest.email !== definition.email) &&
         scheduleData.schedules.filter(row => row.guest_id === guestId).length > 1 &&
-        !await confirmAction("Update this guest's contact details for all their future schedules on this Access Page? Already-issued invitations keep their original recipient.")) return;
+        !await confirmAction("Update this guest's contact details for all their future schedules on this Access Page? Invitations that have not started will be canceled and replaced; active invitations keep their original recipient.")) return;
     await scheduleRequest({action: "save", definition, guest_id: guestId});
     guestSaved(scheduleDialog);
     scheduleDialog.close();
-    setStatus("Schedule saved. Invitations will be emailed when access begins.", "success");
+    setStatus("Schedule saved. Invitations will be emailed at the chosen delivery time.", "success");
   } catch (error) {
     setGuestBusy(scheduleDialog, false);
     showGuestError(scheduleDialog, scheduleFormStatus, error);

@@ -23,6 +23,7 @@ def handle(handler, path, runtime, payload=None):
         if payload is None:
             rows = store.schedules(page_id)
             for row in rows:
+                row["impact"] = store.impact(page_id, row["id"], now=now)
                 row["upcoming"] = store.upcoming(row["definition"], now, row["id"]) if row["status"] == "enabled" else []
             default_zone = runtime.SCHEDULE_TIMEZONE
             try:
@@ -34,10 +35,11 @@ def handle(handler, path, runtime, payload=None):
             for guest in guests:
                 delivery = store.delivery_timeline(page_id, guest["id"], None, (1e12, ""), limit=1)
                 guest["latest_delivery"] = delivery[0] if delivery else None
+                guest["impact"] = store.impact(page_id, guest_id=guest["id"], now=now)
                 guest["needs_attention"] = store.needs_attention(page_id, guest["id"])
             associations = {row["grant_id"]: row["scheduled_guest_id"] for row in runtime.ACTIVITY_STORE.page_guests(page_id) if row.get("scheduled_guest_id")}
             handler._send_json(200, {"schedules": rows, "guests": guests, "scheduled_grants": associations,
-                                     "active_invitations": [{key: grant[key] for key in ("id", "label", "expires_at")}
+                                     "active_invitations": [{key: grant[key] for key in ("id", "label", "expires_at", "not_before") if key in grant}
                                                             for grant in page["access_grants"] if grant["id"] in associations],
                                      "smtp_configured": runtime.SMTP_CONFIG_STORE.configured(),
                                      "supported": supported, "timezone": default_zone,
@@ -56,6 +58,9 @@ def handle(handler, path, runtime, payload=None):
                                                    kind=payload.get("kind", "all"), cursor=payload.get("cursor")))
             return True
         with runtime.page_action_lock(page_id):
+            # Sending/creation can hold this lock across network calls. Classify
+            # future versus active access at mutation time, not request arrival.
+            now = time.time()
             if schedule_id:
                 current = store.get(schedule_id)
                 if current["page"] != page_id or current["status"] == "deleted":
@@ -81,11 +86,12 @@ def handle(handler, path, runtime, payload=None):
             elif action == "pause_all":
                 store.pause_page(page_id, now, revoke=payload.get("revoke_active") is True)
             elif action == "preview":
-                definition = validate_schedule(payload.get("definition"))
+                definition = validate_schedule(payload.get("definition"), default_delivery=current["definition"].get("delivery", "at_start") if schedule_id else "day_before", now=now)
                 overlaps = [s for s in store.schedules(page_id)
                             if s["id"] != schedule_id and s["status"] == "enabled"
                             and s["definition"]["email"].casefold() == definition["email"].casefold()]
-                handler._send_json(200, {"upcoming": store.upcoming(definition, now, schedule_id),
+                handler._send_json(200, {"upcoming": store.upcoming(definition, now, schedule_id, editing=True),
+                                         "impact": store.impact(page_id, schedule_id=None if any(definition[k] != current["definition"][k] for k in ("label", "email")) else schedule_id, guest_id=current["guest_id"], now=now) if schedule_id else {"future": 0, "active": 0},
                                          "warning": "Other schedules exist for this guest on this page; check for overlapping access." if overlaps else ""})
                 return True
             elif action == "save":
@@ -93,8 +99,8 @@ def handle(handler, path, runtime, payload=None):
                     raise ValueError("Scheduling requires the Home Assistant App Connector")
                 if not schedule_id and not runtime.SMTP_CONFIG_STORE.configured():
                     raise ValueError("Configure SMTP before scheduling invitations")
-                definition = validate_schedule(payload.get("definition"))
-                if definition["kind"] == "once" and not store.upcoming(definition, now, schedule_id):
+                definition = validate_schedule(payload.get("definition"), default_delivery=current["definition"].get("delivery", "at_start") if schedule_id else "day_before", now=now)
+                if definition["kind"] == "once" and not store.upcoming(definition, now, schedule_id, editing=True):
                     raise ValueError("Choose a future unprocessed date, or duplicate the schedule for another invitation")
                 available = set(runtime.NOTIFICATION_TARGET_STORE.load())
                 if runtime.SMTP_CONFIG_STORE.configured():
@@ -107,10 +113,10 @@ def handle(handler, path, runtime, payload=None):
                 schedule_id = store.save(page_id, definition, now, schedule_id, guest_id)
             else:
                 raise ValueError("Unknown schedule action")
-            if payload.get("revoke_active") is True:
+            if action in {"save", "pause", "delete", "pause_all"} or payload.get("revoke_active") is True:
                 worker = Scheduler(runtime, store)
                 for row in store.work():
-                    if row["page"] == page_id and row["state"] == "cancelling" and (not schedule_id or row["schedule"] == schedule_id):
+                    if row["page"] == page_id and row["state"] == "cancelling":
                         worker.deny(row)
         runtime.audit("schedule_changed", page_id=page_id, schedule_id=schedule_id, operation=action)
         handler._send_json(200, {"success": True, "id": schedule_id})

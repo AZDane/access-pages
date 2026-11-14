@@ -48,7 +48,7 @@ class UnreachablePolicyTests(unittest.TestCase):
             'probe': {'architecture': 'amd64', 'files': self.baseline['unreachable_files'],
                       'qurl_sha256': self.entry['artifacts']['amd64'], 'jose_functions': ['init']},
         }
-        self.today = date(2026, 11, 3)
+        self.today = date(2026, 11, 14)
 
     def check(self, **kwargs):
         return check_report(self.report, self.baseline, kwargs.pop('architecture', 'amd64'),
@@ -160,7 +160,7 @@ class PackagedEvidenceTests(unittest.TestCase):
 
     def test_sql_schema_is_reproducible_and_new_fts_or_dynamic_sql_blocks(self):
         evidence = sqlite_schema_evidence(Path('.'))
-        self.assertEqual(evidence['sql_calls'], 178)
+        self.assertEqual(evidence['sql_calls'], 187)
         for addition in ("db.execute('CREATE VIRTUAL TABLE f USING fts5(a, detail=none)')",
                          'db.execute(user_input)'):
             with tempfile.TemporaryDirectory() as directory:

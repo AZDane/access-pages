@@ -18,6 +18,30 @@ class FakeResponse:
 
 class LayerVClientTests(unittest.TestCase):
     @patch("layerv.urlopen")
+    def test_absolute_scheduling_payload_accepts_no_start_echo_and_rejects_bad_expiry(self, urlopen):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        start = now + timedelta(days=1)
+        end = start + timedelta(hours=1)
+        path = "/g/page/grant_mmmmmmmmmmmmmmmm/?bootstrap=" + "a" * 43
+        post = {"data": {"qurl_id": "q_test", "qurl_link": "https://example.invalid/#synthetic", "resource_id": "resource", "target_path": path, "expires_at": end.isoformat()}}
+        client = LayerVClient("https://api.invalid", "synthetic", "resource")
+        args = dict(label="Guest", expires_in="25h", not_before=start.isoformat(), expires_at=end.isoformat(), one_time_use=True, target_path=path, target_path_supported=True)
+        urlopen.return_value = FakeResponse(json.dumps(post).encode())
+        client.create_qurl(**args)
+        payload = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(payload["not_before"], start.isoformat())
+        self.assertEqual(payload["expires_at"], end.isoformat())
+        self.assertNotIn("expires_in", payload)
+        post["data"]["expires_at"] = (end + timedelta(seconds=1)).isoformat()
+        urlopen.return_value = FakeResponse(json.dumps(post).encode())
+        with self.assertRaises(LayerVError):
+            client.create_qurl(**args)
+        urlopen.side_effect = HTTPError("https://api.invalid", 400, "unsupported", {}, io.BytesIO(b'{}'))
+        with self.assertRaises(LayerVError):
+            client.create_qurl(**args)
+        self.assertIn("not_before", json.loads(urlopen.call_args.args[0].data))
+
+    @patch("layerv.urlopen")
     def test_broker_recovery_status_is_visible_to_admin_health(self, urlopen):
         urlopen.side_effect = HTTPError(
             "http://broker.invalid/health", 503, "unavailable", {},

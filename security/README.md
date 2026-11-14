@@ -43,12 +43,14 @@ The upstream reproducer requires an FTS5 virtual table with `detail=none`,
 negative rowids and a prefix `MATCH` query:
 https://sqlite.org/bugs/info/2026-08-04T08:49:27Z
 
-All 178 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
+All 187 SQL calls in `activity.py`, `verification.py`, `guest_resources.py`,
 `upstream_cleanup.py`, `layerv_broker.py` and `schedules.py` use constant SQL. Values are bound
 as parameters. There is no FTS table, MATCH query, extension loading or database
 deserialization. The probe executes the declared CREATE statements with the
 packaged SQLite and records every schema. It rejects new/dynamic SQL and changes
-to the reviewed schemas. All packaged Python modules and the runner are hashed.
+to the reviewed schemas. The reviewed schedule v3 migration additionally renames
+and drops its old occurrence table after copying records, in statement order.
+All packaged Python modules and the runner are hashed.
 
 Guest HTTP inputs are values, not SQL or uploaded database files. Session,
 activity and cleanup stores are owned by their dedicated services; the runner's
@@ -319,3 +321,25 @@ hashes are refreshed, while schema evidence, binary fingerprints, confinement,
 advisory scope and the November 26 review deadline remain unchanged. Regression
 tests cover restart persistence, explicit resumption, cleanup outages, retention,
 and separation from intentionally paused guests.
+
+
+### Advance invitations and qURL 4.2.0 (2026-11-14)
+
+The official signed 4.2.0 release replaces 3.6.0 because new resource publication
+requires the public name supported by `publish --name`. Both architecture archives
+and their retained SPDX inventories were verified against the signed checksums.
+The new binaries embed go-jose 4.1.6, fixing the earlier 4.1.4 finding. Both ELF Go
+function inventories were inspected again: neither links the x/net/html parser,
+although x/net 0.61.0 remains in module inventories and CVE-2026-78661 remains
+visible in the unfiltered report. Exact new binaries and advisory fingerprints
+are bound to that bounded unreachable assessment; the November 26 expiry is not
+extended. CLI protocol 6, native enrollment, sealed-key storage, external daemon
+supervision and ownership checks remain covered by packaging tests.
+
+The 187 SQL calls remain constant, with bound values. Schedule migration adds
+send time and revision and rebuilds the occurrence uniqueness constraint. The
+probe reproduces the reviewed rename/drop migration in order and inventories
+the resulting schemas. There are no new FTS consumers, extension loaders, native
+bridges, imported databases or guest-controlled SQL. Local start/end admission
+checks and synchronous cancellation cleanup do not expand confinement. Updated
+source and control hashes require fresh evidence from each final image.
