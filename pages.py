@@ -1,3 +1,4 @@
+from invitations import scheduled_timestamp
 import json
 import os
 import re
@@ -329,6 +330,7 @@ def validate_access_grants(raw_grants: object) -> list[dict]:
             "token_hash",
             "created_at",
             "expires_at",
+            "not_before",
             "label",
             "lifetime",
             "one_time_use",
@@ -388,11 +390,20 @@ def validate_access_grants(raw_grants: object) -> list[dict]:
                     "Access grant timestamps must be valid and timezone-aware"
                 ) from error
 
+        if "not_before" in raw:
+            try:
+                start = scheduled_timestamp(raw["not_before"])
+                if start >= datetime.fromisoformat(expires_at.replace("Z", "+00:00")):
+                    raise ValueError("Invalid access window")
+            except (ValueError, TypeError) as error:
+                raise PageConfigError("Invalid scheduled access start") from error
+
         grants.append(
             {
                 "id": grant_id,
                 "token_hash": token_hash,
                 "created_at": created_at,
+                **({"not_before": start.isoformat(timespec="seconds")} if "not_before" in raw else {}),
                 "expires_at": expires_at,
                 "label": str(raw.get("label", "")).strip()[:120],
                 "lifetime": str(raw.get("lifetime", "")).strip()[:20],

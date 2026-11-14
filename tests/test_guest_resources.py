@@ -27,7 +27,7 @@ class DeviceRecoveryTests(unittest.TestCase):
 
     def test_status_requires_exact_protocol_binary_mode_and_owned_pid(self):
         with tempfile.TemporaryDirectory() as temp:
-            for mode, expected in (("per-share", "5/3.6.0/per-share"), ("single", "5/3.6.0")):
+            for mode, expected in (("per-share", "6/4.2.0/per-share"), ("single", "6/4.2.0")):
                 publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="key", mode=mode)
                 publisher.daemon = Mock(pid=1234)
                 socket_path = publisher.state / "daemon.sock"
@@ -38,8 +38,8 @@ class DeviceRecoveryTests(unittest.TestCase):
                     ("5/3.5.0/per-share", 1234, False),
                     ("5/3.5.0-access-pages.1/per-share", 1234, False),
                     ("5/2.6.0/per-share", 1234, False),
-                    ("4/3.6.0/per-share", 1234, False),
-                    ("5/3.6.0" if mode == "per-share" else "5/3.6.0/per-share", 1234, False),
+                    ("4/4.2.0/per-share", 1234, False),
+                    ("6/4.2.0" if mode == "per-share" else "6/4.2.0/per-share", 1234, False),
                     (expected, 5678, False),
                     (expected, 0, False),
                     (expected, None, False),
@@ -68,7 +68,7 @@ class DeviceRecoveryTests(unittest.TestCase):
                 patch.object(publisher, "_run", return_value={"status": "serving"}) as run,
             ):
                 self.assertEqual(publisher("binding", "http://127.0.0.2:8080"), {"status": "serving"})
-            run.assert_called_once_with(["publish", "http://127.0.0.2:8080", "--id", "binding", "--public"])
+            run.assert_called_once_with(["publish", "http://127.0.0.2:8080", "--id", "binding", "--name", "Access Pages", "--public"])
 
     @patch("guest_resources.time.sleep")
     @patch("guest_resources.subprocess.Popen")
@@ -515,7 +515,7 @@ class DeviceRecoveryTests(unittest.TestCase):
             publisher = ConnectorPublisher(Path(temp) / "state", api_base_url="https://api.invalid", enrollment_key="retained-secret")
             self._enroll_fixture(publisher, shares=True)
             popen.return_value.poll.return_value = None
-            with patch.object(publisher, "_ipc", return_value={"job_version": "5/3.6.0/per-share"}):
+            with patch.object(publisher, "_ipc", return_value={"job_version": "6/4.2.0/per-share"}):
                 publisher._start()
             args = popen.call_args.args[0]
             self.assertIn("--supervision", args)

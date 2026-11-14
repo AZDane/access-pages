@@ -149,6 +149,28 @@ class BrokerGuestSessionTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever)
         self.thread.start()
 
+    def test_scheduled_window_blocks_bootstrap_verification_and_existing_session(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        page = self.pages.load("page-a")
+        grant = next(g for g in page["access_grants"] if g["id"] == self.grant_a)
+        grant.update(not_before=(now + timedelta(minutes=1)).isoformat(), one_time_use=True)
+        self.pages.replace("page-a", page)
+        with patch("ha_broker.time.time", return_value=now.timestamp()):
+            for _ in range(2):
+                self.assertIsNone(ha_broker._exchange_guest_bootstrap("page-a", self.grant_a, self.secret_a))
+        with patch("ha_broker.time.time", return_value=now.timestamp() + 60):
+            result = ha_broker._exchange_guest_bootstrap("page-a", self.grant_a, self.secret_a)
+            self.assertIsNotNone(result)
+            self.assertIsNone(ha_broker._exchange_guest_bootstrap("page-a", self.grant_a, self.secret_a))
+        session = result["session"]
+        # Even an existing local session cannot bypass a saved lower boundary.
+        with patch("ha_broker.time.time", return_value=now.timestamp()):
+            self.assertIsNone(ha_broker._guest_session_status("page-a", self.grant_a, session))
+            self.assertIsNone(ha_broker._request_guest_verification("page-a", self.grant_a, session, False))
+        with patch("ha_broker.time.time", return_value=self.expiry.timestamp() + 1):
+            self.assertIsNone(ha_broker._guest_session_status("page-a", self.grant_a, session))
+        ha_broker.HA_CLIENT.call_service.assert_not_called()
+
     def tearDown(self):
         self.server.shutdown()
         self.thread.join()

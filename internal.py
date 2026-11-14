@@ -1,5 +1,6 @@
 """Authenticated broker events and configured Admin-owned delivery."""
 
+from invitations import grant_window_open
 
 SECURITY_EVENTS = frozenset({
     "action_rate_limited", "unapproved_action_attempt",
@@ -15,7 +16,7 @@ def _notify_guest_event(runtime, page_id, grant_id, event, details):
         return
     grant = next((item for item in page["access_grants"]
                   if item["id"] == grant_id), None)
-    if not grant:
+    if not grant or not grant_window_open(grant, runtime.utc_now()):
         return
     settings = grant.get("notifications") or {}
     event_key = (
@@ -98,6 +99,14 @@ def _guest_event(handler, payload, runtime):
         details = {"reason": payload["reason"]}
     try:
         if event == "initial_access":
+            try:
+                page = runtime.PAGE_STORE.load(page_id)
+                grant = next((g for g in page["access_grants"] if g["id"] == grant_id), None)
+            except (runtime.PageNotFoundError, runtime.PageConfigError):
+                grant = None
+            if not grant or not grant_window_open(grant, runtime.utc_now()):
+                handler._send_json(runtime.HTTPStatus.NOT_FOUND, {"error": "not found"})
+                return
             first = runtime.ACTIVITY_STORE.record_registered_initial_access(page_id, grant_id)
             if first:
                 _notify_guest_event(runtime, page_id, grant_id, event, details)
@@ -175,7 +184,7 @@ def handle_post(handler, path, payload, runtime):
     if (
         not grant or not grant.get("verification_required")
         or grant.get("credential_flow") != "bootstrap-v1"
-        or runtime.parse_time(grant["expires_at"]) <= runtime.utc_now()
+        or not grant_window_open(grant, runtime.utc_now())
         or not runtime.re.fullmatch(r"\d{6}", code)
     ):
         handler._send_json(runtime.HTTPStatus.NOT_FOUND, {"error": "not found"})

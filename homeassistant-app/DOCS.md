@@ -673,8 +673,33 @@ recurrence date refer to the start date, including overnight windows. Windows
 must be 2 minutes to 24 hours; a DST transition that makes the elapsed window
 longer than 24 hours is skipped.
 
-At each start, the App creates a fresh qURL and emails it. Creation and SMTP can
-add delay. The local guest grant always expires no later than the original end,
+**Send invitation** separates email delivery from access. One-time schedules offer
+Immediately after saving, 24 hours before, 1 hour before, and When access starts.
+Weekly schedules offer the latter three choices. New schedules select 24 hours
+before; migrated schedules retain When access starts, including when edited,
+unless you change it. Immediate and already-due delivery runs in the durable
+background worker after saving, not inside the save request. The confirmation
+shows the email date/time, access start/end, and named timezone.
+If the chosen email time has already passed, a highlighted notice and the save
+confirmation explain that the invitation will be queued for immediate delivery.
+Saving confirms it is queued; it does not claim email acceptance or change the
+scheduled access window.
+
+The configured invitation lifetime horizon (default 30 days) applies from link
+creation through expiration, separately from the access-window duration. Far-future
+dates remain supported when their email is scheduled closer to access. LayerV's
+anonymous/no-sign-up identity has a separate 24-hour lifetime limit; this is not
+imposed on Access Pages' registered-account schedules. If the account or API
+rejects an invitation, delivery stops with a visible error. No access timing is
+silently changed and no immediately usable fallback is created. A registered-account
+25-hour lifetime has not yet been verified by this implementation's live test.
+
+The App creates a fresh qURL when delivery becomes due, with absolute UTC
+`not_before` and `expires_at` values. Opening early displays the start time at
+LayerV and does not consume a single-use invitation. Access Pages also denies
+local bootstrap exchange, verification, sessions, and operations before the start.
+Older grants without a start keep their existing behavior. The local guest grant
+always expires no later than the original end,
 including sessions already open. An already-dispatched Home Assistant action
 cannot be recalled. Permissions and proximity continue to follow the Access
 Page's current policy.
@@ -684,8 +709,8 @@ invitations are the default within each occurrence; single-use invitations are
 optional. Neither setting reuses a link across occurrences. Sending the invitation
 does not itself verify ownership of the email address.
 
-If the App was offline, it may create/send within 15 minutes of the original
-start, provided at least one minute remains. It never extends the end. Older
+If the App was offline, it sends overdue advance invitations before access starts,
+or may create/send within 15 minutes of the original start, provided at least one minute remains. It never extends the end. Older
 occurrences are skipped; up to 30 days of missed history is recorded after a
 long outage. Paused occurrences are not replayed when resumed.
 
@@ -693,8 +718,8 @@ Temporary creation failures are reconciled through broker-owned retirement
 before another grant is attempted. Email retries reuse the same qURL and
 Message-ID. SMTP can accept an email and lose its acknowledgement, so duplicate
 emails are possible. **Accepted by email server** does not confirm inbox delivery.
-Permanent failures or exhausted delivery windows revoke local access and queue
-upstream cleanup. An ambiguously accepted email can consequently contain an
+Permanent failures or exhausted delivery windows revoke local access and retain
+durable upstream cleanup. An ambiguously accepted email can consequently contain an
 already-ended invitation. Use **Refresh schedules** to see upcoming occurrences,
 attempt counts, next retries, failures, and cleanup progress without displaying
 invitation secrets. History is retained for 30 days after an occurrence ends.
@@ -707,11 +732,14 @@ also block the affected schedule. Resolve the cause before resuming. There is a
 limit of 200 schedules; simultaneous starts are queued, and provider limits may
 prevent all guests receiving an invitation within the grace period.
 
-**Edit**, **Pause**, and **Delete** affect future or not-yet-emailed invitations.
-Already-emailed invitations retain their original recipient and end time. Use
-**Duplicate** for another invitation on a date this schedule already processed;
-editing or resuming does not issue that date a second time. Use
-**Pause and end current access** to revoke them immediately. Revoking all guests
+**Edit**, **Pause**, and **Delete** cancel outstanding invitations whose windows
+have not started, including emailed links. Currently active invitations retain
+their original recipient and end time. Confirmations distinguish the affected
+future invitations from active ones. Contact edits apply to all of that named
+guest's schedules. Editing can replace a future occurrence on the same date;
+the old occurrence stays in history and upstream retirement must succeed before
+a replacement is minted. An occurrence that already started is not reissued by
+editing or resuming. **Pause and end current access** also revokes active access. Revoking all guests
 also revokes schedules. Page deletion or connection reset prevents scheduled
 reissuance. Other schedules for the same email/page are flagged for overlap
 review; independent grants remain independent, so revoking one does not end
@@ -732,7 +760,9 @@ values close silently. Fields and dismissal are temporarily disabled while savin
 
 **Review upcoming times** is a preview, not a save. Failed saves leave changes
 unsaved. **Save schedule** closes the dialog after the server confirms success.
-A successful save remains successful even if the subsequent list refresh fails;
+The confirmation previews email and access times; a successful save queues delivery
+when due and does not mean the email has been sent. A successful save remains
+successful even if the subsequent list refresh fails;
 use **Refresh schedules** in that case. For immediate guests, successful link
 creation clears the unsaved-change warning even if invitation email delivery fails.
 
@@ -746,7 +776,8 @@ reveals the latest invitation status, schedule controls, upcoming windows, and
 Each schedule has a visible **Delete schedule** button beside **Edit** and
 **Pause/Resume**. It stops only that schedule's future invitations; other schedules
 and retained history are unaffected. The confirmation identifies the schedule and
-explains that already-issued invitations keep their original end time. Use the
+shows the number of future invitations being canceled and active invitations
+continuing to their original end. Use the
 individual invitation's revoke control if that access must end immediately.
 
 **Revoke guest** is visible without expanding the card. After confirmation it ends
@@ -792,7 +823,7 @@ or SMTP is unavailable:
 - Ended/revoked guest records expire 30 days after their access ends. A small
   first-visit flag remains on an active grant so purging its old timestamp does
   not send another first-login alert.
-- Invitation records expire 30 days after the scheduled end. Work still awaiting
+- Invitation records, including canceled/replaced revisions, expire 30 days after the scheduled end. Work still awaiting
   safe cleanup is retained until local access is denied and upstream cleanup has
   been durably handed off; the remote cleanup queue may continue retrying.
 - Deleted or revoked schedules and their guest contact details are removed once

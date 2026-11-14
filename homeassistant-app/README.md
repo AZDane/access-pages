@@ -191,7 +191,12 @@ See [DOCS.md](https://github.com/AZDane/access-pages-app/blob/main/access_pages/
 
 With SMTP configured, choose **Add guest → Scheduled access** to email a fresh
 qURL automatically for a one-time date or selected weekdays. Set the access times,
-optional recurrence dates, and timezone. New schedules default to your browser's
+optional recurrence dates, timezone, and **Send invitation** timing. New schedules
+select 24 hours before; existing schedules retain when access starts unless changed.
+One-time schedules can also queue delivery immediately after saving. Review the
+email time and access window before confirming Save schedule. The configured invitation
+lifetime horizon and registered-account limits apply to creation through expiration.
+An API rejection fails closed and never becomes immediate access. New schedules default to your browser's
 local timezone; you can select another. Each invitation expires at its original
 end time, including sessions already open.
 
@@ -208,8 +213,10 @@ keeps the guest in the scheduled list. Explicitly resuming a schedule restores i
 Use **View details** to manage schedules and view a combined
 activity and invitation timeline, filter by access window, or load older entries.
 Each schedule has a visible **Delete schedule** button beside Edit and Pause/Resume.
-Deleting it stops only its future invitations; other schedules and retained history
-remain, and already-issued invitations keep their original end time.
+Editing, pausing, or deleting cancels outstanding invitations whose access has not
+started. Active invitations retain their original end unless explicitly revoked.
+Other schedules and retained history remain. Confirmations show future and active
+invitation counts; same-date replacements wait for upstream retirement.
 Email acceptance and guest activity are shown separately. Add another schedule to
 an existing guest, or duplicate a schedule, to keep its history together. Matching
 names or email addresses alone never combine guests; each qURL remains an

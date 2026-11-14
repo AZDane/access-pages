@@ -1,4 +1,6 @@
+from invitations import scheduled_window
 import json
+import re
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urlencode
@@ -94,6 +96,7 @@ class LayerVClient:
         target_path: str = "",
         target_path_supported: bool = False,
         session_duration: str = "1h",
+        not_before=None, expires_at=None,
     ) -> dict:
         if not self.configured:
             raise LayerVError(
@@ -107,6 +110,15 @@ class LayerVClient:
             "session_duration": session_duration,
         }
         requested_at = datetime.now(timezone.utc)
+        if not_before is not None or expires_at is not None:
+            try:
+                start, end = scheduled_window(not_before, expires_at, requested_at)
+            except ValueError as error:
+                raise LayerVError(str(error), status=400) from error
+            payload.pop("expires_in")
+            payload.update(expires_at=end.isoformat(timespec="seconds"))
+            if not_before is not None:
+                payload["not_before"] = start.isoformat(timespec="seconds")
 
         if label:
             payload["label"] = label
@@ -136,6 +148,14 @@ class LayerVClient:
             detail = error.read().decode("utf-8", errors="replace")
             delay = retry_delay(error.headers.get("Retry-After"))
             message = f"LayerV rejected qURL creation ({error.code})"
+            if error.code == 400 and not_before is not None:
+                try:
+                    problem = json.loads(detail).get("error", {})
+                    limit = re.fullmatch(r"invalid input: expiry cannot exceed ([1-9][0-9]?) days", problem.get("detail", ""))
+                    if limit:
+                        message = f"LayerV limits this invitation to {limit[1]} days from creation to expiration; choose delivery closer to access"
+                except (ValueError, TypeError, AttributeError):
+                    pass
             if error.code == 429:
                 message = "LayerV qURL creation rate limit reached (429)"
                 message += f"; wait {delay} seconds before retrying" if delay is not None else "; wait for the account rate-limit window before retrying"
@@ -180,7 +200,7 @@ class LayerVClient:
                 deadline = datetime.fromisoformat(str(data["expires_at"]).replace("Z", "+00:00"))
                 amount, unit = int(expires_in[:-1]), expires_in[-1]
                 duration = timedelta(seconds=amount * {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}[unit])
-                if deadline.tzinfo is None or deadline <= requested_at or deadline > requested_at + duration + timedelta(seconds=5):
+                if deadline.tzinfo is None or deadline <= requested_at or (expires_at is not None and deadline != end) or (expires_at is None and deadline > requested_at + duration + timedelta(seconds=5)):
                     raise ValueError("Invalid effective expiry")
             except (KeyError, ValueError, TypeError, OverflowError) as error:
                 raise LayerVError("LayerV returned an invalid effective expiry") from error
@@ -353,6 +373,10 @@ class BrokerLayerVClient:
                 return False
         return False
 
+    def retire_grant(self, *, page_id, grant_id):
+        """Wait for upstream retirement before permitting a replacement."""
+        return self._request("DELETE", f"/v1/grants/{page_id}/{grant_id}")
+
     def queue_revocation(self, *, page_id, grant_id):
         return self._request("DELETE", f"/v1/grants/{page_id}/{grant_id}?defer=15")
 
@@ -430,6 +454,7 @@ class BrokerLayerVClient:
         target_path="",
         target_path_supported=False,
         session_duration="1h",
+        not_before=None, expires_at=None,
     ):
         if not page_id or not grant_id:
             raise LayerVError("LayerV integration broker requires a saved page and grant")
@@ -441,6 +466,7 @@ class BrokerLayerVClient:
                 "grant_id": grant_id,
                 "label": label,
                 "expires_in": expires_in,
+                **({"not_before": not_before, "expires_at": expires_at} if not_before is not None or expires_at is not None else {}),
                 "target_path": target_path,
                 "one_time_use": bool(one_time_use),
                 "session_duration": session_duration,

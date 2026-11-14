@@ -1,3 +1,4 @@
+from invitations import grant_window_open
 from http import HTTPStatus
 from http.client import HTTPConnection, HTTPException
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -842,7 +843,7 @@ def _current_guest_grant(page_id, grant_id):
         expiry = int(datetime.fromisoformat(
             grant["expires_at"].replace("Z", "+00:00")
         ).timestamp())
-        if expiry <= time.time():
+        if not grant_window_open(grant, datetime.fromtimestamp(time.time(), timezone.utc)):
             return None
         return grant, expiry
     return None

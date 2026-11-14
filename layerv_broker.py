@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, timezone, timedelta
+from invitations import scheduled_window
 from contextlib import ExitStack, contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -156,7 +157,7 @@ def _load_mapping(page_id, grant_id):
     return value
 
 
-def create_grant(page_id, grant_id, label, expires_in, target_path="", one_time_use=False, session_duration="1h"):
+def create_grant(page_id, grant_id, label, expires_in, target_path="", one_time_use=False, session_duration="1h", not_before=None, expires_at=None):
     _page(page_id)
     lifetime = _lifetime(expires_in)
     validated_target_path = _target_path(page_id, target_path)
@@ -166,7 +167,19 @@ def create_grant(page_id, grant_id, label, expires_in, target_path="", one_time_
     seconds = int(match[1]) * {"s": 1, "m": 60, "h": 3600}[match[2]] if match else 0
     lifetime_match = LIFETIME.fullmatch(lifetime)
     lifetime_seconds = int(lifetime_match[1]) * {"m": 60, "h": 3600, "d": 86400, "w": 604800}[lifetime_match[2]]
-    if not 1 <= seconds <= min(86400, lifetime_seconds) or (one_time_use and lifetime_seconds > 86400):
+    scheduled = not_before is not None or expires_at is not None
+    if scheduled:
+        try:
+            start, end = scheduled_window(not_before, expires_at, datetime.now(timezone.utc), MAX_DAYS)
+        except ValueError as error:
+            raise PolicyError(str(error)) from error
+        # At-start/catch-up creation has only an absolute end. Network latency
+        # must not make the original session duration invalid; expires_at still
+        # terminates that session, both upstream and in the Gateway.
+        admission_limit = int((end - start).total_seconds()) if not_before is not None else 86400
+    else:
+        admission_limit = min(86400, lifetime_seconds)
+    if not 1 <= seconds <= admission_limit or (not scheduled and one_time_use and lifetime_seconds > 86400):
         raise PolicyError("Invalid admission duration for the guest lifetime")
     path = _grant_file(page_id, grant_id)
     with STORE_LOCK:
@@ -198,6 +211,7 @@ def create_grant(page_id, grant_id, label, expires_in, target_path="", one_time_
                 target_path_supported=True,
                 one_time_use=one_time_use,
                 session_duration=session_duration,
+                **({"expires_at": end.isoformat(timespec="seconds"), **({"not_before": start.isoformat(timespec="seconds")} if not_before is not None else {})} if scheduled else {}),
             )
         except LayerVError:
             # The response may be lost after the invitation was committed.
@@ -431,6 +445,7 @@ class Handler(BaseHTTPRequestHandler):
                     str(payload.get("target_path", "")),
                     payload.get("one_time_use") is True,
                     str(payload.get("session_duration", "1h")),
+                    payload.get("not_before"), payload.get("expires_at"),
                 ),
             )
         except (PolicyError, json.JSONDecodeError) as error:

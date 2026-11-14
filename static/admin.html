@@ -565,12 +565,13 @@
   <dialog id="schedule-dialog" class="user-dialog" aria-labelledby="schedule-title">
     <form id="schedule-form" class="panel" novalidate>
       <div class="secure-access-heading"><h2 id="schedule-title">Schedule guest</h2><button id="close-schedule" class="secondary" type="button">Close</button></div>
-      <p>A fresh invitation is created and emailed when each window begins. Permissions and proximity follow this Access Page. Delivery may arrive late; access always ends at the original time.</p>
+      <p>A fresh invitation is emailed at your chosen delivery time. Access opens only at the scheduled start. Permissions and proximity follow this Access Page. Delivery may arrive late; access always ends at the original time.</p>
       <div class="schedule-fields">
         <label class="wide">Guest<select id="schedule-guest"><option value="">New guest</option></select><small id="schedule-guest-help">Choose an existing guest to add another schedule to their timeline.</small></label>
         <label>Guest name<input id="schedule-name" required maxlength="120" autocomplete="name"></label>
         <label>Guest email<input id="schedule-email" required type="email" maxlength="254" autocomplete="email"></label>
         <label>Schedule<select id="schedule-kind"><option value="once">One-time date</option><option value="weekly">Repeat weekly</option></select></label>
+        <label>Send invitation<select id="schedule-delivery"><option value="day_before">24 hours before</option><option value="hour_before">1 hour before</option><option value="at_start">When access starts</option><option id="schedule-immediate" value="immediate">Immediately after saving</option></select><small>Email timing does not change the access window. If the chosen email time has already passed, the invitation is queued after saving. Account limits and the configured invitation lifetime horizon apply.</small></label>
         <label>Timezone<select id="schedule-timezone" required aria-describedby="schedule-timezone-help"></select><small id="schedule-timezone-help"></small></label>
         <label id="schedule-date-field">Date<input id="schedule-date" type="date"></label>
         <fieldset id="schedule-weekdays" class="wide hidden"><legend>Access starts on</legend>
@@ -591,7 +592,7 @@
           <label><input type="checkbox" name="schedule-event" value="failed_action">Failed or blocked actions</label>
         </fieldset>
       </div>
-      <p>Weekly times follow this timezone. Ambiguous or nonexistent daylight-saving times are skipped. An offline App may send up to 15 minutes late, with at least one minute remaining. Pausing or editing preserves already-emailed invitations.</p>
+      <p>Weekly times follow this timezone. Ambiguous or nonexistent daylight-saving times are skipped. An offline App may send up to 15 minutes late, with at least one minute remaining. Editing, pausing, or deleting cancels invitations whose access has not started. Currently active invitations continue to their original end unless revoked.</p>
       <p id="schedule-form-status" tabindex="-1" class="status" role="status" aria-live="polite"></p><div id="schedule-preview" class="activity-list"></div>
       <div class="editor-actions"><button id="preview-schedule" class="secondary" type="button">Review upcoming times</button>
         <button id="save-schedule" class="primary" type="submit">Save schedule</button></div>

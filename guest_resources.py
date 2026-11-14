@@ -71,7 +71,7 @@ GRANT = re.compile(r"grant_[A-Za-z0-9_-]{16}")
 
 
 def _invalid_connector_request(stderr):
-    """Translate only pinned qURL 3.6.0 diagnostics, never arbitrary detail.
+    """Translate only pinned qURL 4.2.0 diagnostics, never arbitrary detail.
 
     The native enrollment/recovery headlines come from apps/cli/internal/
     output/messages.go; REST validation uses errors.go's Invalid fields block.
@@ -133,7 +133,7 @@ def _invalid_connector_request(stderr):
 class ConnectorPublisher:
     """Run all guest routes in one pinned CLI daemon owned by the broker.
 
-    qURL 3.6.0 reloads this externally supervised daemon. The broker owns its
+    qURL 4.2.0 reloads this externally supervised daemon. The broker owns its
     lifecycle; CLI commands must never install a native background job.
     """
 
@@ -384,7 +384,7 @@ class ConnectorPublisher:
             if response.status != 200:
                 raise OSError("Connector status unavailable")
             data = json.load(response)
-            expected = "5/3.6.0" + ("/per-share" if self.mode == "per-share" else "")
+            expected = "6/4.2.0" + ("/per-share" if self.mode == "per-share" else "")
             if data.get("job_version") != expected:
                 raise OSError("Connector version or session mode mismatch")
             # A new daemon can wait behind another process's lifetime lock.
@@ -436,7 +436,7 @@ class ConnectorPublisher:
             self._ipc()
             # Preserve qURL 3.0's resource visibility: 3.5 defaults new resources
             # to private. Guest authorization remains enforced by Access Pages.
-            return self._run(["publish", target_url, "--id", connector_id, "--public"])
+            return self._run(["publish", target_url, "--id", connector_id, "--name", "Access Pages", "--public"])
 
     def close(self):
         with self.lock:
