@@ -56,12 +56,12 @@ class AdvanceDeliveryTests(SchedulerTests):
         d = validate_schedule(d, now=self.now)
         preview = self.store.upcoming(d, self.now, editing=True)
         self.assertEqual(preview[0]['send_at'], self.now)
-        with self.assertRaisesRegex(ValueError, 'within 24 hours'):
+        with self.assertRaisesRegex(ValueError, 'configured 30-day horizon'):
             validate_schedule({**d, 'date': '2026-12-20'}, now=self.now)
         # A far future event is valid when delivery occurs close enough to its start.
         validate_schedule({**d, 'date': '2028-12-20', 'delivery': 'hour_before'}, now=self.now)
-        with self.assertRaisesRegex(ValueError, 'within 24 hours'):
-            validate_schedule({**d, 'date': '2028-12-20', 'delivery': 'day_before'}, now=self.now)
+        validate_schedule({**d, 'date': '2028-12-20', 'delivery': 'day_before'}, now=self.now)
+        validate_schedule(definition(delivery='day_before'), now=self.now)
 
     def test_weekly_delivery_crosses_date_boundary(self):
         self.advance(start_time='00:30', end_time='01:30', weekdays=[6])

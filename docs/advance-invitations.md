@@ -37,20 +37,23 @@ without a lower boundary remain supported.
 ## Compatibility and limits
 
 The public schema retrieved on 2026-11-14 describes a 30-day link lifetime and a
-24-hour session duration. The disposable anonymous-device test through the real
-broker separately observed `400 invalid_input: expiry cannot exceed 1 days` for
-25-hour invitations, for both single-use and renewable access. This may depend
-on the credential/resource path; it does not establish account-token limits.
-Until longer-lived Connector invitations are independently confirmed, owner
-validation conservatively limits creation-to-expiration to 24 hours. The requested
-24-hour option stays visible but unsupported saves are rejected with an explanation.
-Near-term one-time events can still use it when sending now leaves less than
-24 hours until expiration. No immediately usable fallback is permitted.
+24-hour session duration. The disposable anonymous/no-sign-up identity test
+observed `400 invalid_input: expiry cannot exceed 1 days` for 25-hour invitations,
+for both single-use and renewable access. That identity has a separate one-day
+limit and does **not** establish the limit for Access Pages' registered account.
+No one-day restriction is imposed on registered schedules. New schedules retain
+the requested 24-hour advance-delivery default.
 
 The broker distinguishes the at-most-24-hour access/session window from the
-creation-to-expiration horizon. The application additionally enforces the owner's
-`QURL_MAX_LIFETIME_DAYS`, and the currently verified 24-hour Connector ceiling, and refuses far-future immediate
-creation outside it. Email timing does not extend access after delays.
+creation-to-expiration horizon. The application preserves the owner's existing
+`QURL_MAX_LIFETIME_DAYS` setting (default and ceiling 30 days). A far-future
+immediate invitation outside that horizon is rejected. Provider account/quota
+rejections block delivery with a visible error; no scheduling fields are removed
+as a fallback and the original access end is preserved.
+
+A registered-account probe of a link starting in 24 hours and expiring in 25 hours,
+using a short session duration, remains unverified because registered credentials
+were not available. The owner requested implementation proceed without that probe.
 
 CLI 3.6.0 cannot supply the now-required public resource name. The official 4.2.0
 release adds `publish --name`; the App supplies the generic name `Access Pages`,

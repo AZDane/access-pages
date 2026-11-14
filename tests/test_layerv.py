@@ -37,8 +37,10 @@ class LayerVClientTests(unittest.TestCase):
         with self.assertRaises(LayerVError):
             client.create_qurl(**args)
         urlopen.side_effect = HTTPError("https://api.invalid", 400, "unsupported", {}, io.BytesIO(b'{}'))
+        calls = urlopen.call_count
         with self.assertRaises(LayerVError):
             client.create_qurl(**args)
+        self.assertEqual(urlopen.call_count, calls + 1)
         self.assertIn("not_before", json.loads(urlopen.call_args.args[0].data))
 
     @patch("layerv.urlopen")

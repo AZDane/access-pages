@@ -194,9 +194,9 @@ qURL automatically for a one-time date or selected weekdays. Set the access time
 optional recurrence dates, timezone, and **Send invitation** timing. New schedules
 select 24 hours before; existing schedules retain when access starts unless changed.
 One-time schedules can also queue delivery immediately after saving. Review the
-email time and access window before confirming Save schedule. Provider creation
-limits currently require expiration within 24 hours of sending; use 1 hour before
-or when access starts for future full-lead windows. An unsupported window fails closed and never becomes immediate access. New schedules default to your browser's
+email time and access window before confirming Save schedule. The configured invitation
+lifetime horizon and registered-account limits apply to creation through expiration.
+An API rejection fails closed and never becomes immediate access. New schedules default to your browser's
 local timezone; you can select another. Each invitation expires at its original
 end time, including sessions already open.
 

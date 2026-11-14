@@ -681,14 +681,14 @@ unless you change it. Immediate and already-due delivery runs in the durable
 background worker after saving, not inside the save request. The confirmation
 shows the email date/time, access start/end, and named timezone.
 
-**Current provider limitation:** disposable live Connector tests reject expiration
-more than 24 hours after creation, for both single-use and renewable links. Until
-a longer horizon is verified, the form rejects delivery/window combinations beyond
-that limit. The 24-hours-before choice stays visible with an explanation; choose
-1 hour before or When access starts for future events. Near-term one-time events
-can queue immediately if their end is within 24 hours. Far-future dates remain
-supported when their email is scheduled closer to access. No access timing is
-silently changed and no immediately usable fallback is created.
+The configured invitation lifetime horizon (default 30 days) applies from link
+creation through expiration, separately from the access-window duration. Far-future
+dates remain supported when their email is scheduled closer to access. LayerV's
+anonymous/no-sign-up identity has a separate 24-hour lifetime limit; this is not
+imposed on Access Pages' registered-account schedules. If the account or API
+rejects an invitation, delivery stops with a visible error. No access timing is
+silently changed and no immediately usable fallback is created. A registered-account
+25-hour lifetime has not yet been verified by this implementation's live test.
 
 The App creates a fresh qURL when delivery becomes due, with absolute UTC
 `not_before` and `expires_at` values. Opening early displays the start time at

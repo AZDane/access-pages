@@ -2025,7 +2025,7 @@ function guestInputError(message, fields = []) {
 }
 function showGuestError(dialog, status, error) {
   clearGuestErrors(dialog);
-  if (!error.fields && dialog === scheduleDialog && error.message.startsWith("LayerV scheduled links must expire within")) {
+  if (!error.fields && dialog === scheduleDialog && error.message.startsWith("Scheduled invitations must expire within")) {
     error.fields = ["schedule-delivery", "schedule-end"];
   }
   status.textContent = error.message;

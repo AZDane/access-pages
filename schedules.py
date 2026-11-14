@@ -28,10 +28,9 @@ from pages import PageConfigError, PageNotFoundError, validate_notifications, va
 UTC = timezone.utc
 GRACE = 15 * 60
 MAX_SCHEDULES = 200
-# Hosted Connector creation currently rejects >1 day for both invitation modes.
-# Keep the API transport capable of absolute windows, but never promise unsupported
-# delivery in the owner form. Raise this only with account/Connector live evidence.
-QURL_MAX_LIFETIME_DAYS = min(1, int(os.getenv("QURL_MAX_LIFETIME_DAYS", "30")))
+# Preserve the application's configured horizon. Anonymous/no-sign-up accounts
+# have a separate one-day provider limit; do not apply that to registered accounts.
+QURL_MAX_LIFETIME_DAYS = min(30, int(os.getenv("QURL_MAX_LIFETIME_DAYS", "30")))
 TERMINAL = {"accepted", "ended", "skipped", "failed", "cancelled"}
 
 
@@ -96,9 +95,9 @@ def validate_schedule(payload, *, default_delivery="day_before", now=None):
             if window["start"] is not None and window["end"] is not None:
                 send = max(now, intended_send(result, window["start"], now))
                 if window["end"] - send > QURL_MAX_LIFETIME_DAYS * 86400:
-                    raise ValueError(f"LayerV scheduled links must expire within {QURL_MAX_LIFETIME_DAYS * 24} hours of sending; choose delivery closer to access")
+                    raise ValueError(f"Scheduled invitations must expire within the configured {QURL_MAX_LIFETIME_DAYS}-day horizon after sending; choose delivery closer to access")
         elif minutes * 60 + delivery_lead(result) > QURL_MAX_LIFETIME_DAYS * 86400:
-            raise ValueError("LayerV scheduled links must expire within 24 hours of sending; choose 1 hour before or when access starts and a shorter access window")
+            raise ValueError(f"Scheduled invitations must expire within the configured {QURL_MAX_LIFETIME_DAYS}-day horizon after sending; choose delivery closer to access")
     return result
 
 
