@@ -178,3 +178,30 @@ class GuestActivityStoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RollingRetentionTests(unittest.TestCase):
+    setUp = GuestActivityStoreTests.setUp
+    tearDown = GuestActivityStoreTests.tearDown
+
+    def test_active_actions_purge_without_resetting_initial_access(self):
+        start=datetime(2026,1,1,tzinfo=timezone.utc)
+        self.store.register_guest('cat-sitter',GRANT)
+        with patch('activity._now',return_value=start):
+            self.assertTrue(self.store.record_registered_initial_access('cat-sitter',GRANT['id']))
+            self.store.record_action(grant_id=GRANT['id'],entity_id='light.a',entity_name='A',action_id='turn_on',parameters={},outcome='success',error='')
+        with patch('activity._now',return_value=start+timedelta(days=31)):
+            self.store.purge()
+            history=self.store.guest_activity('cat-sitter',GRANT['id'])
+            self.assertEqual(history['actions'],[])
+            self.assertIsNone(history['guest']['first_access_at'])
+            self.assertFalse(self.store.record_registered_initial_access('cat-sitter',GRANT['id']))
+            self.assertIsNone(history['guest']['revoked_at'])
+
+    def test_legacy_first_visit_migration_keeps_notification_once_only(self):
+        import sqlite3
+        with sqlite3.connect(self.path) as db:
+            db.execute('CREATE TABLE guests (grant_id TEXT PRIMARY KEY,page_id TEXT,label TEXT,created_at TEXT,expires_at TEXT,revoked_at TEXT,purge_after TEXT,first_access_at TEXT)')
+            db.execute('INSERT INTO guests VALUES(?,?,?,?,?,NULL,NULL,?)',(GRANT['id'],'cat-sitter','Guest',GRANT['created_at'],GRANT['expires_at'],'2026-01-01T00:00:00Z'))
+        self.store.purge()
+        self.assertFalse(self.store.record_registered_initial_access('cat-sitter',GRANT['id']))

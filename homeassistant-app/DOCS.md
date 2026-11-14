@@ -717,6 +717,53 @@ reissuance. Other schedules for the same email/page are flagged for overlap
 review; independent grants remain independent, so revoking one does not end
 another. No windows are silently combined.
 
+### Guest cards, combined history, and retention
+
+Each scheduled guest has a collapsible card. Its summary shows status, the next
+access window, and the latest invitation status; failures remain visible while
+collapsed. Current invitations have their own revoke control, including after a
+schedule is deleted. Expand the card for schedule controls, upcoming windows, and **Activity and
+invitation history**. Use the history filter to separate guest activity from
+delivery status, **Show this access window** to inspect an occurrence, and
+**Load older entries** to page through all retained records. Delivery history shows
+the current outcome and retry counts for each occurrence, not a log of every
+individual retry. Email acceptance is not proof of a guest visit or inbox delivery.
+
+When adding scheduled access, select **New guest** or an existing guest on this
+Access Page. **Duplicate schedule** keeps the same guest selected. Editing a
+guest's name or email updates all of that guest's future schedules; invitations
+already issued keep their original recipient. Guest identity is separate from
+contact details: matching names or emails never merge histories automatically.
+Each occurrence still has its own grant, expiration, and revocation. Pausing or
+ending one schedule does not affect another schedule for the same guest.
+
+On upgrade, each existing schedule receives its own guest identity. Activity for
+invitations whose association is still available is linked automatically. Older
+ended invitations without a reliable association remain under **Recently ended
+guests** until their usual retention expires. Existing manual guests also keep
+per-invitation history; they are not automatically merged into scheduled guests.
+
+The App cleans history in the background, even when nobody opens the Guests view
+or SMTP is unavailable:
+
+- Actions, security events, and first-visit timestamps expire after 30 days.
+  Existing limits also apply: at most 1,000 actions per invitation and 1,000
+  security events per Access Page, so busy histories can be shorter.
+- Ended/revoked guest records expire 30 days after their access ends. A small
+  first-visit flag remains on an active grant so purging its old timestamp does
+  not send another first-login alert.
+- Invitation records expire 30 days after the scheduled end. Work still awaiting
+  safe cleanup is retained until local access is denied and upstream cleanup has
+  been durably handed off; the remote cleanup queue may continue retrying.
+- Deleted schedules and their guest contact details are removed once at least
+  30 days have elapsed since deletion and no occurrence records remain. Guests
+  with another enabled or paused schedule remain available for future use.
+
+Deleting a schedule preserves already-issued access until its original end. Use
+**Pause and end current access** first when access must stop immediately. History
+cleanup affects the live App stores; copies in existing Home Assistant backups
+remain until those backups expire or are deleted under your backup policy.
+
 ### Restart, upgrade, and restore
 
 Schedules and delivery journals persist under `/data/admin-runtime`. Ordinary

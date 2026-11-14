@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.154
+
+- Group scheduled access into collapsible guest cards with upcoming windows, delivery status, and visible failure indicators.
+- Combine each scheduled guest's invitation and activity history across occurrences, with filters and pagination. Keep each invitation's access and expiration independent.
+- Allow new schedules to use an existing guest on the same Access Page; duplicates retain the guest identity. Never merge guests by matching email or name.
+- Purge activity after 30 days in the background, retain invitation records for 30 days after their window, and remove deleted schedule/contact details after retention and cleanup handoff finish.
+- Preserve first-login notification behavior after old activity expires. Migrate existing schedules to separate identities without guessing associations for old ended invitations.
+- Document scheduling, guest timelines, retention, and upgrade behavior in both READMEs and the operating guide.
+
 ## 0.1.153
 
 - Offer Access now or Scheduled access from Add guest, with an SMTP setup explanation when scheduling is unavailable.

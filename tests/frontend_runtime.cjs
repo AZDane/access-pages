@@ -636,11 +636,16 @@ function descendants(element) {
 
 async function testScheduledGuestWorkflow() {
   let smtp = false;
-  const rows = {schedules: [{id: "schedule_test", status: "enabled", definition: {label: "Visitor", email: "guest@example.test", kind: "weekly", timezone: "America/Phoenix"}, upcoming: [{start: 1794672000, end: 1794682800}]}], occurrences: [], supported: true, timezone: "America/Phoenix"};
+  const timelineRequests = [];
+  const rows = {guests: [{id: "guest_test", label: "Visitor", email: "guest@example.test", needs_attention: true}], schedules: [{id: "schedule_test", guest_id: "guest_test", status: "enabled", definition: {label: "Visitor", email: "guest@example.test", kind: "weekly", timezone: "America/Phoenix", weekdays: [5,6], start_time: "09:00", end_time: "12:00"}, upcoming: [{start: 1794672000, end: 1794682800}]}], scheduled_grants: {grant_current: "guest_test"}, active_invitations: [{id: "grant_current", label: "Visitor", expires_at: "2099-01-01T00:00:00Z"}], supported: true, timezone: "America/Phoenix"};
   const fixture = harness("admin", {async fetch(route, options = {}) {
     assert.match(route, /pages\/fixture\/schedules/);
     if (options.method === "POST") {
       const payload = JSON.parse(options.body);
+      if (payload.action === "timeline") {
+        timelineRequests.push(payload);
+        return jsonResponse(200, {events: [{type: "delivery", at: 1794672000, start: 1794672000, end: 1794682800, timezone: "America/Phoenix", occurrence_id: "occ_fixture", state: "accepted", accepted_at: 1794672000}], next_cursor: payload.cursor ? null : {at: 1794672000, key: "delivery:occ_fixture"}});
+      }
       assert.equal(payload.action, "pause_all");
       rows.schedules[0].status = "paused";
       return jsonResponse(200, {success: true});
@@ -668,6 +673,24 @@ async function testScheduledGuestWorkflow() {
   smtp = true;
   await vm.runInContext("loadSchedules()", fixture.context);
   assert.equal(fixture.elements.get("add-schedule").disabled, false);
+  let card = fixture.elements.get("schedule-list").children[0];
+  assert.equal(Boolean(card.open), false);
+  assert.ok(descendants(card).some(e => e.textContent === "Revoke this invitation"));
+  assert.equal(timelineRequests.length, 0, "Collapsed cards must not load history");
+  assert.ok(descendants(card).some(e => e.textContent?.includes("Needs attention")));
+  card.open = true; card.listeners.get("toggle")(); await settle();
+  assert.equal(timelineRequests.length, 1);
+  const more = descendants(card).find(e => e.textContent === "Load older entries");
+  more.listeners.get("click")(); await settle();
+  assert.deepEqual(timelineRequests[1].cursor, {at: 1794672000, key: "delivery:occ_fixture"});
+  assert.equal(more.classList.contains("hidden"), true);
+  descendants(card).find(e => e.textContent === "Show this access window").listeners.get("click")(); await settle();
+  assert.equal(timelineRequests.at(-1).occurrence_id, "occ_fixture");
+  descendants(card).find(e => e.textContent === "Show all access windows").listeners.get("click")(); await settle();
+  assert.equal(timelineRequests.at(-1).occurrence_id, null);
+  await vm.runInContext("loadSchedules()", fixture.context);
+  card = fixture.elements.get("schedule-list").children[0];
+  assert.equal(card.open, true, "Refresh preserves expanded cards");
   await fixture.elements.get("add-user").listeners.get("click")();
   fixture.elements.get("add-schedule").listeners.get("click")();
   assert.equal(fixture.elements.get("guest-choice-dialog").open, false);
@@ -679,11 +702,16 @@ async function testScheduledGuestWorkflow() {
   assert.match(fixture.elements.get("schedule-timezone-help").textContent, /America\/Los_Angeles/);
   const saved = JSON.parse(vm.runInContext("JSON.stringify(scheduleFields())", fixture.context));
   saved.timezone = "Europe/London";
-  fixture.context.savedSchedule = {id: "saved", definition: saved};
+  fixture.context.savedSchedule = {id: "saved", guest_id: "guest_test", definition: saved};
   vm.runInContext("openSchedule(savedSchedule)", fixture.context);
   assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");
   vm.runInContext("openSchedule(savedSchedule, true)", fixture.context);
   assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");
+  assert.equal(fixture.elements.get("schedule-guest").value, "guest_test");
+  assert.equal(fixture.elements.get("schedule-email").readOnly, true);
+  fixture.elements.get("schedule-guest").value = "";
+  fixture.elements.get("schedule-guest").listeners.get("change")();
+  assert.equal(fixture.elements.get("schedule-email").readOnly, false);
   vm.runInContext("Intl.DateTimeFormat = () => { throw new Error('unavailable'); }; openSchedule();", fixture.context);
   assert.equal(fixture.elements.get("schedule-timezone").value, "America/Phoenix");
   for (const id of ["schedule-date", "schedule-first", "schedule-last"]) {

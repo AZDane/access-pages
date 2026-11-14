@@ -16,7 +16,7 @@ def handle(handler, path, runtime, payload=None):
         return True
     page_id = parts[0]
     try:
-        runtime.PAGE_STORE.load(page_id)
+        page = runtime.PAGE_STORE.load(page_id)
         store = runtime.SCHEDULE_STORE
         now = time.time()
         supported = isinstance(runtime.LAYERV_CLIENT, BrokerLayerVClient)
@@ -29,7 +29,16 @@ def handle(handler, path, runtime, payload=None):
                 ZoneInfo(default_zone)
             except (ValueError, KeyError):
                 default_zone = "UTC"
-            handler._send_json(200, {"schedules": rows, "occurrences": store.history(page_id),
+            store.link_activity(runtime.ACTIVITY_STORE, page_id)
+            guests = store.guests(page_id)
+            for guest in guests:
+                delivery = store.delivery_timeline(page_id, guest["id"], None, (1e12, ""), limit=1)
+                guest["latest_delivery"] = delivery[0] if delivery else None
+                guest["needs_attention"] = store.needs_attention(page_id, guest["id"])
+            associations = {row["grant_id"]: row["scheduled_guest_id"] for row in runtime.ACTIVITY_STORE.page_guests(page_id) if row.get("scheduled_guest_id")}
+            handler._send_json(200, {"schedules": rows, "guests": guests, "scheduled_grants": associations,
+                                     "active_invitations": [{key: grant[key] for key in ("id", "label", "expires_at")}
+                                                            for grant in page["access_grants"] if grant["id"] in associations],
                                      "smtp_configured": runtime.SMTP_CONFIG_STORE.configured(),
                                      "supported": supported, "timezone": default_zone,
                                      "timezones": sorted(available_timezones())})
@@ -38,6 +47,14 @@ def handle(handler, path, runtime, payload=None):
             raise ValueError("Request must be an object")
         action = payload.get("action", "save")
         schedule_id = parts[2] if len(parts) == 3 else None
+        if action == "timeline":
+            guest_id = payload.get("guest_id")
+            if not isinstance(guest_id, str):
+                raise ValueError("Choose a guest")
+            handler._send_json(200, store.timeline(runtime.ACTIVITY_STORE, page_id, guest_id,
+                                                   occurrence_id=payload.get("occurrence_id"),
+                                                   kind=payload.get("kind", "all"), cursor=payload.get("cursor")))
+            return True
         with runtime.page_action_lock(page_id):
             if schedule_id:
                 current = store.get(schedule_id)
@@ -73,7 +90,10 @@ def handle(handler, path, runtime, payload=None):
                     available.add("email")
                 if any(target not in available for target in definition["notifications"]["targets"]):
                     raise ValueError("A guest activity notification target is not configured")
-                schedule_id = store.save(page_id, definition, now, schedule_id)
+                guest_id = payload.get("guest_id")
+                if guest_id is not None and not isinstance(guest_id, str):
+                    raise ValueError("Choose a guest")
+                schedule_id = store.save(page_id, definition, now, schedule_id, guest_id)
             else:
                 raise ValueError("Unknown schedule action")
             if payload.get("revoke_active") is True:

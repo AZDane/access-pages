@@ -1413,6 +1413,15 @@ def retry_pending_policies():
 def run():
     PAGES_DIR.mkdir(parents=True, exist_ok=True)
     PAGE_STORE.recover_pending_revocations()
+    def retain_recent_history():
+        while True:
+            try:
+                ACTIVITY_STORE.purge()
+                SCHEDULE_STORE.housekeeping(time.time())
+            except (OSError, sqlite3.Error, ValueError):
+                audit("history_retention_unavailable")
+            time.sleep(60)
+    Thread(target=retain_recent_history, daemon=True, name="history-retention").start()
     Scheduler(RUNTIME, SCHEDULE_STORE).start()
     if LAYERV_CLIENT.configured or POLICY_PUBLISHER.configured:
         def retry_cleanup():

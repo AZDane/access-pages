@@ -1497,5 +1497,16 @@ input:disabled {
 /* Native activation also works where an embedded browser disallows showPicker(). */
 #schedule-dialog input[type="date"] { position: relative; cursor: pointer; }
 #schedule-dialog input[type="date"]::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; margin: 0; padding: 0; background-size: 18px 18px; background-position: right 13px center; cursor: pointer; }
-#schedule-list article { padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
+.scheduled-guest { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.scheduled-guest > summary { padding: 1rem; cursor: pointer; }
+.scheduled-guest > summary > span { display: block; margin-top: .35rem; color: var(--muted); }
+.scheduled-guest > summary > .schedule-warning { display: block; margin-top: .5rem; color: var(--warning); }
+.scheduled-guest-body { padding: 0 1rem 1rem; }
+.guest-schedule { border-top: 1px solid var(--line); padding-block: .75rem; }
+.guest-schedule h4 { margin: .25rem 0 .75rem; }
+.guest-schedule .editor-actions { margin-top: .75rem; }
+.schedule-more { padding: .65rem; border: 1px solid var(--line); border-radius: 12px; }
+.schedule-more summary, .guest-schedule summary { cursor: pointer; }
+.retention-note { color: var(--muted); font-size: .85rem; }
+.scheduled-guest .activity-entry { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .schedule-fields, .guest-invitation-options { grid-template-columns: 1fr; } }

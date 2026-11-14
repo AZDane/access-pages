@@ -146,13 +146,27 @@ class ScheduleStore:
         try:
             db.execute("PRAGMA synchronous=FULL")
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            if version not in (0, 1):
+            if version not in (0, 1, 2):
                 raise ValueError("Unsupported schedule database version")
-            db.execute("CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, page TEXT NOT NULL, definition TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, cursor REAL NOT NULL)")
+            db.execute("CREATE TABLE IF NOT EXISTS schedules (id TEXT PRIMARY KEY, page TEXT NOT NULL, definition TEXT NOT NULL, status TEXT NOT NULL, revision INTEGER NOT NULL, cursor REAL NOT NULL, guest_id TEXT NOT NULL DEFAULT '')")
+            db.execute("CREATE TABLE IF NOT EXISTS scheduled_guests (id TEXT PRIMARY KEY, page TEXT NOT NULL, label TEXT NOT NULL, email TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS occurrences (id TEXT PRIMARY KEY, schedule TEXT NOT NULL, page TEXT NOT NULL, local_date TEXT NOT NULL, start REAL NOT NULL, end REAL NOT NULL, state TEXT NOT NULL, due REAL NOT NULL, record TEXT NOT NULL, UNIQUE(schedule,local_date))")
             db.execute("CREATE INDEX IF NOT EXISTS schedule_work ON occurrences(state,due)")
             db.execute("CREATE TABLE IF NOT EXISTS schedule_meta (key TEXT PRIMARY KEY, value REAL NOT NULL)")
-            db.execute("PRAGMA user_version=1")
+            if version < 2:
+                # One identity per old schedule. Never infer identity from contact details.
+                db.execute("BEGIN IMMEDIATE")
+                columns = {row[1] for row in db.execute("PRAGMA table_info(schedules)")}
+                if "guest_id" not in columns:
+                    db.execute("ALTER TABLE schedules ADD COLUMN guest_id TEXT NOT NULL DEFAULT ''")
+                rows = db.execute("SELECT id,page,definition FROM schedules WHERE guest_id='' ").fetchall()
+                for row in rows:
+                    definition = json.loads(row["definition"])
+                    guest_id = "guest_" + secrets.token_hex(12)
+                    db.execute("INSERT INTO scheduled_guests VALUES(?,?,?,?)", (guest_id, row["page"], definition["label"], definition["email"]))
+                    db.execute("UPDATE schedules SET guest_id=? WHERE id=?", (guest_id, row["id"]))
+                db.execute("PRAGMA user_version=2")
+                db.commit()
             with db:
                 yield db
         finally:
@@ -221,7 +235,7 @@ class ScheduleStore:
             used = {row[0] for row in db.execute("SELECT local_date FROM occurrences WHERE schedule=?", (schedule_id,))}
         return [row for row in upcoming(definition, now, limit=6) if row["local_date"] not in used][:5]
 
-    def save(self, page, definition, now, schedule_id=None):
+    def save(self, page, definition, now, schedule_id=None, guest_id=None):
         validate_page_id(page)
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -229,13 +243,35 @@ class ScheduleStore:
                 row = db.execute("SELECT * FROM schedules WHERE id=? AND page=? AND status!='deleted'", (schedule_id, page)).fetchone()
                 if row is None:
                     raise ValueError("Schedule not found")
+                if guest_id and guest_id != row["guest_id"]:
+                    raise ValueError("A schedule cannot be moved to another guest")
+                guest_id = row["guest_id"]
+            if guest_id:
+                guest = db.execute("SELECT * FROM scheduled_guests WHERE id=? AND page=?", (guest_id, page)).fetchone()
+                if guest is None:
+                    raise ValueError("Guest not found on this Access Page")
+                if schedule_id and (guest["label"] != definition["label"] or guest["email"] != definition["email"]):
+                    # Contact edits apply to future invitations only, under the page lock.
+                    related = db.execute("SELECT id,definition FROM schedules WHERE guest_id=? AND status!='deleted'", (guest_id,)).fetchall()
+                    for other in related:
+                        updated = json.loads(other["definition"])
+                        updated.update(label=definition["label"], email=definition["email"])
+                        db.execute("UPDATE schedules SET definition=?,revision=revision+1,cursor=? WHERE id=?", (json.dumps(updated), now, other["id"]))
+                        db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND state NOT IN ('accepted','ended','skipped','failed','cancelled')", (other["id"],))
+                    db.execute("UPDATE scheduled_guests SET label=?,email=? WHERE id=?", (definition["label"], definition["email"], guest_id))
+                elif not schedule_id:
+                    definition = {**definition, "label": guest["label"], "email": guest["email"]}
+            else:
+                guest_id = "guest_" + secrets.token_hex(12)
+                db.execute("INSERT INTO scheduled_guests VALUES(?,?,?,?)", (guest_id, page, definition["label"], definition["email"]))
+            if schedule_id:
                 db.execute("UPDATE schedules SET definition=?,revision=revision+1,cursor=? WHERE id=?", (json.dumps(definition), now, schedule_id))
                 db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND state NOT IN ('accepted','ended','skipped','failed','cancelled')", (schedule_id,))
             else:
                 if db.execute("SELECT count(*) FROM schedules WHERE status!='deleted'").fetchone()[0] >= MAX_SCHEDULES:
                     raise ValueError("Maximum of 200 schedules reached")
                 schedule_id = "schedule_" + secrets.token_hex(12)
-                db.execute("INSERT INTO schedules VALUES(?,?,?,'enabled',1,?)", (schedule_id, page, json.dumps(definition), now))
+                db.execute("INSERT INTO schedules VALUES(?,?,?,'enabled',1,?,?)", (schedule_id, page, json.dumps(definition), now, guest_id))
         return schedule_id
 
     def status(self, schedule_id, status, now, revoke=False):
@@ -273,6 +309,78 @@ class ScheduleStore:
                           {key: record.get(key) for key in ("label", "reason", "attempts", "email_attempts", "accepted_at", "timezone")})
         return result
 
+    def guests(self, page):
+        with self.connect() as db:
+            return [dict(row) for row in db.execute("SELECT * FROM scheduled_guests WHERE page=? ORDER BY label,id", (page,))]
+
+    def guest(self, page, guest_id):
+        with self.connect() as db:
+            row = db.execute("SELECT * FROM scheduled_guests WHERE page=? AND id=?", (page, guest_id)).fetchone()
+        if row is None:
+            raise ValueError("Guest not found on this Access Page")
+        return dict(row)
+
+    def link_activity(self, activity, page=None):
+        """Recover metadata associations for pre-upgrade or interrupted commitments."""
+        with self.connect() as db:
+            rows = db.execute("SELECT occurrences.*, schedules.guest_id FROM occurrences JOIN schedules ON schedules.id=occurrences.schedule WHERE (? IS NULL OR occurrences.page=?)", (page, page)).fetchall()
+        for item in rows:
+            row = {**dict(item), "record": json.loads(item["record"])}
+            if row["record"].get("grant_id"):
+                activity.link_scheduled_guest(row["page"], row["record"]["grant_id"], row["guest_id"], row)
+
+    def delivery_timeline(self, page, guest_id, occurrence_id, before, limit=51):
+        with self.connect() as db:
+            rows = db.execute(
+                """WITH deliveries AS (
+                    SELECT occurrences.*, COALESCE(json_extract(record,'$.accepted_at'),start) AS at,
+                           'delivery:' || occurrences.id AS key
+                    FROM occurrences JOIN schedules ON schedules.id=occurrences.schedule
+                    WHERE occurrences.page=? AND schedules.guest_id=?
+                ) SELECT * FROM deliveries WHERE (? IS NULL OR id=?)
+                    AND (at<? OR (at=? AND key<?)) ORDER BY at DESC,key DESC LIMIT ?""",
+                (page, guest_id, occurrence_id, occurrence_id, before[0], before[0], before[1], limit),
+            ).fetchall()
+        result = []
+        for row in rows:
+            record = json.loads(row["record"])
+            result.append({key: row[key] for key in ("at", "key", "start", "end", "state", "due")} |
+                          {"type": "delivery", "occurrence_id": row["id"]} |
+                          {key: record.get(key) for key in ("label", "reason", "attempts", "email_attempts", "accepted_at", "timezone")})
+        return result
+
+    def needs_attention(self, page, guest_id):
+        with self.connect() as db:
+            return bool(db.execute(
+                """SELECT 1 FROM occurrences o JOIN schedules s ON s.id=o.schedule
+                   WHERE o.page=? AND s.guest_id=? AND o.state IN ('failed','skipped')
+                     AND NOT EXISTS (SELECT 1 FROM occurrences newer
+                                     WHERE newer.schedule=o.schedule AND newer.start>o.start)
+                   LIMIT 1""", (page, guest_id),
+            ).fetchone())
+
+    def timeline(self, activity, page, guest_id, *, occurrence_id=None, kind="all", cursor=None):
+        self.guest(page, guest_id)
+        if not isinstance(kind, str) or kind not in {"all", "activity", "delivery"}:
+            raise ValueError("Unknown history filter")
+        if occurrence_id is not None and (not isinstance(occurrence_id, str) or len(occurrence_id) > 80):
+            raise ValueError("Invalid access window")
+        before = (1e12, "")
+        if cursor is not None:
+            if (not isinstance(cursor, dict) or not isinstance(cursor.get("at"), (float, int))
+                    or not -1e12 < cursor["at"] < 1e12 or not math.isfinite(cursor["at"])
+                    or not isinstance(cursor.get("key"), str)
+                    or len(cursor["key"]) > 100):
+                raise ValueError("Invalid history cursor")
+            before = (cursor["at"], cursor["key"])
+        self.link_activity(activity, page)
+        rows = [] if kind == "activity" else self.delivery_timeline(page, guest_id, occurrence_id, before)
+        if kind != "delivery":
+            rows += activity.scheduled_timeline(page, guest_id, occurrence_id, before)
+        rows.sort(key=lambda row: (row["at"], row["key"]), reverse=True)
+        selected = rows[:50]
+        return {"events": selected, "next_cursor": {key: selected[-1][key] for key in ("at", "key")} if len(rows) > 50 else None}
+
     def plan(self, schedule, now):
         d = schedule["definition"]
         zone = ZoneInfo(d["timezone"])
@@ -309,6 +417,8 @@ class ScheduleStore:
                 db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE state NOT IN ('ended','skipped','failed','cancelled')")
             db.execute("INSERT INTO schedule_meta VALUES('last_tick',?) ON CONFLICT(key) DO UPDATE SET value=MAX(value,excluded.value)", (now,))
             db.execute("DELETE FROM occurrences WHERE end<? AND state IN ('ended','skipped','failed','cancelled')", (now - 30 * 86400,))
+            db.execute("DELETE FROM schedules WHERE status='deleted' AND cursor<? AND NOT EXISTS (SELECT 1 FROM occurrences WHERE occurrences.schedule=schedules.id)", (now - 30 * 86400,))
+            db.execute("DELETE FROM scheduled_guests WHERE NOT EXISTS (SELECT 1 FROM schedules WHERE schedules.guest_id=scheduled_guests.id)")
 
 
 class Scheduler:
@@ -330,8 +440,9 @@ class Scheduler:
             page = self.r.PAGE_STORE.load(row["page"])
             grant = next((g for g in page["access_grants"] if g["id"] == grant_id), None)
             if grant:
+                self.r.ACTIVITY_STORE.link_scheduled_guest(row["page"], grant_id, self.store.get(row["schedule"])["guest_id"], row)
                 self.r.PAGE_STORE.remove_access_grant(row["page"], grant_id)
-                self.r.ACTIVITY_STORE.mark_revoked(row["page"], grant)
+                self.r.ACTIVITY_STORE.mark_revoked(row["page"], grant, revoked_at=datetime.fromtimestamp(min(self.clock(), row["end"]), UTC))
         except PageNotFoundError:
             pass
         self.r.cleanup_guest_sessions(row["page"], grant_id)
@@ -432,7 +543,10 @@ class Scheduler:
             return
         if row["state"] == "committing":
             page = self.r.PAGE_STORE.load(row["page"])
-            if any(g["id"] == record["grant_id"] for g in page["access_grants"]):
+            grant = next((g for g in page["access_grants"] if g["id"] == record["grant_id"]), None)
+            if grant:
+                self.r.ACTIVITY_STORE.register_guest(row["page"], grant)
+                self.r.ACTIVITY_STORE.link_scheduled_guest(row["page"], grant["id"], self.store.get(row["schedule"])["guest_id"], row)
                 self.store.put(row, "ready")
             else:
                 self.abandon(row, "cancelled", "Interrupted commit or owner revocation; access was not restored")
@@ -486,6 +600,7 @@ class Scheduler:
             page["access_grants"].insert(0, grant)
             self.r.PAGE_STORE.replace(row["page"], page)
         self.r.ACTIVITY_STORE.register_guest(row["page"], grant)
+        self.r.ACTIVITY_STORE.link_scheduled_guest(row["page"], grant["id"], self.store.get(row["schedule"])["guest_id"], row)
         self.store.put(row, "ready")
 
     def deliver(self, row, now):
@@ -531,6 +646,7 @@ class Scheduler:
         self.lock_file = open(self.store.path.with_suffix(".lock"), "a", encoding="utf-8")
         os.fchmod(self.lock_file.fileno(), 0o600)
         fcntl.flock(self.lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        self.store.link_activity(self.r.ACTIVITY_STORE)
         for delivery in (False, True):
             Thread(target=self.loop, args=(delivery,), daemon=True, name="schedule-email" if delivery else "schedule-create").start()
 

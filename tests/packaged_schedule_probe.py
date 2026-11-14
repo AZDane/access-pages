@@ -51,6 +51,14 @@ grant = pages.load("scheduled-test")["access_grants"][0]
 assert grant["expires_at"] == "2099-01-01T12:00:00+00:00"
 assert not grant["qurl_link"]
 assert "qurl.invalid" not in json.dumps(store.history("scheduled-test"))
+guest_id = store.get(id_)["guest_id"]
+assert runtime.ACTIVITY_STORE.page_guests("scheduled-test")[0]["scheduled_guest_id"] == guest_id
+runtime.ACTIVITY_STORE.record_action(grant_id=grant["id"], entity_id="light.fixture",
+    entity_name="Fixture", action_id="turn_on", parameters={}, outcome="success")
+timeline = store.timeline(runtime.ACTIVITY_STORE, "scheduled-test", guest_id)
+assert {event["type"] for event in timeline["events"]} == {"action", "delivery"}
+assert len({event["occurrence_id"] for event in timeline["events"]}) == 1
+assert "qurl.invalid" not in json.dumps(timeline)
 assert not store.check_recovery(pages)
 store.path.with_name("schedule-authorization").unlink()
 assert store.check_recovery(pages)
