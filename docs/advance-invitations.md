@@ -13,6 +13,12 @@ the request, never as a fallback from a rejected future invitation. The local
 grant retains the original start. The session duration may exceed the remaining
 window after a delay; the absolute end still terminates access.
 
+Scheduled invitation emails show the original start and end dates/times, timezone
+name, and UTC offsets in an access-window panel before the link button, with the
+same information in plain text. This includes overnight windows and late delivery.
+The email explains early opening and expiry of already-open sessions. Email
+branding uses text so mail clients do not need to load an image attachment.
+
 ## Durable state and migration
 
 Schedule database version 3 adds occurrence `send_at` and `revision`, and changes
