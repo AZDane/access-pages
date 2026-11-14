@@ -719,12 +719,21 @@ another. No windows are silently combined.
 
 ### Guest cards, combined history, and retention
 
-Each scheduled guest has a collapsible card. Its summary shows status, the next
-access window, and the latest invitation status; failures remain visible while
-collapsed. Current invitations have their own revoke control, including after a
-schedule is deleted. Expand the card for schedule controls, upcoming windows, and **Activity and
-invitation history**. Use the history filter to separate guest activity from
-delivery status, **Show this access window** to inspect an occurrence, and
+Each scheduled guest has a compact card matching the regular guest layout. Cards
+start collapsed when opening the Guests view. The summary shows status and the
+next access window; failures remain visible while collapsed. **View details**
+reveals the latest invitation status, schedule controls, upcoming windows, and
+**Activity and invitation history**. Refreshing preserves cards you have expanded.
+
+**Revoke guest** is visible without expanding the card. After confirmation it ends
+all current access and pauses every future schedule for that guest on this Access
+Page. This includes outstanding invitations from deleted schedules. History is
+retained; other guests and manual invitations are unaffected, even if their names
+or email addresses match. The owner can explicitly resume individual schedules
+later. Local access ends before remote cleanup, which can continue retrying.
+Current invitations also have individual revoke controls inside **View details**.
+
+Use the history filter to separate guest activity from delivery status, **Show this access window** to inspect an occurrence, and
 **Load older entries** to page through all retained records. Delivery history shows
 the current outcome and retry counts for each occurrence, not a log of every
 individual retry. Email acceptance is not proof of a guest visit or inbox delivery.

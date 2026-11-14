@@ -281,6 +281,24 @@ class ScheduleStore:
             db.execute("UPDATE schedules SET status=?,cursor=?,revision=revision+1 WHERE id=?", (status, now, schedule_id))
             db.execute("UPDATE occurrences SET state='cancelling',due=0 WHERE schedule=? AND (state NOT IN ('accepted','ended','skipped','failed','cancelled') OR (? AND state='accepted'))", (schedule_id, revoke))
 
+    def revoke_guest(self, page, guest_id, now):
+        """Pause all future schedules and journal current denial atomically.
+
+        Deleted schedules stay deleted, but their outstanding invitations are
+        included. The caller holds the page lock through synchronous local denial.
+        """
+        with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute("SELECT 1 FROM scheduled_guests WHERE page=? AND id=?", (page, guest_id)).fetchone():
+                raise ValueError("Guest not found on this Access Page")
+            db.execute("UPDATE schedules SET status='paused',cursor=?,revision=revision+1 WHERE page=? AND guest_id=? AND status!='deleted'", (now, page, guest_id))
+            db.execute("""UPDATE occurrences SET state='cancelling',due=0
+                          WHERE page=? AND schedule IN (SELECT id FROM schedules WHERE page=? AND guest_id=?)
+                            AND state NOT IN ('ended','skipped','failed','cancelled')""", (page, page, guest_id))
+            rows = db.execute("""SELECT * FROM occurrences WHERE page=? AND state='cancelling'
+                                 AND schedule IN (SELECT id FROM schedules WHERE page=? AND guest_id=?)""", (page, page, guest_id)).fetchall()
+        return [{**dict(row), "record": json.loads(row["record"])} for row in rows]
+
     def pause_page(self, page, now, revoke=False):
         # Page locks are held by owner routes and workers, including reset.
         if not self.path.exists():

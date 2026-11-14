@@ -195,8 +195,10 @@ optional recurrence dates, and timezone. New schedules default to your browser's
 local timezone; you can select another. Each invitation expires at its original
 end time, including sessions already open.
 
-Scheduled guests appear in collapsible cards showing their next access window
-and delivery status. Expand a guest to manage schedules and view a combined
+Scheduled guests appear in compact cards, collapsed by default, showing their
+next access window and access status. **Revoke guest** ends current access and
+pauses every schedule for that guest on this Access Page, while retaining history.
+Use **View details** to manage schedules and view a combined
 activity and invitation timeline, filter by access window, or load older entries.
 Email acceptance and guest activity are shown separately. Add another schedule to
 an existing guest, or duplicate a schedule, to keep its history together. Matching

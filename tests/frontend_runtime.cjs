@@ -637,6 +637,7 @@ function descendants(element) {
 async function testScheduledGuestWorkflow() {
   let smtp = false;
   const timelineRequests = [];
+  const revocations = [];
   const rows = {guests: [{id: "guest_test", label: "Visitor", email: "guest@example.test", needs_attention: true}], schedules: [{id: "schedule_test", guest_id: "guest_test", status: "enabled", definition: {label: "Visitor", email: "guest@example.test", kind: "weekly", timezone: "America/Phoenix", weekdays: [5,6], start_time: "09:00", end_time: "12:00"}, upcoming: [{start: 1794672000, end: 1794682800}]}], scheduled_grants: {grant_current: "guest_test"}, active_invitations: [{id: "grant_current", label: "Visitor", expires_at: "2099-01-01T00:00:00Z"}], supported: true, timezone: "America/Phoenix"};
   const fixture = harness("admin", {async fetch(route, options = {}) {
     assert.match(route, /pages\/fixture\/schedules/);
@@ -645,6 +646,12 @@ async function testScheduledGuestWorkflow() {
       if (payload.action === "timeline") {
         timelineRequests.push(payload);
         return jsonResponse(200, {events: [{type: "delivery", at: 1794672000, start: 1794672000, end: 1794682800, timezone: "America/Phoenix", occurrence_id: "occ_fixture", state: "accepted", accepted_at: 1794672000}], next_cursor: payload.cursor ? null : {at: 1794672000, key: "delivery:occ_fixture"}});
+      }
+      if (payload.action === "revoke_guest") {
+        assert.equal(payload.guest_id, "guest_test");
+        assert.ok(route.endsWith("/schedules"), "Guest revoke must not target an editing schedule");
+        revocations.push(payload); rows.schedules[0].status = "paused"; rows.active_invitations = [];
+        return jsonResponse(200, {success: true});
       }
       assert.equal(payload.action, "pause_all");
       rows.schedules[0].status = "paused";
@@ -674,11 +681,15 @@ async function testScheduledGuestWorkflow() {
   await vm.runInContext("loadSchedules()", fixture.context);
   assert.equal(fixture.elements.get("add-schedule").disabled, false);
   let card = fixture.elements.get("schedule-list").children[0];
-  assert.equal(Boolean(card.open), false);
+  const expandButton = card => descendants(card).find(e => e.attributes.get("aria-controls"));
+  assert.equal(expandButton(card).getAttribute("aria-expanded"), "false");
+  assert.equal(card.children[1].classList.contains("hidden"), true);
+  assert.ok(descendants(card.children[0]).some(e => e.textContent === "Revoke guest"));
   assert.ok(descendants(card).some(e => e.textContent === "Revoke this invitation"));
   assert.equal(timelineRequests.length, 0, "Collapsed cards must not load history");
   assert.ok(descendants(card).some(e => e.textContent?.includes("Needs attention")));
-  card.open = true; card.listeners.get("toggle")(); await settle();
+  expandButton(card).listeners.get("click")(); await settle();
+  assert.equal(expandButton(card).getAttribute("aria-expanded"), "true");
   assert.equal(timelineRequests.length, 1);
   const more = descendants(card).find(e => e.textContent === "Load older entries");
   more.listeners.get("click")(); await settle();
@@ -690,7 +701,18 @@ async function testScheduledGuestWorkflow() {
   assert.equal(timelineRequests.at(-1).occurrence_id, null);
   await vm.runInContext("loadSchedules()", fixture.context);
   card = fixture.elements.get("schedule-list").children[0];
-  assert.equal(card.open, true, "Refresh preserves expanded cards");
+  assert.equal(expandButton(card).getAttribute("aria-expanded"), "true", "Refresh preserves expanded cards");
+  expandButton(card).listeners.get("click")(); await settle();
+  const revoke = descendants(card.children[0]).find(e => e.textContent === "Revoke guest");
+  vm.runInContext("confirmAction = async () => false", fixture.context);
+  revoke.listeners.get("click")(); await settle();
+  assert.equal(revocations.length, 0);
+  vm.runInContext("confirmAction = async message => { if (!message.includes('all current access') || !message.includes('all future schedules')) throw Error('Missing revoke scope'); return true; }; editingSchedule = 'unrelated';", fixture.context);
+  revoke.listeners.get("click")(); await settle();
+  assert.equal(revocations.length, 1);
+  card = fixture.elements.get("schedule-list").children[0];
+  assert.equal(expandButton(card).getAttribute("aria-expanded"), "false", "Revocation does not expand a collapsed card");
+  vm.runInContext("confirmAction = async () => true; editingSchedule = null;", fixture.context);
   await fixture.elements.get("add-user").listeners.get("click")();
   fixture.elements.get("add-schedule").listeners.get("click")();
   assert.equal(fixture.elements.get("guest-choice-dialog").open, false);

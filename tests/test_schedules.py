@@ -378,6 +378,55 @@ class ScheduleRoutesTests(unittest.TestCase):
         self.client.create_qurl.assert_called_once()
 
 
+    def test_revoke_guest_denies_all_its_schedules_including_deleted_and_preserves_other_guest(self):
+        guest = self.store.get(self.schedule_id)["guest_id"]
+        deleted = self.store.save("cat-sitter", definition(), self.now, guest_id=guest)
+        other = self.store.save("cat-sitter", definition(), self.now)
+        self.start_window()
+        for _ in range(10):
+            self.now += 2
+            self.scheduler.tick()
+            self.scheduler.tick(delivery=True)
+        self.assertEqual(len(self.grants()), 3)
+        other_grant = next(row["record"]["grant_id"] for row in self.store.work() if row["schedule"] == other)
+        self.store.status(deleted, "deleted", self.now)
+        self.client.queue_revocation.side_effect = LayerVError("offline")
+        self.r.SMTP_CONFIG_STORE.configured.return_value = False
+        reply = self.route({"action": "revoke_guest", "guest_id": guest})
+        self.assertEqual(reply.call_args.args[0], 200)
+        self.assertEqual([grant["id"] for grant in self.grants()], [other_grant])
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "paused")
+        self.assertEqual(self.store.get(deleted)["status"], "deleted")
+        self.assertEqual(self.store.get(other)["status"], "enabled")
+        self.assertEqual(self.r.cleanup_guest_sessions.call_count, 2)
+        pending = [row for row in self.store.work() if row["schedule"] != other]
+        self.assertEqual(len(pending), 2)
+        self.assertTrue(all(row["state"] == "cancelling" for row in pending))
+        self.scheduler.tick()
+        self.assertEqual(len([row for row in self.store.work() if row["schedule"] != other]), 2)
+        self.client.queue_revocation.side_effect = None
+        self.scheduler.tick()
+        self.assertEqual(len(self.store.history("cat-sitter")), 3)
+        self.assertEqual(self.route({"action": "revoke_guest", "guest_id": guest}).call_args.args[0], 200)
+        self.assertEqual([grant["id"] for grant in self.grants()], [other_grant])
+
+    def test_revoke_guest_auth_page_isolation_and_pending_delivery(self):
+        self.start_window()
+        guest = self.store.get(self.schedule_id)["guest_id"]
+        payload = {"action": "revoke_guest", "guest_id": guest}
+        self.route(payload, authorized=False).assert_not_called()
+        foreign = self.store.save("other-page", definition(), self.now)
+        for invalid in ({**payload, "guest_id": self.store.get(foreign)["guest_id"]}, {**payload, "guest_id": []}):
+            self.assertEqual(self.route(invalid).call_args.args[0], 400)
+        self.assertEqual(self.store.get(self.schedule_id)["status"], "enabled")
+        self.assertEqual(self.route(payload).call_args.args[0], 200)
+        self.assertEqual(self.grants(), [])
+        self.scheduler.tick(delivery=True)
+        self.sender.assert_not_called()
+        self.now += 86400
+        self.scheduler.tick()
+        self.client.create_qurl.assert_called_once()
+
     def test_timeline_requires_admin_and_guest_on_page(self):
         guest_id = self.store.get(self.schedule_id)["guest_id"]
         payload = {"action": "timeline", "guest_id": guest_id}

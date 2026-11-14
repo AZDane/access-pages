@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.155
+
+- Make scheduled guest cards compact like regular guest cards, with details collapsed when opening the Guests view.
+- Keep View details and Revoke guest visible on each scheduled guest card. Move recurrence and delivery detail inside the expanded view.
+- Revoke guest ends all current access and pauses all future schedules for that guest on the Access Page, including outstanding invitations from deleted schedules. Other guests and retained history are unaffected; remote cleanup retries durably.
+- Document guest-wide revocation and update the compact layout for desktop, mobile, and keyboard use.
+
 ## 0.1.154
 
 - Group scheduled access into collapsible guest cards with upcoming windows, delivery status, and visible failure indicators.

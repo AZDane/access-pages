@@ -160,7 +160,7 @@ class PackagedEvidenceTests(unittest.TestCase):
 
     def test_sql_schema_is_reproducible_and_new_fts_or_dynamic_sql_blocks(self):
         evidence = sqlite_schema_evidence(Path('.'))
-        self.assertEqual(evidence['sql_calls'], 173)
+        self.assertEqual(evidence['sql_calls'], 178)
         for addition in ("db.execute('CREATE VIRTUAL TABLE f USING fts5(a, detail=none)')",
                          'db.execute(user_input)'):
             with tempfile.TemporaryDirectory() as directory:
