@@ -195,6 +195,11 @@ optional recurrence dates, and timezone. New schedules default to your browser's
 local timezone; you can select another. Each invitation expires at its original
 end time, including sessions already open.
 
+Guest forms show errors in red and outline entries needing attention. Closing an
+edited guest form asks before discarding unsaved changes; untouched forms,
+reverted edits, and successfully saved forms close without that warning.
+**Review upcoming times** previews a schedule; **Save schedule** saves it.
+
 Scheduled guests appear in compact cards, collapsed by default, showing their
 next access window and access status. **Revoke guest** ends current access and
 stops every schedule for that guest on this Access Page, then moves the card to

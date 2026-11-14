@@ -1513,3 +1513,9 @@ input:disabled {
 .retention-note { color: var(--muted); font-size: .85rem; }
 .scheduled-guest .activity-entry { overflow-wrap: anywhere; }
 @media (max-width: 600px) { .schedule-fields, .guest-invitation-options { grid-template-columns: 1fr; } }
+
+/* Guest validation uses text and outlines, not color alone. */
+.guest-form-error { border: 2px solid var(--danger); border-radius: 10px; padding: 12px 16px; background: rgba(255, 127, 146, .09); font-weight: 600; }
+.guest-field-error { outline: 2px solid var(--danger); outline-offset: 3px; }
+.guest-field-message { display: block; color: var(--danger); font-weight: 600; margin: 8px 0; }
+#confirm-dialog { height: fit-content; max-height: 90vh; overflow-y: auto; }

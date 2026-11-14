@@ -341,7 +341,7 @@
                    placeholder="e.g. Alice" required>
           </label>
 
-          <fieldset class="lifetime-fieldset">
+          <fieldset id="lifetime-fieldset" class="lifetime-fieldset">
             <legend>qURL lifetime</legend>
             <div id="lifetime-options" class="lifetime-options">
               <label><input type="radio" name="lifetime" value="1h" data-seconds="3600"><span>1 hour</span></label>
@@ -405,12 +405,12 @@
             <input id="activity-notifications" type="checkbox">
           </label>
           <div id="activity-notification-options" class="wide hidden">
-            <fieldset>
+            <fieldset id="notification-target-field">
               <legend>Notify me through</legend>
               <div id="notification-targets" class="lifetime-options"></div>
               <button id="configure-notifications" class="secondary hidden" type="button">Configure alert options</button>
             </fieldset>
-            <fieldset>
+            <fieldset id="notification-event-field">
               <legend>Notify me about</legend>
               <div class="lifetime-options">
                 <label><input type="checkbox" name="notification-event" value="initial_login" checked><span>First successful login</span></label>
@@ -426,7 +426,7 @@
           </button>
         </div>
 
-        <p id="user-dialog-status" class="status hidden" role="status" aria-live="polite"></p>
+        <p id="user-dialog-status" tabindex="-1" class="status hidden" role="status" aria-live="polite"></p>
         <div id="qurl-result" class="qurl-result hidden" tabindex="-1"
              role="status" aria-live="polite"></div>
       </div>
@@ -563,7 +563,7 @@
   </dialog>
 
   <dialog id="schedule-dialog" class="user-dialog" aria-labelledby="schedule-title">
-    <form id="schedule-form" class="panel">
+    <form id="schedule-form" class="panel" novalidate>
       <div class="secure-access-heading"><h2 id="schedule-title">Schedule guest</h2><button id="close-schedule" class="secondary" type="button">Close</button></div>
       <p>A fresh invitation is created and emailed when each window begins. Permissions and proximity follow this Access Page. Delivery may arrive late; access always ends at the original time.</p>
       <div class="schedule-fields">
@@ -585,14 +585,14 @@
         <label id="schedule-last-field" class="hidden">Last start date (optional)<input id="schedule-last" type="date"></label>
         <label class="wide schedule-check"><input id="schedule-verification" type="checkbox" checked>Require a verification code when the guest opens controls</label>
         <label class="wide schedule-check"><input id="schedule-single-use" type="checkbox">Single-use invitation for each occurrence</label>
-        <fieldset class="wide"><legend>Guest activity alerts</legend><div id="schedule-alert-targets"></div>
+        <fieldset id="schedule-alerts" class="wide"><legend>Guest activity alerts</legend><div id="schedule-alert-targets"></div>
           <label><input type="checkbox" name="schedule-event" value="initial_login">First successful login</label>
           <label><input type="checkbox" name="schedule-event" value="successful_action">Successful actions</label>
           <label><input type="checkbox" name="schedule-event" value="failed_action">Failed or blocked actions</label>
         </fieldset>
       </div>
       <p>Weekly times follow this timezone. Ambiguous or nonexistent daylight-saving times are skipped. An offline App may send up to 15 minutes late, with at least one minute remaining. Pausing or editing preserves already-emailed invitations.</p>
-      <p id="schedule-form-status" class="status" role="status" aria-live="polite"></p><div id="schedule-preview" class="activity-list"></div>
+      <p id="schedule-form-status" tabindex="-1" class="status" role="status" aria-live="polite"></p><div id="schedule-preview" class="activity-list"></div>
       <div class="editor-actions"><button id="preview-schedule" class="secondary" type="button">Review upcoming times</button>
         <button id="save-schedule" class="primary" type="submit">Save schedule</button></div>
     </form>
