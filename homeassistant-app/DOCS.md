@@ -745,7 +745,24 @@ reissuance. Other schedules for the same email/page are flagged for overlap
 review; independent grants remain independent, so revoking one does not end
 another. No windows are silently combined.
 
+### Page and entity edits
+
+In the entity picker, **Apply selections** keeps the selections in the page draft.
+Choose **Save page** to persist them. Closing the picker with X, Escape, or the
+backdrop warns when selections changed. **Cancel** keeps editing; **Discard
+changes** restores the selections from when the picker opened, preserving earlier
+page edits.
+
+Leaving the page editor for the page list or Guests warns about unsaved page and
+entity changes. Closing or reloading the browser uses its standard unsaved-changes
+warning where supported. Unchanged, reverted, and successfully saved edits do not
+warn. A failed save leaves the warning active.
+
 ### Guest form errors and unsaved changes
+
+New immediate and scheduled guests start with **Require a verification code when
+the guest opens controls** unchecked. You can enable it when creating the guest;
+editing an existing schedule preserves its saved choice.
 
 Guest add/edit forms show a red error panel and outline the field or group that
 needs attention, with an explanation beside it. For activity alerts, choose both

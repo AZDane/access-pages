@@ -1291,7 +1291,65 @@ function renderPicker() {
   });
 }
 
+let pickerBaseline = null;
+let pickerClosing = false;
+let editorBaseline = null;
+let editorSaving = false;
+let editorClosing = false;
+
+function resourceDraft() {
+  return selectionOrder.map(id => [id, [...(selections.get(id) || [])].sort(),
+    customNames.get(id) || "", cameraRefreshIntervals.get(id) ?? null]);
+}
+
+function editorSnapshot() {
+  return JSON.stringify([titleInput.value, pageIdInput.value, descriptionInput.value,
+    proximityEnabledInput.checked, proximityRadiusInput.value, resourceDraft()]);
+}
+
+function editorHasChanges() {
+  return editorBaseline !== null && !editor.classList.contains("hidden") && editorBaseline !== editorSnapshot();
+}
+
+async function leaveEditor(action) {
+  if (editorSaving || editorClosing) return;
+  editorClosing = true;
+  try {
+    if (editorHasChanges() && !await confirmAction(
+      "Your page and entity changes have not been saved. Discard them and leave?",
+      {title: "Discard unsaved changes?", acceptLabel: "Discard changes", safeDefault: true},
+    )) return;
+    await action();
+  } finally {
+    editorClosing = false;
+  }
+}
+
+async function requestPickerClose() {
+  if (pickerClosing) return;
+  pickerClosing = true;
+  try {
+    if (pickerBaseline && JSON.stringify(pickerBaseline) !== JSON.stringify(resourceDraft())) {
+      if (!await confirmAction(
+        "Your entity selections have not been applied to the page. Discard these selections and close?",
+        {title: "Discard unsaved changes?", acceptLabel: "Discard changes", safeDefault: true},
+      )) return;
+      selections.clear(); customNames.clear(); cameraRefreshIntervals.clear();
+      selectionOrder = pickerBaseline.map(([id, actions, name, interval]) => {
+        selections.set(id, new Set(actions)); customNames.set(id, name);
+        if (interval !== null) cameraRefreshIntervals.set(id, interval);
+        return id;
+      });
+      updateSelectionSummary(); renderCatalog();
+    }
+    pickerDialog.close();
+  } finally {
+    pickerClosing = false;
+  }
+}
+
 function openPicker() {
+  pickerBaseline = resourceDraft();
   pickerSearchInput.value = "";
   activePickerCategory = null;
   const policy = discovery.policy || {};
@@ -2425,6 +2483,7 @@ function prepareEditor(page, existing) {
   updateSelectionSummary();
   renderCatalog();
   showEditor();
+  editorBaseline = editorSnapshot();
 
   setStatus(
     existing
@@ -2572,6 +2631,7 @@ proximityEnabledInput.addEventListener("change", () => {
 });
 
 async function savePage() {
+  if (editorSaving || editorClosing) return;
   let payload;
   try {
     payload = buildPagePayload();
@@ -2594,6 +2654,8 @@ async function savePage() {
 
   saveButton.disabled = true;
   saveBottomButton.disabled = true;
+  editorSaving = true;
+  editor.inert = true;
   setStatus("Saving page…");
 
   try {
@@ -2620,12 +2682,14 @@ async function savePage() {
     previewLink.classList.remove("hidden");
     previewLink.removeAttribute("href");
 
-    await loadPages();
     prepareEditor(data, true);
+    await loadPages();
     setStatus("Page saved.", "success");
   } catch (error) {
     setStatus(`Error: ${error.message}`, "error");
   } finally {
+    editorSaving = false;
+    editor.inert = false;
     saveButton.disabled = false;
     saveBottomButton.disabled = false;
   }
@@ -2755,7 +2819,7 @@ pageIdInput.addEventListener("input", () => {
 });
 
 newPageButton.addEventListener("click", createNewPage);
-backButton.addEventListener("click", showDashboard);
+backButton.addEventListener("click", () => leaveEditor(showDashboard));
 usersBackButton.addEventListener("click", showDashboard);
 usersEditButton.addEventListener("click", () => {
   if (currentPage) editPage(currentPage.id);
@@ -2767,10 +2831,10 @@ usersPreviewButton.addEventListener("click", () => {
   });
 });
 editorUsersButton.addEventListener("click", () => {
-  if (currentPage) manageUsers(currentPage.id);
+  if (currentPage) return leaveEditor(() => manageUsers(currentPage.id));
 });
 editorUsersBottomButton.addEventListener("click", () => {
-  if (currentPage) manageUsers(currentPage.id);
+  if (currentPage) return leaveEditor(() => manageUsers(currentPage.id));
 });
 addUserButton.addEventListener("click", openGuestChoice);
 closeUserDialogButton.addEventListener("click", () => requestGuestClose(userDialog));
@@ -2794,8 +2858,21 @@ deleteButton.addEventListener("click", deletePage);
 generateQurlButton.addEventListener("click", generateQurl);
 revokeQurlsButton.addEventListener("click", revokeAllQurls);
 openPickerButton.addEventListener("click", openPicker);
-closePickerButton.addEventListener("click", () => pickerDialog.close());
-pickerDoneButton.addEventListener("click", () => pickerDialog.close());
+closePickerButton.addEventListener("click", requestPickerClose);
+pickerDoneButton.addEventListener("click", () => {
+  if (pickerClosing) return;
+  pickerDialog.close();
+  if (editorHasChanges()) setStatus("Selections applied. Choose Save page to save your changes.");
+});
+pickerDialog.addEventListener("cancel", event => {
+  event.preventDefault();
+  requestPickerClose();
+});
+window.addEventListener("beforeunload", event => {
+  if (!editorHasChanges()) return;
+  event.preventDefault();
+  event.returnValue = "";
+});
 pickerSearchInput.addEventListener("input", renderPicker);
 pickerTargetTab.addEventListener("click", () => {
   pickerBrowseMode = "target";
@@ -2817,7 +2894,7 @@ pickerTypeTab.addEventListener("click", () => {
 });
 pickerDialog.addEventListener("click", (event) => {
   if (event.target === pickerDialog) {
-    pickerDialog.close();
+    requestPickerClose();
   }
 });
 userDialog.addEventListener("click", (event) => {
@@ -2993,7 +3070,7 @@ function openSchedule(row = null, duplicate = false) {
   const d = row?.definition || {
     label: "", email: "", delivery: "day_before", kind: "once", timezone: localScheduleTimezone(),
     date: "", start_time: "09:00", end_time: "12:00", first_date: "", last_date: "",
-    weekdays: [], next_day: false, verification_required: true, one_time_use: false,
+    weekdays: [], next_day: false, verification_required: false, one_time_use: false,
     notifications: {targets: [], events: []},
   };
   populateScheduleTimezones(d.timezone);

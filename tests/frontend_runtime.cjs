@@ -848,16 +848,18 @@ async function testScheduledGuestWorkflow() {
   assert.equal(fixture.elements.get("guest-choice-dialog").open, false);
   assert.equal(fixture.elements.get("schedule-dialog").open, true);
   assert.equal(fixture.elements.get("schedule-delivery").value, "day_before");
-  assert.equal(fixture.elements.get("schedule-verification").checked, true);
+  assert.equal(fixture.elements.get("schedule-verification").checked, false);
   assert.equal(fixture.elements.get("schedule-single-use").checked, false);
   assert.equal(fixture.elements.get("schedule-timezone").value, "America/Los_Angeles");
   assert.ok(fixture.elements.get("schedule-timezone").children.some(option => option.value === "Europe/London"));
   assert.match(fixture.elements.get("schedule-timezone-help").textContent, /America\/Los_Angeles/);
   const saved = JSON.parse(vm.runInContext("JSON.stringify(scheduleFields())", fixture.context));
   saved.timezone = "Europe/London";
+  saved.verification_required = true;
   delete saved.delivery; // Existing schedules have no delivery field before migration.
   fixture.context.savedSchedule = {id: "saved", guest_id: "guest_test", definition: saved};
   vm.runInContext("openSchedule(savedSchedule)", fixture.context);
+  assert.equal(fixture.elements.get("schedule-verification").checked, true, "Editing preserves the saved verification choice");
   assert.equal(fixture.elements.get("schedule-delivery").value, "at_start", "Old definitions keep at-start delivery on edit");
   assert.equal(fixture.elements.get("schedule-timezone").value, "Europe/London");
   vm.runInContext("openSchedule(savedSchedule, true)", fixture.context);
@@ -1042,7 +1044,69 @@ async function testCompatibilityRepairAndTilt() {
   }
 }
 
+async function testEntityUnsavedChanges() {
+  let failSave = false, failRefresh = false, holdSave = null;
+  const fixture = harness("admin", {fetch: async (_route, options) => {
+    assert.equal(options.method, "POST");
+    if (holdSave) await holdSave;
+    return jsonResponse(failSave ? 503 : 200, failSave ? {error: "Storage unavailable"} : {...JSON.parse(options.body), access_grants: []});
+  }});
+  const run = code => vm.runInContext(code, fixture.context);
+  const e = id => fixture.document.getElementById(id);
+  let confirms = 0, discard = false;
+  fixture.context.confirmAction = async (_message, options) => {
+    confirms++; assert.equal(options.safeDefault, true); return discard;
+  };
+  fixture.context.loadPages = async () => { if (failRefresh) throw Error("Refresh failed"); };
+  run("discovery = {entities: [], policy: {}}; prepareEditor({...blankPage(), id: 'fixture', title: 'Page'}, true)");
+  const back = () => e("back").listeners.get("click")();
+  await back(); assert.equal(confirms, 0);
+  run("prepareEditor({...blankPage(), id: 'fixture', title: 'Page'}, true)");
+  e("title").value = "Changed";
+  await back(); assert.equal(confirms, 1); assert.equal(e("editor").classList.contains("hidden"), false);
+  let prevented = false;
+  fixture.windowEvents.get("beforeunload")({preventDefault() { prevented = true; }});
+  assert.equal(prevented, true);
+  e("title").value = "Page";
+  assert.equal(run("editorHasChanges()"), false, "Reverted edits are clean");
+  // Dismissal restores the picker baseline while keeping preexisting page edits.
+  e("description").value = "Existing draft";
+  run("openPicker(); updateSelection('switch.test', 'turn_on', true, 'Test')");
+  await e("close-picker").listeners.get("click")();
+  assert.equal(e("entity-picker").open, true);
+  prevented = false;
+  e("entity-picker").listeners.get("cancel")({preventDefault() { prevented = true; }}); await settle();
+  assert.equal(prevented, true); assert.equal(e("entity-picker").open, true);
+  discard = true;
+  e("entity-picker").listeners.get("click")({target: e("entity-picker")}); await settle();
+  assert.equal(e("entity-picker").open, false);
+  assert.equal(run("selections.size"), 0);
+  assert.equal(e("description").value, "Existing draft");
+  discard = false;
+  run("openPicker(); updateSelection('switch.test', 'turn_on', true, 'Test')");
+  e("picker-done").listeners.get("click")();
+  assert.equal(run("selections.size"), 1);
+  assert.match(e("status").textContent, /Save page/);
+  await e("editor-users").listeners.get("click")();
+  assert.equal(e("editor").classList.contains("hidden"), false);
+  run("selections.clear(); selectionOrder = [];");
+  failSave = true; await run("savePage()");
+  assert.equal(run("editorHasChanges()"), true, "Failed save retains the warning");
+  failSave = false;
+  let release;
+  holdSave = new Promise(resolve => { release = resolve; });
+  const saving = run("savePage()"); await settle();
+  const before = confirms;
+  await back(); assert.equal(confirms, before, "Cannot leave while saving");
+  assert.equal(e("editor").inert, true);
+  failRefresh = true; release(); await saving;
+  assert.equal(e("editor").inert, false);
+  assert.equal(run("editorHasChanges()"), false, "Successful save stays clean even if list refresh fails");
+  await back(); assert.equal(confirms, before);
+}
+
 (async () => {
+  await testEntityUnsavedChanges();
   await testCompatibilityRepairAndTilt();
   await testVerificationOptionAvailability();
   await testScheduledGuestWorkflow();
