@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.162
+
+- Publish the verification defaults and unsaved entity/page edit safeguards described below. Version 0.1.161 did not complete container publication.
+- Make packaged release probes wait for admin and preview processes to become ready before asserting authentication behavior, including under ARM64 emulation. Preserve all security assertions and fail on process exit or readiness timeout.
+
 ## 0.1.161
 
 - Default verification codes to unchecked for new scheduled guests, matching immediate guests. Preserve saved verification choices when editing schedules.

@@ -269,6 +269,18 @@ def wait_endpoint(port):
     raise RuntimeError("endpoint absent")
 
 
+def wait_admin(process):
+    # ARM64 emulation can take longer than three seconds to import the server.
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        assert process.poll() is None, "Admin process exited before readiness"
+        try:
+            return request(8081, "GET", "/admin")
+        except ConnectionRefusedError:
+            time.sleep(0.05)
+    raise AssertionError("Admin listener did not start within 20 seconds")
+
+
 try:
     broker_env = {
         "HA_BROKER_TOKEN": "guest-broker-token",
@@ -656,12 +668,7 @@ for grant in page['access_grants']:
         "ACTIVITY_DB_FILE": str(DATA / "guest-runtime/guest-activity.sqlite3"),
     }
     gateway = spawn([sys.executable, "/app/server.py"], gateway_env, 2100, 2000, [])
-    for _ in range(150):
-        try:
-            admin_status, _, admin_body = request(8081, "GET", "/admin")
-            break
-        except ConnectionRefusedError:
-            time.sleep(0.02)
+    admin_status, _, admin_body = wait_admin(gateway)
     assert admin_status == 200 and b"Access Pages" in admin_body
     guest = spawn([sys.executable, "/app/guest_service.py"], guest_env, 2101, 2101, [])
     wait_socket(SOCKET)
@@ -727,12 +734,7 @@ r.read(); s.close()
     gateway.terminate()
     gateway.wait(timeout=5)
     gateway = spawn([sys.executable, "/app/server.py"], gateway_env, 2100, 2000, [])
-    for _ in range(150):
-        try:
-            admin_status, _, _ = request(8081, "GET", "/admin")
-            break
-        except ConnectionRefusedError:
-            time.sleep(0.02)
+    admin_status, _, _ = wait_admin(gateway)
     assert admin_status == 200
     assert request(8081, "GET", "/api/access/page-a", extra=old_headers)[0] == 404
     assert request(18080, "GET", prefix_v + "api/access/page-a", session_v)[0] == 502
