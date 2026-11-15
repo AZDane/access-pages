@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.161
+
+- Default verification codes to unchecked for new scheduled guests, matching immediate guests. Preserve saved verification choices when editing schedules.
+- Warn before dismissing changed entity selections or leaving a page with unsaved edits. Cancel keeps editing; discarding picker changes restores the selections present when it opened.
+- Clarify that Apply selections updates the page draft and Save page persists it. Unchanged, reverted, or successfully saved edits do not warn; failed saves remain protected.
+- Prevent editing and navigation during a page save, and clear the unsaved state after a successful save even if refreshing the page list fails.
+
 ## 0.1.160
 
 - Show scheduled invitation start and end dates, local times, timezone, and UTC offsets prominently above the email's invitation button, including overnight windows. Keep the original access window when delivery is late.
