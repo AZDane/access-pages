@@ -142,6 +142,17 @@ try:
     assert status == 200, (status, body)
     query = "?" + urlsplit(body["preview_url"]).query
     preview = "/api/admin/preview/confined-probe"
+    # The supervisor starts the page process asynchronously after page creation.
+    # Wait for that process before testing its authentication boundary.
+    deadline = time.monotonic() + 20
+    while True:
+        assert process.poll() is None, "App supervisor exited before preview readiness"
+        status, body = request("GET", preview + query)
+        if status != 503:
+            assert status == 200, (status, body)
+            break
+        assert time.monotonic() < deadline, "Preview did not become ready within 20 seconds"
+        time.sleep(0.05)
     assert request("GET", preview)[0] == 401
     assert request("GET", preview + query)[0] == 200
     status, body = request("POST", preview + "/probe/turn_on" + query, {})
