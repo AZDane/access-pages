@@ -124,6 +124,9 @@ both HA Core versions, browser journeys and Go race tests to succeed. Failure,
 cancellation or a skipped dependency fails that gate. The amd64 packaged
 check requires AppArmor enforcement; an unavailable policy engine is an error.
 Publication depends on the signing compatibility check.
+Release dry runs use the same validation steps in a separate read-only job;
+package-write and signing identity permissions are limited to release events
+and explicitly dispatched publications.
 
 Check Python syntax for the routing and action boundary:
 
