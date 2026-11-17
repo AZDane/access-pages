@@ -1,0 +1,11 @@
+[run]
+branch = True
+source = .
+omit =
+    tests/*
+    artifacts/*
+    .venv*/*
+    third_party_licenses/*
+
+[report]
+show_missing = True

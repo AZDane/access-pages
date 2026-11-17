@@ -27,7 +27,7 @@ if [[ "$architecture" == amd64 ]]; then
 (
 case "$(docker info --format '{{json .SecurityOptions}}')" in
   *name=apparmor*) ;;
-  *) echo "AppArmor enforcement unavailable on this runner"; exit 0 ;;
+  *) echo "Required AppArmor enforcement unavailable on this runner" >&2; exit 1 ;;
 esac
 sudo apparmor_parser --replace homeassistant-app/apparmor.txt
 trap 'sudo apparmor_parser --remove homeassistant-app/apparmor.txt' EXIT

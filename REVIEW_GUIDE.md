@@ -93,6 +93,38 @@ Run the complete unit and adversarial suite:
 python -m unittest discover -s tests -v
 ```
 
+For the same branch coverage report collected in CI, install the pinned
+`coverage==7.17.3` tool and run `coverage run -m unittest discover -s tests -v`,
+then `coverage report` and `coverage xml`. Coverage is diagnostic; there is no
+percentage gate. It measures Python execution in this process, not browser,
+Go, packaged subprocess, or HAOS acceptance coverage.
+
+Run the two real Chromium journeys and Go race checks:
+
+```sh
+npm ci --prefix tests/browser --ignore-scripts
+tests/browser/node_modules/.bin/playwright install --with-deps chromium
+npm --prefix tests/browser test
+go test -race -count=1 -timeout=5m -coverprofile=coverage-go.out ./cmd/guest-endpoint
+```
+
+The browser fixture requires Python, Node, OpenSSL, and a free loopback port
+18765. It creates disposable stores and a temporary HTTPS certificate. It
+exercises real HTML, JavaScript modules, the admin server, ingress proxy,
+Guest Service and authorization broker. HA devices, LayerV cleanup, Supervisor
+forwarding and policy transport are simulated. Unix peer ownership remains
+the responsibility of the packaged tests. This is not HAOS or live LayerV
+acceptance. Tests use separate browser contexts and separate page data; no
+automatic retries hide failures. Failed runs retain traces and screenshots in
+`tests/browser/test-results/`, with an HTML report in
+`tests/browser/playwright-report/`.
+
+The protected `Container image` check requires both package architectures,
+both HA Core versions, browser journeys and Go race tests to succeed. Failure,
+cancellation or a skipped dependency fails that gate. The amd64 packaged
+check requires AppArmor enforcement; an unavailable policy engine is an error.
+Publication depends on the signing compatibility check.
+
 Check Python syntax for the routing and action boundary:
 
 ```sh
