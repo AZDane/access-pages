@@ -209,6 +209,7 @@ def main():
                         "-subj", "/CN=localhost", "-keyout", str(directory / "key.pem"),
                         "-out", str(directory / "cert.pem")], check=True, capture_output=True)
         tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.minimum_version = ssl.TLSVersion.TLSv1_2
         tls.load_cert_chain(directory / "cert.pem", directory / "key.pem")
         frontend = ThreadingHTTPServer(("127.0.0.1", 18765), Frontend)
         frontend.socket = tls.wrap_socket(frontend.socket, server_side=True)
