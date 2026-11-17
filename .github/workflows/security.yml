@@ -132,7 +132,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.27.3"
+          go-version: "1.27.4"
           cache: false
       - run: go test -race -count=1 -timeout=5m -coverprofile=coverage-go.out ./cmd/guest-endpoint
       - name: Retain Go coverage
