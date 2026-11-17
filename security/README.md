@@ -32,6 +32,37 @@ No scanner filter, severity, binary/source/property pin, reachability probe,
 or branch protection is relaxed. Fresh native packaged validation, including
 mandatory AppArmor enforcement on amd64, is still required before merging.
 
+## Python base image reassessment (2026-11-17)
+
+PR [#94](https://github.com/AZDane/access-pages/pull/94) updates the pinned
+Python 3.15.2 Alpine and Trixie images without changing the Python version.
+The App runtime moves from Trixie index `197f6622a70b` to `65a65fc7b30b`.
+The runtime-pin check correctly blocked the candidate until this review.
+
+Both native architecture artifacts from candidate
+[run 44175369098](https://github.com/AZDane/access-pages/actions/runs/44175369098)
+were compared with passing main
+[run 44175190287](https://github.com/AZDane/access-pages/actions/runs/44175190287).
+All 359 scanned package entries have the same names and versions. Every
+fingerprinted advisory field is unchanged, including severity, fix information,
+CVSS and description. Both scans retain 46 HIGH, zero CRITICAL, 94 MEDIUM,
+64 LOW and 18 UNKNOWN findings; no finding is filtered or downgraded.
+
+The complete per-architecture reachability probes are identical: packaged
+application hashes, SQLite and qURL binary hashes, the 187 constant SQL calls
+and schemas, SQLite session-binding evidence, and linked JOSE/OIDC and HTML
+function inventories. The existing policy accepts each candidate report with
+its own image-bound evidence. Image identities and report hashes differ as
+expected for the rebuilt images; evidence from main is not reused as candidate
+evidence. Application code, confinement and permission-repair controls are
+unchanged.
+
+Update only the reviewed runtime pin and this document's control hash. Preserve
+all dispositions, binary/source/property/advisory pins, review dates and the
+November 26 expiry. Fresh native packaged checks on both architectures,
+mandatory amd64 AppArmor enforcement, standalone stable-Python smoke checks
+and release-image validation remain required before merging this update.
+
 ## Bounded unreachable dispositions
 
 The existing baseline now also accepts `unreachable`. Each record contains an
