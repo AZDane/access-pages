@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.163
+
+- Update the pinned Python 3.15.2 base images and build the guest endpoint with Go 1.27.4, including its security and reliability fixes.
+- Require Home Assistant compatibility, real-browser owner/guest journeys, Go race tests, and both native architecture image checks before merging. Enforce AppArmor checks on AMD64 and retain test coverage reports.
+- Remove duplicate Python test execution while preserving the 544 distinct tests. Validate release images before publication and keep publication credentials out of pull-request jobs.
+- Document the Python image security reassessment without relaxing vulnerability policy or extending existing review expiry dates. No settings migration or connection reset is required.
+
 ## 0.1.162
 
 - Publish the verification defaults and unsaved entity/page edit safeguards described below. Version 0.1.161 did not complete container publication.
