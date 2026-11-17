@@ -5,6 +5,33 @@ days. `check_vulnerabilities.py` is the only vulnerability policy decision.
 Image secret/configuration checks and repository/history checks remain separate.
 No finding is deleted, hidden, or assigned a lower severity by this policy.
 
+## Scanner metadata review (2026-11-17)
+
+CI [run 44170631266](https://github.com/AZDane/access-pages/actions/runs/44170631266)
+blocked both architectures after Trivy added Bitnami CVSS v4 metadata to
+SQLite CVE-2026-119373, CVE-2026-119374 and CVE-2026-119379. Comparison with
+the last passing [main run 44017877141](https://github.com/AZDane/access-pages/actions/runs/44017877141)
+shows the only fingerprinted advisory change is an additional score of 8.5
+and vector `CVSS:4.0/AV:L/AC:L/AT:N/PR:N/UI:P/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N`.
+The Red Hat v3 score/vector remains present; package, version, HIGH severity,
+description, fix information, CWE, source and primary URL are unchanged.
+
+Both retained architecture probes match the existing application hashes,
+SQLite binary hashes, version, constant-SQL schema evidence and session-binding
+evidence. The additional local-input scoring does not introduce an application
+path to FTS5 or session changesets. The current Debian descriptions still
+require [FTS5 prefix queries](https://security-tracker.debian.org/tracker/CVE-2026-119373),
+[corrupted FTS5 indexes](https://security-tracker.debian.org/tracker/CVE-2026-119374),
+or [crafted session changesets](https://security-tracker.debian.org/tracker/CVE-2026-119379).
+Those paths remain excluded by the existing bounded assessments below. The
+native SQLite library remains affected.
+
+Only the three exact advisory fingerprints and this document's control hash
+are updated. Existing review dates and the November 26 expiry are retained.
+No scanner filter, severity, binary/source/property pin, reachability probe,
+or branch protection is relaxed. Fresh native packaged validation, including
+mandatory AppArmor enforcement on amd64, is still required before merging.
+
 ## Bounded unreachable dispositions
 
 The existing baseline now also accepts `unreachable`. Each record contains an

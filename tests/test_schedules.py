@@ -67,7 +67,8 @@ class CalendarTests(unittest.TestCase):
                 definition(**changes)
 
 
-class SchedulerTests(unittest.TestCase):
+class SchedulerFixture:
+    """Shared setup and helpers, deliberately without discoverable test methods."""
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -102,6 +103,8 @@ class SchedulerTests(unittest.TestCase):
     def row(self):
         return self.store.work()[0]
 
+
+class SchedulerTests(SchedulerFixture, unittest.TestCase):
     def test_fresh_grant_at_start_exact_end_and_new_grant_next_day(self):
         self.scheduler.tick()
         self.client.create_qurl.assert_not_called()

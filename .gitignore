@@ -47,3 +47,11 @@ __pycache__/
 .DS_Store
 .venv-ci/
 .venv/
+
+# Browser test dependencies and failure evidence
+node_modules/
+playwright-report/
+test-results/
+.coverage
+coverage.xml
+coverage-go.out
