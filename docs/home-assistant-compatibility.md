@@ -88,6 +88,35 @@ Before release, smoke-test the candidate on disposable HAOS through ingress,
 create/edit a page, exercise an authorized guest control, revoke its link, and
 confirm previously saved labels and permissions survived the upgrade.
 
+### Release acceptance record
+
+Complete these checks on an explicitly authorized, disposable HAOS installation
+for each release candidate. Record the candidate source commit/image digest,
+previous App version, HAOS/Core/Supervisor versions, CPU architecture, results,
+and evidence location in the release review. A successful CI run does not
+substitute for this record.
+
+1. Install the previous published App version. Create a page with a custom
+   label and narrowly scoped controls, an active invitation, a revoked
+   invitation, and a future scheduled invitation. Take a backup.
+2. Upgrade to the candidate through Supervisor. Open it through authenticated
+   ingress; verify saved labels, controls, guest settings and schedules. Create
+   and edit a page, preview it, and confirm an unauthorized control is denied.
+3. In a separate guest browser, exercise an allowed control, revoke the link
+   from the owner interface, and verify both the existing session and a fresh
+   attempt using that link are denied.
+4. Restart the App and then HAOS. Verify settings persist, active invitations
+   behave as configured, revoked access remains denied, and scheduled
+   invitations are not delivered twice.
+5. Restore the backup in the disposable environment and start the candidate.
+   Verify the documented restore authorization behavior: restored schedules
+   remain blocked until owner authorization, and stale/revoked invitations
+   do not silently regain access. Record any required owner recovery steps.
+6. Before declaring publication complete, verify both architecture image
+   digests and signing, byte-for-byte parity of the seven App Store files
+   listed in `AGENTS.md`, and matching advertised/container versions. Record
+   both repository commits. Any failed or unperformed check remains explicit.
+
 Run the same matrix as CI from the source root:
 
 ```sh

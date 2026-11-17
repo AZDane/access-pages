@@ -9,6 +9,25 @@ information, and controls they need. They do not need a Home Assistant
 account, password, or VPN access, and no inbound router port needs to be
 opened.
 
+## Install Access Pages
+
+[![Open in Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2FAZDane%2Faccess-pages-app)
+
+The button opens Home Assistant with the repository URL filled in. Confirm
+**Add**, then select **Access Pages → Install → Start → Open Web UI**.
+
+You need a Home Assistant installation that supports Apps, running on amd64
+or aarch64 hardware with Home Assistant Core 2026.10.4 or later. Remote guest
+access also requires a [LayerV account and dedicated API key](https://layerv.ai/qurl/dashboard/keys/).
+
+To add the repository manually, or if the button cannot reach your Home Assistant:
+
+1. Open **Settings → Apps → Install app** to enter the App store.
+2. Open the top-right menu and select **Repositories**.
+3. Add `https://github.com/AZDane/access-pages-app` and confirm **Add**.
+4. Select **Access Pages**, choose **Install**, then **Start** and **Open Web UI**.
+5. Complete **Connect to LayerV** using your dedicated API key.
+
 ## What it looks like
 
 Access Pages lets you create purpose-specific pages for different guests,

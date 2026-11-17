@@ -103,7 +103,8 @@ class UnreachablePolicyTests(unittest.TestCase):
         for key, value in [('VulnerabilityID', 'CVE-2099-9999'), ('PkgName', 'other-module'),
                            ('InstalledVersion', 'v4.1.5'), ('Severity', 'CRITICAL'),
                            ('FixedVersion', '4.1.7'), ('Description', 'new attack path'),
-                           ('CweIDs', ['CWE-999'])]:
+                           ('CweIDs', ['CWE-999']),
+                           ('CVSS', {'source': {'V40Score': 8.5}})]:
             with self.subTest(key=key):
                 original = deepcopy(self.finding)
                 self.finding[key] = value

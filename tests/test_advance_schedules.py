@@ -8,11 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 
 from invitations import grant_window_open, scheduled_window
 from schedules import ScheduleStore, Scheduler, validate_schedule
-from tests.test_schedules import SchedulerTests, definition, instant
+from tests.test_schedules import SchedulerFixture, definition, instant
 
 
-class AdvanceDeliveryTests(SchedulerTests):
-    # Inherit the existing durable recovery cases as well as extending them.
+class AdvanceDeliveryTests(SchedulerFixture, unittest.TestCase):
     def advance(self, **changes):
         return self.store.save('cat-sitter', definition(delivery='day_before', **changes), self.now, self.schedule_id)
 
