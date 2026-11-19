@@ -37,6 +37,50 @@ class RuntimeBackportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             backports.validate_manifest(manifest, NOW)
 
+    def test_standalone_manifest_cannot_replace_hardened_base_or_paths(self):
+        manifest = json.loads((DIRECTORY.parents[1] / 'standalone/manifest.json').read_text())
+        with self.assertRaises(ValueError):
+            backports.validate_manifest(manifest, NOW)
+        base = manifest['base_index']
+        backports.validate_manifest(manifest, NOW, expected_base=base)
+        manifest['patches'][0]['installed_path'] = '/usr/lib/python3.15/http/client.py'
+        with self.assertRaises(ValueError):
+            backports.validate_manifest(manifest, NOW, expected_base=base)
+        with self.assertRaises(ValueError):
+            backports.validate_manifest(manifest, NOW, expected_base='unreviewed')
+
+    def test_sequential_standalone_hunks_are_preflighted_before_any_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            patch_dir = root / 'patches'
+            patch_dir.mkdir()
+            manifest = json.loads((DIRECTORY.parents[1] / 'standalone/manifest.json').read_text())
+            expected = {}
+            for index, entry in enumerate(manifest['patches']):
+                target = root / entry['installed_path'].lstrip('/')
+                before = expected.get(target, b'original = True\n')
+                if target not in expected:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(before)
+                after = f'updated_{index} = True\n'.encode()
+                data = (f"--- a/{entry['source_file']}\n+++ b/{entry['source_file']}\n"
+                        '@@ -1 +1 @@\n-' + before.decode() + '+' + after.decode()).encode()
+                (patch_dir / entry['patch_file']).write_bytes(data)
+                entry.update(before_sha256=backports.digest(before), after_sha256=backports.digest(after),
+                             patch_sha256=backports.digest(data))
+                expected[target] = after
+            path = patch_dir / 'manifest.json'
+            final_hash = manifest['patches'][-1]['after_sha256']
+            manifest['patches'][-1]['after_sha256'] = 'f' * 64
+            path.write_text(json.dumps(manifest))
+            with self.assertRaises(ValueError):
+                backports.prepare(root, patch_dir, NOW, expected_base=manifest['base_index'])
+            self.assertTrue(all(target.read_bytes() == b'original = True\n' for target in expected))
+            manifest['patches'][-1]['after_sha256'] = final_hash
+            path.write_text(json.dumps(manifest))
+            backports.prepare(root, patch_dir, NOW, expected_base=manifest['base_index'])
+            self.assertTrue(all(target.read_bytes() == data for target, data in expected.items()))
+
     def test_all_file_checks_precede_mutation_and_bytecode_is_removed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

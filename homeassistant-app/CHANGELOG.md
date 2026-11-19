@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.164
+
+- Replace the Debian App runtime with the verified, digest-pinned Chainguard Python image. Keep qURL 4.2.0, service isolation, persistent data and the existing App identity.
+- Backport the upstream Python HTTP parsing and IMAP STARTTLS fixes into both supported images, with exact file checks and a November 26 UTC review deadline.
+- Include the additional upstream Unicode tunnel-host validation fix in the standalone image; the hardened App base already contains it.
+- Require complete native inventories, independent publisher advisories, tested applicability assessments and runtime defect probes in addition to the full vulnerability scans. Findings remain visible; an applicability assessment is not a library patch.
+- Validate the retained release images before publication and recheck official advisories immediately before publishing. No connection reset or settings migration is required.
+
 ## 0.1.163
 
 - Update the pinned Python 3.15.2 base images and build the guest endpoint with Go 1.27.4, including its security and reliability fixes.

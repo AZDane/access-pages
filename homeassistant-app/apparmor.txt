@@ -7,11 +7,11 @@ profile access_pages flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/nameservice>
 
   # Packaged Python runtime, Gateway sources and fixed child executables.
-  /usr/local/bin/python3.15 rix,
+  /usr/bin/python3.15 rix,
   /usr/local/bin/qurl rix,
   /usr/local/bin/access-pages-guest-endpoint rix,
   /usr/local/bin/{app_runner,ingress_proxy,onboarding}.py r,
-  /usr/local/lib/** mr,
+  /usr/lib/python3.15/** mr,
   /app/{,**} r,
 
   # Runtime identity, TLS and resolver configuration.

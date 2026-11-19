@@ -1,4 +1,4 @@
-# Evaluation candidate; production continues to use Dockerfile.ha-app.
+# Evaluation recipe; runtime instructions must match Dockerfile.ha-app.
 # Reuse only the unchanged official qURL binary from our signed public release.
 # packaging/minimal/verify-base.sh verifies its signature and architecture map.
 FROM ghcr.io/azdane/access-pages-app:0.1.163@sha256:99259c306ff6b918249d5304202e7a64acd0e0c4a9a01eb7dba93cab9a9bd2cd AS qurl
@@ -31,7 +31,7 @@ RUN ["/usr/bin/python", "/opt/build/backports.py"]
 RUN ["/usr/bin/python", "/opt/build/prepare.py"]
 
 ARG BUILD_ARCH
-ARG BUILD_VERSION=0.1.163
+ARG BUILD_VERSION=0.1.164
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

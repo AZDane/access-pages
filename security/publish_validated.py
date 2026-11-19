@@ -6,13 +6,14 @@ import json
 from pathlib import Path
 import re
 import shutil
+from uuid import uuid4
 import subprocess  # nosec B404 - fixed tools, argument lists, never a shell.
 
 try:
-    from .check_vulnerabilities import check_report
+    from .minimal_advisories import collect as collect_advisories
     from .image_evidence import bind_report
 except ImportError:
-    from check_vulnerabilities import check_report
+    from minimal_advisories import collect as collect_advisories
     from image_evidence import bind_report
 
 
@@ -28,7 +29,6 @@ def run(*args):
 def candidates(directory, version):
     if not re.fullmatch(r"0\.1\.\d+", version):
         raise ValueError("Expected the repository's numeric beta version")
-    baseline = json.loads(Path("security/vulnerability-baseline.json").read_text())
     result = []
     for architecture, suffix in (("amd64", "amd64"), ("arm64", "aarch64")):
         report = json.loads((directory / f"vulnerability-{architecture}.json").read_text())
@@ -39,9 +39,16 @@ def candidates(directory, version):
             raise ValueError("Missing architecture/attestation evidence")
         if identity["config"]["config"]["Labels"]["io.hass.version"] != version:
             raise ValueError("Candidate version mismatch")
-        errors, _ = check_report(report, baseline, architecture, evidence=evidence)
-        if errors:
-            raise ValueError("Release policy failed: " + "; ".join(errors))
+        # Recollect inventory and current official advisories against this exact
+        # retained OCI artifact. Never trust a cached promotion_allowed flag.
+        recheck = directory / f"publication-recheck-{architecture}-{uuid4().hex}"
+        if collect_advisories(identity["index_digest"], directory / f"vulnerability-{architecture}.json",
+                              architecture, recheck, directory / f"runtime-{architecture}",
+                              directory / f"applicability-{architecture}", version=version):
+            raise ValueError("Release advisory policy failed")
+        verified = json.loads((recheck / "evidence.json").read_text())
+        if verified["identity"] != identity:
+            raise ValueError("Retained release identity changed during revalidation")
         # This marker is written only after all packaged tests succeed.
         marker = json.loads((directory / f"tested-{architecture}.json").read_text())
         if marker != {"index_digest": identity["index_digest"]}:
@@ -92,5 +99,10 @@ if __name__ == "__main__":
     parser.add_argument("version")
     parser.add_argument("--directory", type=Path, default=Path("."))
     parser.add_argument("--latest", action="store_true")
+    parser.add_argument("--validate-only", action="store_true", help="Revalidate both retained images without registry writes")
     args = parser.parse_args()
-    publish(args.directory, args.version, args.latest)
+    if args.validate_only:
+        candidates(args.directory, args.version)
+        print("Both retained release images passed publication policy; no registry writes")
+    else:
+        publish(args.directory, args.version, args.latest)

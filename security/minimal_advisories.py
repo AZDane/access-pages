@@ -1,8 +1,8 @@
-"""Collect candidate evidence and block promotion on unresolved advisory evidence.
+"""Collect hardened runtime evidence and block unresolved advisory evidence.
 
-This candidate-only gate accepts only exact tested backports and bounded,
-evidence-pinned applicability reviews. It supplements, and does not replace,
-the production vulnerability baseline. OSV provides version matching;
+This gate accepts only exact tested backports and bounded, evidence-pinned
+applicability reviews. It applies to the hardened production and evaluation
+images; the Debian baseline remains available for older images. OSV provides version matching;
 the original publisher record is retained for every Chainguard result. Explicit
 watch records prevent the known Python/OpenSSL feed omissions becoming a zero.
 """
@@ -90,7 +90,7 @@ def inventory_matches(report, inventory, architecture):
         raise ValueError('Timezone wheel missing from scanner inventory')
 
 
-def collect(image, report_path, architecture, output, runtime_evidence, applicability_evidence):
+def collect(image, report_path, architecture, output, runtime_evidence, applicability_evidence, version=None):
     output.mkdir(parents=True, exist_ok=False)
     report = json.loads(report_path.read_text())
     (output / 'trivy.json').write_bytes(report_path.read_bytes())
@@ -104,7 +104,7 @@ def collect(image, report_path, architecture, output, runtime_evidence, applicab
     with tempfile.TemporaryDirectory(prefix='minimal-evidence-') as directory:
         archive = Path(directory) / 'image.tar'
         subprocess.run([docker, 'image', 'save', '-o', str(archive), image_id], check=True)  # nosec B603
-        identity = inspect_archive(archive, architecture, require_attestations=True)
+        identity = inspect_archive(archive, architecture, version=version, require_attestations=True)
     if image_id not in (identity['index_digest'], identity['config_digest']):
         raise ValueError('Image identity changed')
     bind_report(identity, report)
@@ -196,8 +196,9 @@ if __name__ == '__main__':
     parser.add_argument('report', type=Path)
     parser.add_argument('--architecture', choices=('amd64', 'arm64'), required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--version')
     parser.add_argument('--runtime-evidence', type=Path, required=True)
     parser.add_argument('--applicability-evidence', type=Path, required=True)
     args = parser.parse_args()
     raise SystemExit(collect(args.image, args.report, args.architecture, args.output,
-                            args.runtime_evidence, args.applicability_evidence))
+                            args.runtime_evidence, args.applicability_evidence, args.version))

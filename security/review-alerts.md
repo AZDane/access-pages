@@ -1,6 +1,7 @@
 # Assessment expiry alerts
 
-The Security review alerts workflow checks the baseline daily at 00:23 UTC.
+The Security review alerts workflow checks the legacy baseline, hardened applicability assessments and both
+Python backport manifests daily at 00:23 UTC.
 GitHub may delay scheduled runs. It also supports a manual run; the default is
 a preview, and `write_issues: true` enables issue updates from `main` only.
 

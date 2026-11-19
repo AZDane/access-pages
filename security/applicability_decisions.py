@@ -107,7 +107,8 @@ def verify(image_id, architecture, directory, publisher, *, now=None, root=ROOT)
         path = Path(name)
         if path.is_absolute() or '..' in path.parts or digest((root / path).read_bytes()) != expected:
             raise ValueError('Applicability control/source review changed')
-    required = {'Dockerfile.ha-minimal', '.dockerignore', 'packaging/minimal/prepare.py',
+    required = {'Dockerfile.ha-minimal', 'Dockerfile.ha-app', 'homeassistant-app/apparmor.txt',
+                '.dockerignore', 'packaging/minimal/prepare.py',
                 'packaging/minimal/apparmor.txt', 'security/runtime_backports.py',
                 'packaging/minimal/patches/manifest.json',
                 'security/minimal-applicability-review.txt'}

@@ -403,3 +403,52 @@ It retains all raw findings and severities and rejects changed/missing/duplicate
 records or newly linked affected functions. The same source/image/architecture,
 freshness and exclusive November 26 deadline apply. No new qURL release is
 required for this bounded assessment. Fresh native CI is still required.
+
+Release integration and live acceptance — 2026-11-19
+
+Native CI run 44593528367, commit f4f683baf329a1d5e15c181ebfc5f95cc8e8cad4,
+passed both minimal candidate jobs including the independent advisory gate.
+The old production package jobs failed; their failures were not waived.
+
+A real Playwright browser loaded exact synthetic content over the live LayerV
+share URL for two disposable resources, then again after restarting the connector
+(four successful browser stages). Both resources were deleted afterwards. The
+CLI get --file diagnostic still returned exit 11; its cause is not established.
+That diagnostic no longer establishes a browser tunnel failure. This local live
+check did not enforce AppArmor; CI and Green provide separate confinement checks.
+Scripts and redacted logs are retained in artifacts/release-integration-20261119.
+
+The owner confirmed SMTP delivery after using a Google app password, then
+confirmed a guest link in a private browser window could control a demo entity
+in the Green evaluation app. These are owner-confirmed acceptance observations,
+not automated evidence from a browser session controlled by the agent. Existing
+production Access Pages remains untouched.
+
+The production HA Dockerfile now uses the evaluated hardened recipe and profile;
+its runtime instructions must remain identical to the evaluation Dockerfile.
+The profile differs only in its production name. The same signed inputs, native
+inventory, exact backports, independent advisories and expiry policy gate the
+production and release paths. Release publication recollects inventory and
+current advisories for both retained immutable images before any registry write.
+The existing protected checks remain required; no findings are filtered.
+
+The standalone pinned official Alpine image receives the same two upstream
+hunks, using a separate exact manifest and /usr/local/lib layout. Its HTTP module
+has different vendor bytes; its reviewed before/after hashes are retained in
+packaging/standalone/manifest.json. Hardened verification cannot accept this
+manifest or its alternate paths. Both architecture jobs run the installed defect
+probes and the pinned upstream HTTP/IMAP compatibility suites for both images.
+Neither manifest's November 26 exclusive expiry was extended.
+
+Version 0.1.164 is a proposed release only. Integrated native and read-only release
+CI must pass before an approval request; no merge or publication is authorized.
+
+The standalone upstream suite exposed three Unicode tunnel-host subcase errors
+within 396 tests. Comparison showed the hardened base already contains the
+CPython gh-161104 fix, but the official Alpine module does not. The exact merged
+CPython commit 7ac989f86503b6c7707c698ecb77eee93e861897 supplies that one additional
+standalone hunk. It validates the IDNA-encoded host before sending CONNECT. The
+standalone manifest pins its intermediate input and final output; the installer
+preflights the complete sequential patch chain before writing either module.
+No upstream tests were skipped to accommodate this defect. This is tracked as
+GH-161104 rather than inventing a CVE assignment. Its review also expires Nov26.

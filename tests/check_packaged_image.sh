@@ -6,7 +6,7 @@ architecture=${2:?architecture required}
 case "$architecture" in amd64|arm64) ;; *) exit 1 ;; esac
 variant=${3:-production}
 case "$variant" in
-  production) runtime_probe=packaged_runtime_probe; profile_file=homeassistant-app/apparmor.txt; profile_name=access_pages ;;
+  production) runtime_probe=packaged_minimal_runtime_probe; profile_file=homeassistant-app/apparmor.txt; profile_name=access_pages ;;
   minimal) runtime_probe=packaged_minimal_runtime_probe; profile_file=packaging/minimal/apparmor.txt; profile_name=access_pages_minimal ;;
   *) echo "Unknown runtime variant" >&2; exit 1 ;;
 esac
@@ -36,7 +36,7 @@ case "$(docker info --format '{{json .SecurityOptions}}')" in
   *) echo "Required AppArmor enforcement unavailable on this runner" >&2; exit 1 ;;
 esac
 denied_mounts=()
-if [[ "$variant" == minimal ]]; then
+if [[ "$variant" == minimal || "$variant" == production ]]; then
   # Missing utilities cannot prove execution denial. Mount the actual candidate
   # interpreter at the three forbidden paths and prove it runs unconfined first.
   docker run --rm --network none --entrypoint python "$image" -c \
@@ -60,7 +60,7 @@ assert sys.version_info[:2] == (3, 15), sys.version
 for executable in ("/usr/local/bin/python", "/usr/local/bin/python3", "/usr/local/bin/python3.15"):
     subprocess.run([executable, "-c", "import ssl"], check=True)
 for command in (["/bin/sh", "-c", "exit 0"], ["/usr/bin/nsenter", "--help"], ["/usr/bin/infocmp", "-V"]):
-    if os.environ['RUNTIME_VARIANT'] == 'minimal':
+    if os.environ['RUNTIME_VARIANT'] in ('minimal', 'production'):
         command = [command[0], '-c', 'import ssl']
     try:
         subprocess.run(command, check=True)

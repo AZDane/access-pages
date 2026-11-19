@@ -4,6 +4,7 @@ No network, fuzzy patching, runtime monkeypatching or package-version rewriting.
 Changed vendor bytes and expired reviews require a new review before building.
 """
 
+import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -51,11 +52,17 @@ def apply_diff(original, patch, source_file):
     return result
 
 
-def validate_manifest(manifest, now=None):
+BASE_LAYOUTS = {
+    'sha256:d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2': '/usr/lib/python3.15',
+    'sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd': '/usr/local/lib/python3.15',
+}
+HARDENED_BASE = next(iter(BASE_LAYOUTS))
+
+
+def validate_manifest(manifest, now=None, *, expected_base=HARDENED_BASE):
     now = now or datetime.now(timezone.utc)
-    if manifest['schema'] != 1 or manifest['base_index'] != (
-        'sha256:d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2'
-    ):
+    if (expected_base not in BASE_LAYOUTS or manifest['schema'] != 1
+            or manifest['base_index'] != expected_base):
         raise ValueError('Unreviewed base or backport schema')
     reviewed = datetime.fromisoformat(manifest['reviewed_at'])
     deadline = datetime.fromisoformat(manifest['review_before'])
@@ -64,11 +71,15 @@ def validate_manifest(manifest, now=None):
     if (deadline - reviewed).total_seconds() > 7 * 86400:
         raise ValueError('Temporary backport review exceeds seven days')
     entries = manifest['patches']
-    if {e['cve'] for e in entries} != {'CVE-2026-103995', 'CVE-2026-115559'} or len(entries) != 2:
+    scope = {'CVE-2026-103995', 'CVE-2026-115559'}
+    if expected_base != HARDENED_BASE:
+        scope.add('GH-161104')
+    if {e['cve'] for e in entries} != scope or len(entries) != len(scope):
         raise ValueError('Unexpected backport scope')
     for entry in entries:
         path = Path(entry['installed_path'])
-        if path not in (Path('/usr/lib/python3.15/http/client.py'), Path('/usr/lib/python3.15/imaplib.py')):
+        stdlib = Path(BASE_LAYOUTS[expected_base])
+        if path not in (stdlib / 'http/client.py', stdlib / 'imaplib.py'):
             raise ValueError('Unexpected installed path')
         if Path(entry['patch_file']).name != entry['patch_file']:
             raise ValueError('Invalid patch filename')
@@ -81,16 +92,16 @@ def validate_manifest(manifest, now=None):
                 raise ValueError('Missing exact backport hash')
 
 
-def prepare(root, patch_dir, now=None):
+def prepare(root, patch_dir, now=None, *, expected_base=HARDENED_BASE):
     manifest_bytes = (patch_dir / 'manifest.json').read_bytes()
     manifest = json.loads(manifest_bytes)
-    validate_manifest(manifest, now)
-    changes, removed = [], {}
+    validate_manifest(manifest, now, expected_base=expected_base)
+    changes, removed = {}, {}
     for entry in manifest['patches']:
         target = root / entry['installed_path'].lstrip('/')
         if target.is_symlink() or not target.is_file():
             raise ValueError('Expected regular vendor module')
-        original = target.read_bytes()
+        original = changes.get(target, target.read_bytes())
         patch = (patch_dir / entry['patch_file']).read_bytes()
         if digest(original) != entry['before_sha256'] or digest(patch) != entry['patch_sha256']:
             raise ValueError('Vendor module or upstream patch changed; review required')
@@ -98,9 +109,9 @@ def prepare(root, patch_dir, now=None):
         if digest(updated) != entry['after_sha256']:
             raise ValueError('Backport output differs from reviewed bytes')
         compile(updated, str(target), 'exec')
-        changes.append((target, updated))
+        changes[target] = updated
     # All preflight checks finish before any installed file is modified.
-    for target, updated in changes:
+    for target, updated in changes.items():
         target.write_bytes(updated)
         for bytecode in (target.parent / '__pycache__').glob(target.stem + '.*.pyc'):
             if bytecode.is_symlink():
@@ -115,6 +126,9 @@ def prepare(root, patch_dir, now=None):
 
 
 if __name__ == '__main__':
-    if sysconfig.get_path('stdlib') != '/usr/lib/python3.15':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--base', choices=BASE_LAYOUTS, default=HARDENED_BASE)
+    args = parser.parse_args()
+    if sysconfig.get_path('stdlib') != BASE_LAYOUTS[args.base]:
         raise SystemExit('Unexpected runtime layout')
-    prepare(Path('/'), Path('/usr/share/access-pages/backports'))
+    prepare(Path('/'), Path('/usr/share/access-pages/backports'), expected_base=args.base)

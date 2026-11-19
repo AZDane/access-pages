@@ -9,19 +9,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class PackagingTests(unittest.TestCase):
-    def test_ha_image_pins_official_qurl_archives(self):
-        dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
-        self.assertIn("qurl_4.2.0_linux_${TARGETARCH}.tar.gz", dockerfile)
-        self.assertIn("a698c52f7d17e4ed98d2bc9273671eb7f4e6475e7e120bc90a69f5b11839328a", dockerfile)
-        self.assertIn("4a9b1fa1fe7a04a5096ac413ce5d25470a1ac869fa9af284ae6140b0b6c24fc2", dockerfile)
-        self.assertNotIn("packaging/qurl", dockerfile)
+    def test_ha_image_uses_identical_evaluated_runtime_and_verified_qurl(self):
+        dockerfile = (ROOT / "Dockerfile.ha-app").read_text()
+        candidate = (ROOT / "Dockerfile.ha-minimal").read_text()
+        def instructions(source):
+            return [line for line in source.splitlines() if not line.startswith('#')]
+        self.assertEqual(instructions(dockerfile), instructions(candidate))
+        self.assertIn("ghcr.io/azdane/access-pages-app:0.1.163@sha256:99259c306ff6b918249d5304202e7a64acd0e0c4a9a01eb7dba93cab9a9bd2cd", dockerfile)
+        for checksum in ('07e53ea1301531b4f873776f08cd02bcbe36ae728a71049a8b7f74b8840c84d9',
+                         '78eb88774f2b05bfab0f3afa7963e6fa70ea5e82a64d5032e9ee0a37b34f45e7'):
+            self.assertIn(checksum, dockerfile)
         self.assertNotIn("LEGACY_PUBLIC_PUBLISH", (ROOT / "guest_resources.py").read_text())
 
     def test_final_image_asserts_system_tunnel_trust_store(self):
-        runtime = (ROOT / "Dockerfile.ha-app").read_text().split("FROM python:", 1)[1]
-        self.assertIn("dpkg-query -W ca-certificates", runtime)
-        self.assertIn("test -s /etc/ssl/certs/ca-certificates.crt", runtime)
-        self.assertIn("ssl.create_default_context().cert_store_stats()", runtime)
+        runtime = (ROOT / "Dockerfile.ha-app").read_text().split("FROM cgr.dev/chainguard/python:", 1)[1]
+        self.assertIn('"/opt/build/prepare.py"', runtime)
+        preparation = (ROOT / "packaging/minimal/prepare.py").read_text()
+        self.assertIn("ssl.create_default_context().cert_store_stats()['x509_ca']", preparation)
+        self.assertIn("raise ValueError('Empty system CA trust store')", preparation)
 
     def test_pinned_license_bundle_is_copied_into_final_image(self):
         dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
@@ -85,14 +90,9 @@ class PackagingTests(unittest.TestCase):
         self.assertIn("PYTHONPATH=/app", dockerfile)
 
     def test_connector_audit_path_uses_restricted_persistent_store(self):
-        dockerfile = (ROOT / "Dockerfile.ha-app").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn(
-            "ln -s /data/logs/layer-v-connector /var/log/layerv",
-            dockerfile,
-        )
-        self.assertIn("chmod 0700", dockerfile)
+        preparation = (ROOT / "packaging/minimal/prepare.py").read_text()
+        self.assertIn("Path('/var/log/layerv').symlink_to('/data/logs/layer-v-connector')", preparation)
+        self.assertIn("'/data/logs/layer-v-connector': (2105, 2105, 0o700)", preparation)
 
     def test_home_assistant_app_does_not_advertise_public_gateway_port(self):
         config = (ROOT / "homeassistant-app" / "config.yaml").read_text(

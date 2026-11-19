@@ -2,10 +2,11 @@
 
 from copy import deepcopy
 from datetime import date
+from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
-from security.review_alerts import alerts, GitHub, synchronize
+from security.review_alerts import alerts, GitHub, synchronize, hardened_reviews
 
 
 class ReviewAlertTests(unittest.TestCase):
@@ -24,6 +25,20 @@ class ReviewAlertTests(unittest.TestCase):
             self.assertEqual(len(planned), 1)
             self.assertIn("expired" if day >= 26 else "due within seven days", next(iter(planned.values()))["body"])
         self.assertEqual(self.baseline, original)
+
+    def test_hardened_and_both_backport_reviews_are_included_without_renewal(self):
+        entries = hardened_reviews(Path('packaging'))
+        self.assertEqual(len(entries), 22)
+        self.assertEqual({e['review_due'] for e in entries}, {'2026-11-26'})
+        self.assertEqual(sum(e['type'].endswith('-backport') for e in entries), 5)
+        planned = alerts({'dispositions': entries}, date(2026, 11, 26))
+        self.assertEqual(len(planned), 1)
+        body = next(iter(planned.values()))['body']
+        self.assertIn('expired', body)
+        for entry in entries:
+            self.assertIn(entry['id'], body)
+        self.assertIn('standalone Python backport', body)
+        self.assertIn('hardened Python backport', body)
 
     def test_groups_dates_and_includes_all_due_findings(self):
         second = deepcopy(self.baseline["dispositions"][0])

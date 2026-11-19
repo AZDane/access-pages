@@ -10,6 +10,7 @@ amd64=sha256:7b25670efd8a19fe05dcdfca56c418ee0988cd925766e898dd8edf7a061343ed
 arm64=sha256:7d37d730037ad599f211eebbae47ebeb8c529b857340678a870cfc1c101bbf85
 # A pin update must update the reviewed manifest mapping as well.
 grep -Fx "FROM $repository:latest@$index" Dockerfile.ha-minimal
+grep -Fx "FROM $repository:latest@$index" Dockerfile.ha-app
 docker buildx imagetools inspect --raw "$repository@$index" > "$destination/index.json"
 python3 - "$destination/index.json" "$amd64" "$arm64" <<'PY'
 import json, sys
@@ -36,6 +37,7 @@ qurl_index=sha256:99259c306ff6b918249d5304202e7a64acd0e0c4a9a01eb7dba93cab9a9bd2
 qurl_amd64=sha256:7f8b51d1f8c534175ced7f1649ce3434c2b1bbb2e99894a05207305f6e33eaf8
 qurl_arm64=sha256:b2ad163ea6f8280d35a996475f3a212da16214e5db4cee920f0b1b750c5ed202
 grep -Fx "FROM $qurl_repository:0.1.163@$qurl_index AS qurl" Dockerfile.ha-minimal
+grep -Fx "FROM $qurl_repository:0.1.163@$qurl_index AS qurl" Dockerfile.ha-app
 cosign verify --certificate-identity \
   https://github.com/AZDane/access-pages/.github/workflows/publish-ha-app.yml@refs/tags/v0.1.163 \
   --certificate-oidc-issuer "$issuer" --output json \
