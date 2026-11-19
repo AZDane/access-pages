@@ -112,6 +112,7 @@ def prepare():
         Path('/usr/local/bin', alias).symlink_to('/usr/bin/python3.15')
     if not ssl.create_default_context().cert_store_stats()['x509_ca']:
         raise ValueError('Empty system CA trust store')
+    Path('/opt/build/backports.py').unlink()
     Path(__file__).unlink()
 
 

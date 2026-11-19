@@ -320,6 +320,9 @@ jobs:
           --tag access-pages-minimal:${{ matrix.arch }} .
       - name: Check candidate runtime, application and confinement
         run: bash tests/check_packaged_image.sh access-pages-minimal:${{ matrix.arch }} ${{ matrix.arch }} minimal > minimal-runtime.log 2>&1
+      - name: Validate official Python compatibility and security regressions
+        if: ${{ !cancelled() }}
+        run: bash tests/check_upstream_python.sh access-pages-minimal:${{ matrix.arch }} ${{ matrix.arch }} minimal-upstream-python
       - name: Gate installed Python behavior independently of scanner findings
         if: ${{ !cancelled() }}
         run: >-
@@ -360,6 +363,7 @@ jobs:
         run: >-
           python3 security/minimal_advisories.py access-pages-minimal:${{ matrix.arch }}
           minimal-trivy.json --architecture ${{ matrix.arch }} --output minimal-evidence
+          --runtime-evidence minimal-runtime-advisories
       - name: Retain candidate verification, runtime and complete advisory evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -370,6 +374,7 @@ jobs:
             minimal-runtime.log
             minimal-trivy.json
             minimal-runtime-advisories/
+            minimal-upstream-python/
             minimal-evidence/
           if-no-files-found: error
           retention-days: 90

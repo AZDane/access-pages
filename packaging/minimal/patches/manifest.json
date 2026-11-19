@@ -1,0 +1,32 @@
+{
+  "base_index": "sha256:d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2",
+  "owner": "Access Pages maintainer",
+  "patches": [
+    {
+      "after_sha256": "a7cbea0d057eb87747c590e88cbf8a24e2e35ca3bc26b99b69f21c91a0f1c857",
+      "before_sha256": "928d81dc92794ce21d938111aed2aea7627c85c13bd3aa336c3de88f12a15fac",
+      "cve": "CVE-2026-103995",
+      "installed_path": "/usr/lib/python3.15/http/client.py",
+      "patch_file": "CVE-2026-103995.patch",
+      "patch_sha256": "2213ff6a868be29528f6e1e5863dad074f74e9be72770275b021bff3b8c2822f",
+      "source_file": "Lib/http/client.py",
+      "upstream_commit": "5b9e3d044764cf59329fb8147177f54a88d1fb49",
+      "upstream_url": "https://github.com/python/cpython/commit/5b9e3d044764cf59329fb8147177f54a88d1fb49"
+    },
+    {
+      "after_sha256": "18b47ca17656420e36eeaddcfb172751a6b88478d5761a7b4d733c590a274de9",
+      "before_sha256": "ebb09bab21dbabf7414aca19d8334aea67fa1c21b1cefa83149ad3ae14957570",
+      "cve": "CVE-2026-115559",
+      "installed_path": "/usr/lib/python3.15/imaplib.py",
+      "patch_file": "CVE-2026-115559.patch",
+      "patch_sha256": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
+      "source_file": "Lib/imaplib.py",
+      "upstream_commit": "2f0e294d85c905691e360586ebd1d1f7e7a1f5df",
+      "upstream_url": "https://github.com/python/cpython/commit/2f0e294d85c905691e360586ebd1d1f7e7a1f5df"
+    }
+  ],
+  "replacement": "Remove backports when an official vendor image passes the same regression tests; do not extend the review without new evidence.",
+  "review_before": "2026-11-26T00:00:00+00:00",
+  "reviewed_at": "2026-11-19T00:00:00+00:00",
+  "schema": 1
+}

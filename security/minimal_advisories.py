@@ -21,8 +21,10 @@ from urllib.request import Request, urlopen
 
 try:
     from .image_evidence import bind_report, fingerprint, inspect_archive
+    from .backport_evidence import verify as verify_backports
 except ImportError:
     from image_evidence import bind_report, fingerprint, inspect_archive
+    from backport_evidence import verify as verify_backports
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'https://advisories.cgr.dev/chainguard/v3/osv/'
@@ -85,7 +87,7 @@ def inventory_matches(report, inventory, architecture):
         raise ValueError('Timezone wheel missing from scanner inventory')
 
 
-def collect(image, report_path, architecture, output):
+def collect(image, report_path, architecture, output, runtime_evidence):
     output.mkdir(parents=True, exist_ok=False)
     report = json.loads(report_path.read_text())
     (output / 'trivy.json').write_bytes(report_path.read_bytes())
@@ -152,15 +154,21 @@ def collect(image, report_path, architecture, output):
     missing_watch = sorted(set(watch[architecture]) - set(records))
     trivy_high = [v for result in report['Results'] for v in result.get('Vulnerabilities', [])
                   if v['Severity'] in ('HIGH', 'CRITICAL')]
+    backports = verify_backports(inventory, image_id, architecture, runtime_evidence, publisher)
+    for filename in ('evidence.json', 'observations.json'):
+        (output / ('runtime-' + filename)).write_bytes((runtime_evidence / filename).read_bytes())
+    unresolved = sorted(set(records) - set(backports['advisory_ids']))
+    evidence.update({'verified_backports': backports, 'unresolved_vendor_advisory_ids': unresolved})
     evidence.update({'complete': True, 'query_count': len(queries),
                      'vendor_advisory_ids': sorted(records), 'watch_missing_from_osv': missing_watch,
                      'trivy_high_critical_records': len(trivy_high),
-                     'promotion_allowed': not (records or missing_watch or trivy_high)})
+                     'promotion_allowed': not (unresolved or missing_watch or trivy_high)})
     evidence['inputs_sha256'] = {p.name: sha256(p.read_bytes()).hexdigest()
                                 for p in output.iterdir() if p.name != 'evidence.json'}
     (output / 'evidence.json').write_text(json.dumps(evidence, indent=2, sort_keys=True))
     print(json.dumps({key: evidence[key] for key in ('image_id', 'size_bytes', 'query_count',
-                     'vendor_advisory_ids', 'watch_missing_from_osv', 'promotion_allowed')}, indent=2))
+                     'vendor_advisory_ids', 'unresolved_vendor_advisory_ids', 'verified_backports',
+                     'watch_missing_from_osv', 'promotion_allowed')}, indent=2))
     return 0 if evidence['promotion_allowed'] else 1
 
 
@@ -170,5 +178,6 @@ if __name__ == '__main__':
     parser.add_argument('report', type=Path)
     parser.add_argument('--architecture', choices=('amd64', 'arm64'), required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--runtime-evidence', type=Path, required=True)
     args = parser.parse_args()
-    raise SystemExit(collect(args.image, args.report, args.architecture, args.output))
+    raise SystemExit(collect(args.image, args.report, args.architecture, args.output, args.runtime_evidence))

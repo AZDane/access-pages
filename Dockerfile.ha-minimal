@@ -25,6 +25,9 @@ USER 0:0
 ENTRYPOINT []
 COPY --from=timezone /out/tzdata.whl /opt/build/tzdata.whl
 COPY packaging/minimal/prepare.py /opt/build/prepare.py
+COPY security/runtime_backports.py /opt/build/backports.py
+COPY packaging/minimal/patches/ /usr/share/access-pages/backports/
+RUN ["/usr/bin/python", "/opt/build/backports.py"]
 RUN ["/usr/bin/python", "/opt/build/prepare.py"]
 
 ARG BUILD_ARCH

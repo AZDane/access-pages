@@ -174,3 +174,60 @@ unaltered official CPython modules passed all 15 behavior checks:
   https://github.com/python/cpython/pull/160370
 These modules were used only in a disposable offline test, not installed in any
 application image. The runtime fixes themselves remain separate work.
+
+Temporary patch evaluation (November 19, PR #100)
+
+PR #99 was closed as superseded at the owner's request. PR #98 remains open and
+has not been merged. The public vendor Python tag was checked again and remains
+at d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2.
+
+The candidate now applies the exact official HTTP and IMAP library patch hunks
+in packaging/minimal/patches at build time. Both before/after module hashes and
+patch hashes are pinned; base drift, malformed/ambiguous hunks and expired review
+stop the build. Review expires exclusively at November 26 00:00 UTC. Production
+code, images, qURL and baseline dates remain unchanged. The local derivative is
+explicitly distinguished from the signed vendor base; APK versions and scanner
+inventories are not rewritten to claim a vendor fix.
+
+The independent gate retains all publisher records. It recognizes the two local
+remediations only with exact installed hashes and manifest, passing behavioral
+controls bound to the same image/architecture, current probe hash, fresh runtime
+evidence, matching publisher scope and an unexpired backport review. All other
+advisories remain blocking. No broad Python exception is introduced.
+
+Local amd64: the built patched image passes all 15 runtime regression checks and
+the packaged application suite. Full official Python 3.15 HTTP/IMAP compatibility
+suites passed 396 tests (five upstream skips), using checksum-pinned sources. A first
+trial using development-branch IMAP tests was incompatible with Python 3.15; its
+results are not treated as application regressions or as passing validation. The
+CI runner uses the compatible 3.15 test fixtures and never replaces the installed
+stdlib with the downloaded source. Native CI is required for both architectures
+and enforced AppArmor. Host-side local AppArmor remains unavailable.
+
+Remaining advisory triage and patch choices:
+- http.cookies.Morsel output injection (CVE-2026-16052): application SimpleCookie
+  use parses the inbound cookie and reads token.value; it does not emit Morsel
+  output. The outgoing Set-Cookie header is constructed separately from validated
+  server-issued values. This supports further bounded applicability review, not
+  a blanket exception based on a SimpleCookie import.
+- CookieJar (CVE-2026-124249), ssl.get_server_certificate (CVE-2026-19552), archive
+  extraction CLI (CVE-2026-115791): no application consumer found in current source.
+  Source changes and indirect library consumers must remain part of the review.
+- SQLite CLI .recover (CVE-2026-119586), xmlwf (CVE-2026-128241): the affected CLI
+  components are absent from the candidate. Shared libraries remain inventoried.
+- OpenSSL five IDs: the affected QUIC, CMS and AES-GCM-SIV paths are distinct from
+  Python's ordinary TLS use. qURL uses its static Go TLS implementation. Native
+  call/configuration review remains necessary. Prefer a vendor package backport;
+  do not transplant libraries from another distribution or rebuild cryptography
+  merely to improve scanner output.
+- glibc two IDs and Expat unknown-encoding callback (CVE-2026-124317): native
+  consumer evidence remains incomplete. Prefer vendor-supported package fixes;
+  local compiled-library replacements would require ABI and upstream-suite work
+  well beyond these small, verifiable Python changes.
+
+Live tunnel acceptance and real HAOS install/upgrade/rollback remain required.
+The qURL 4.2.0 built-in get help defines exit 11 as temporary link unavailability;
+this explains the category, not its underlying service cause. Existing control
+failure in the published image remains evidence against attributing it solely to
+the hardened base. No LayerV account credentials or real HA data are used in the
+anonymous synthetic live probe.
