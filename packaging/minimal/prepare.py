@@ -10,6 +10,41 @@ import sysconfig
 import zipfile
 
 
+def add_service_accounts(root):
+    """Append fixed, locked service identities without rewriting existing records."""
+    groups = {'gateway-pages': 2000, 'policy-readers': 2001,
+              'access-pages-secrets': 2003, 'guest-transport': 2004}
+    accounts = dict(zip(('app-admin', 'app-guest', 'ha-broker', 'access-pages-broker',
+                         'policy-store', 'connector', 'ingress', 'onboarding'),
+                        range(2100, 2108)))
+    groups.update(accounts)
+    group_file = root / 'etc/group'
+    account_file = root / 'etc/passwd'
+    # Validate both files before either is changed. No existing account field
+    # is passed to a write operation, including its credential placeholder.
+    for path, count, additions in ((group_file, 4, groups), (account_file, 7, accounts)):
+        if path.is_symlink() or not path.is_file():
+            raise ValueError('Expected a regular base identity file')
+        data = path.read_text()
+        if not data.endswith('\n'):
+            raise ValueError('Malformed base identity file')
+        rows = [line.split(':') for line in data.splitlines()]
+        if any(len(row) != count or not row[0] or not row[2].isdigit() for row in rows):
+            raise ValueError('Malformed base identity record')
+        if any(row[1] not in ('x', '!', '*', '!!') for row in rows):
+            raise ValueError('Base identity file contains an unexpected credential field')
+        if {row[0] for row in rows} & additions.keys():
+            raise ValueError('Reserved service identity name collision')
+        if {int(row[2]) for row in rows} & set(additions.values()):
+            raise ValueError('Reserved service identity ID collision')
+    with group_file.open('a') as stream:
+        stream.writelines(f'{name}:x:{gid}:\n' for name, gid in groups.items())
+    with account_file.open('a') as stream:
+        stream.writelines(f'{name}:!:{uid}:{uid}::/home/{name}:/sbin/nologin\n'
+                          for name, uid in accounts.items())
+    return accounts
+
+
 def prepare():
     wheel = Path('/opt/build/tzdata.whl')
     expected = '0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec'
@@ -50,26 +85,7 @@ def prepare():
     manifest.write_text(json.dumps({'removed_files': removed,
                                    'tzdata_wheel_sha256': expected}, sort_keys=True))
 
-    groups = {'gateway-pages': 2000, 'policy-readers': 2001,
-              'access-pages-secrets': 2003, 'guest-transport': 2004}
-    accounts = dict(zip(('app-admin', 'app-guest', 'ha-broker', 'access-pages-broker',
-                         'policy-store', 'connector', 'ingress', 'onboarding'),
-                        range(2100, 2108)))
-    groups.update(accounts)
-    group_file = Path('/etc/group')
-    old_groups = group_file.read_text()
-    existing = {line.split(':')[2] for line in old_groups.splitlines()}
-    if existing & {str(value) for value in groups.values()}:
-        raise ValueError('Reserved service group ID collision')
-    group_file.write_text(old_groups + ''.join(f'{name}:x:{gid}:\n' for name, gid in groups.items()))
-    passwd = Path('/etc/passwd')
-    old_passwd = passwd.read_text()
-    existing = {line.split(':')[2] for line in old_passwd.splitlines()}
-    if existing & {str(value) for value in accounts.values()}:
-        raise ValueError('Reserved service user ID collision')
-    passwd.write_text(old_passwd + ''.join(
-        f'{name}:x:{uid}:{uid}::/home/{name}:/sbin/nologin\n'
-        for name, uid in accounts.items()))
+    accounts = add_service_accounts(Path("/"))
     for name, uid in accounts.items():
         home = Path('/home') / name
         home.mkdir(mode=0o700)

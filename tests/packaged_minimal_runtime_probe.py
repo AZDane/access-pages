@@ -45,7 +45,10 @@ assert not list(Path('/usr/share/python-wheels').glob('pip-*.whl'))
 assert not any(Path('/usr').glob('**/Archive/Tar.pm'))
 assert not any(Path('/usr').glob('**/systemd-homed'))
 for uid in range(2100, 2108):
-    assert pwd.getpwuid(uid).pw_gid == uid
+    account = pwd.getpwuid(uid)
+    assert account.pw_gid == uid
+    assert account.pw_passwd == "!"
+    assert account.pw_shell == "/sbin/nologin"
 for zone in ('America/Phoenix', 'America/New_York', 'Europe/Copenhagen', 'UTC'):
     assert ZoneInfo(zone).key == zone
 assert package_version('tzdata') == '2026.6'

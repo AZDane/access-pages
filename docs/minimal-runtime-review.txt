@@ -147,3 +147,22 @@ full Trivy, OSV queries, original publisher records, immutable image evidence,
 packaged/live logs, native CI logs and SHA256SUMS. CI retains base-verification
 artifacts for 90 days. Restore official source availability or establish a
 publisher-verifiable replacement before rerunning fresh native builds.
+
+Account-creation follow-up (2026-11-19 UTC)
+
+The CodeQL alert at the original account-file rewrite did not identify an
+exposed credential: inspection of the built image confirmed every existing
+credential field was a placeholder/lock and all eight service identities used
+nologin. The implementation now validates both identity files before changing
+either and appends only constant-format service records with an explicit !
+password lock. It never writes previously read account-file contents back out.
+It also rejects unexpected credential fields, symlinks, malformed records and
+service name/ID collisions without printing account-file contents.
+
+Six regression tests and an offline disposable-container check against the
+actual pinned Chainguard base passed. The latter verified all eight account
+IDs, matching primary groups, explicit locks, nologin shells and preservation
+of existing records. Ruff and Bandit passed for the changed code. This is
+focused account-setup evidence, not a complete new image or native ARM64 result.
+Fresh qURL release lookup still returned 404. No security finding was dismissed,
+no scanning rule was disabled, and no assessment date was extended.
