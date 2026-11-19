@@ -231,3 +231,44 @@ this explains the category, not its underlying service cause. Existing control
 failure in the published image remains evidence against attributing it solely to
 the hardened base. No LayerV account credentials or real HA data are used in the
 anonymous synthetic live probe.
+
+Release-readiness follow-up (November 19)
+
+The execution prompt is recorded in docs/release-readiness-prompt.txt. It stops
+at a concrete release approval decision, without publication or production merge.
+
+A newer signed Chainguard index became available during the follow-up:
+4b2cec05cea94a58e635f21ca5d7c642d24ec58258008bf9341a0c062de5d99d.
+Both architecture signatures and signed SBOMs were verified. It replaces glibc
+2.44-r23 with r24; Python/OpenSSL/Expat/SQLite versions and the two vulnerable
+Python module hashes are unchanged. The public glibc recipe describes a compiler
+rebuild with the same source revision. No security resolution is claimed and the
+candidate pin is not changed merely because the tag moved. The original vendor
+advisory still lists the glibc finding without a fixed version.
+
+The official qURL release API returns 404 and its 4.4.4 GHCR image returns 403.
+Cached copies from earlier investigation are not substituted for a currently
+verifiable, reproducible release source. qURL remains 4.2.0 from our signed image.
+
+security/collect_applicability.py now retains an offline observation from the
+actual immutable image, complete application hashes/import/call inventory, actual
+TLS ciphers, Expat binding controls, qURL's Go function table matches and all ELF
+files' hashes, imported native symbols and dependencies. It never runs exported
+executables and never extracts archive-selected paths. The collector runs on
+both native CI architectures and fails if collection is incomplete. Its evidence
+is observation-only: it changes no vulnerability disposition or gate decision.
+
+Initial amd64 observations: neither golang.org/x/net/html nor x/crypto/openpgp
+is linked into the original qURL binary; sqlite3/xmlwf/shell/OpenSSL CLIs are
+absent; Python exposes no QUIC API and its default TLS ciphers exclude GCM-SIV.
+The exact CPython source at 64b5cfdf7548a21741398ce0826728818327aea7 sets the Expat
+unknown-encoding convert callback to NULL and rejects multibyte encodings. The
+installed binding accepts a valid windows-1252 document and rejects shift_jis,
+big5 and gbk at that binding restriction. This supports an applicability review
+for CVE-2026-124317, not a claim that the Expat library is patched.
+
+Native symbol inspection found glibc regcomp/regexec consumers in libform and
+libformw. No wide scanf imports were found. Those observations require dependency
+and source-path review; an import search alone is not a completed assessment.
+All 14 runtime CVEs and all three qURL findings remain visible and unresolved
+until an explicit evidence-bound decision has been reviewed.

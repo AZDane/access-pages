@@ -328,6 +328,11 @@ jobs:
         run: >-
           python3 security/check_runtime_advisories.py access-pages-minimal:${{ matrix.arch }}
           --architecture ${{ matrix.arch }} --output minimal-runtime-advisories
+      - name: Collect exact native and application applicability evidence
+        if: ${{ !cancelled() }}
+        run: >-
+          python3 security/collect_applicability.py access-pages-minimal:${{ matrix.arch }}
+          --architecture ${{ matrix.arch }} --output minimal-applicability
       - name: Prepare empty vulnerability ignore file
         if: ${{ !cancelled() }}
         run: ': > "$RUNNER_TEMP/minimal-no-ignores"'
@@ -374,6 +379,7 @@ jobs:
             minimal-runtime.log
             minimal-trivy.json
             minimal-runtime-advisories/
+            minimal-applicability/
             minimal-upstream-python/
             minimal-evidence/
           if-no-files-found: error
