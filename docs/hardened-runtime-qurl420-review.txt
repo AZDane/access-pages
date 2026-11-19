@@ -242,8 +242,11 @@ A newer signed Chainguard index became available during the follow-up:
 Both architecture signatures and signed SBOMs were verified. It replaces glibc
 2.44-r23 with r24; Python/OpenSSL/Expat/SQLite versions and the two vulnerable
 Python module hashes are unchanged. The public glibc recipe describes a compiler
-rebuild with the same source revision. No security resolution is claimed and the
-candidate pin is not changed merely because the tag moved. The original vendor
+rebuild. Signed SBOMs show source revisions 625054f30f0e7a961519f045f2364aa3ca6c1c6b
+and 049ee6efc26ad8919ff497ef1906878d02c2ff80; comparison in the vendor-linked GNU
+GitLab mirror shows one commit changing NEWS only ("Add a few BZ entries to NEWS").
+No security resolution is claimed and the candidate pin is not changed merely
+because the tag moved. The original vendor
 advisory still lists the glibc finding without a fixed version.
 
 The official qURL release API returns 404 and its 4.4.4 GHCR image returns 403.
@@ -272,3 +275,77 @@ libformw. No wide scanf imports were found. Those observations require dependenc
 and source-path review; an import search alone is not a completed assessment.
 All 14 runtime CVEs and all three qURL findings remain visible and unresolved
 until an explicit evidence-bound decision has been reviewed.
+
+Native follow-up and HA Green acceptance (November 19)
+
+Security run 44582158696 tested PR head 50a2cac900dfce3d9c38df29aced872a29447ea0
+through GitHub's b05fbf56e40a033e7b349622e0ffdf5bc771f845 merge revision. Both native
+architectures passed publisher verification, build, packaged runtime/application
+checks, upstream Python compatibility, all 15 defect regressions, secret scanning
+and the new applicability collector. Each collector inventoried 143 ELF files.
+Both show no x/net/html or x/crypto/openpgp functions in qURL, no sqlite3/xmlwf
+CLI, no wide scanf imports, and regcomp/regexec consumers only in libform/libformw.
+Both Expat binding probes accept windows-1252 and reject the three multibyte
+encodings tested. These observations are not additional approved exceptions.
+
+CI image identities and sizes:
+- amd64: sha256:31f9e51c0b7ec1968f59afe78b78e11e2548a8a6a7cca5ad1669271edb956933
+  175232981 bytes.
+- arm64: sha256:62ebb14d24c3d6ad33607d6778f363c1853dc80cc5bc1890ade5ca4185a0babb
+  169551655 bytes.
+Both promotion gates remain blocked: 14 runtime CVEs plus two qURL CVEs and
+one Go advisory remain unresolved (17 distinct findings; 16 distinct CVEs).
+No assessment dates or scanner rules changed.
+
+HAOS acceptance now uses authenticated SSH with an independently confirmed,
+pinned host key. The Green runs HAOS 18.4 and Core/Supervisor 2026.11.0. All test
+mutations target a newly created local_access_pages app, displayed as Access
+Pages Security Evaluation. The existing repository-installed Access Pages
+0.1.150 remained started throughout the observed checkpoints. The test app uses
+manual boot, the original access_pages slug, a separate Supervisor-managed data
+directory, and the relevant unchanged AppArmor profile; protection remains on.
+
+The baseline is a local wrapper around the exact signed 0.1.163 image index
+already verified for the qURL source. The evaluation update uses the committed
+Dockerfile.ha-minimal and source at 50a2cac, built natively by Supervisor as
+0.1.164-eval.1. Only local test metadata (name, version, manual boot, local build
+selection and explicit architecture build arguments) differs. The nested source
+config.yaml is renamed config.yaml.source in the staging directory to avoid
+Supervisor discovering a second app with the same slug. This is a separate
+native test build, not a claim that the retained CI image was deployed byte for
+byte. No production release or App Store version was changed.
+
+Verified HAOS steps:
+- Install and start isolated signed baseline 0.1.163.
+- Create and inspect a completed app-only baseline backup.
+- Native build and upgrade to hardened 0.1.164-eval.1; app reports started,
+  protected=true and apparmor=profile.
+- Direct ingress and forged X-Ingress-Path requests both return HTTP 403.
+- Restart candidate successfully; ingress still returns HTTP 403.
+- Create a completed candidate-only backup (44.12 MB versus baseline 66.28 MB).
+- Restore only the test app from the baseline backup with Home Assistant Core
+  restoration explicitly disabled. Supervisor reports the restore done without
+  errors; 0.1.163 restarts and again rejects direct ingress with HTTP 403.
+- Uninstall only the disposable app, then freshly install/start the hardened
+  candidate into empty app data. Both direct and forged ingress requests return
+  HTTP 403. The candidate remains started, protected and manually booted, with
+  diagnostic logging off. Supervisor remains healthy and supported.
+
+The fresh candidate is left running for the pending authenticated browser check.
+Both test backups and the isolated local build directory remain on Green.
+
+The app remained in unregistered onboarding state. These checks do not certify
+real-account enrollment, authenticated browser journeys, configured-page
+persistence or live device actions on Green. The existing disposable container
+upgrade/rollback tests cover synthetic settings/pages/admin authority and SQLite
+integrity separately. Automatic approval review rejected copying the test backup
+and exporting an options-file hash; neither operation ran. Backups remain on
+Green, and no byte-level persistence claim is made for this HAOS test.
+
+Live tunnel follow-up used a temporary copy of the existing anonymous synthetic
+probe with six idempotent get attempts, five-second waits and a bounded command
+timeout. Both the patched candidate and the signed production control still
+returned exit 11 after all attempts. Enrollment, publication and share creation
+succeeded; both resources were deleted successfully. This does not identify the
+root cause, and the tunnel acceptance requirement remains unsatisfied. The
+official qURL release API was rechecked and still returned HTTP 404.
