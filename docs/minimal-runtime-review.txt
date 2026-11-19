@@ -115,3 +115,35 @@ profile; establish broader upstream intake and the supported update track.
 Then replace the production base, update its evidence-bound baseline through
 review, remove superseded candidate scaffolding, and repeat all required
 checks. Never declare zero vulnerabilities from the current Trivy zero.
+
+Native CI result and external build blocker (2026-11-19 15:35 UTC)
+
+PR: https://github.com/AZDane/access-pages/pull/99
+Security run: https://github.com/AZDane/access-pages/actions/runs/44556083228
+Release dry run: https://github.com/AZDane/access-pages/actions/runs/44556083243
+Implementation tested by these runs: 4d116ae045ea13ad745998aebfc0a0a9acee1af7.
+
+Static analysis/tests (including the nine new advisory tests), secrets,
+dependencies/configuration, browser journeys, Go race tests, both real Core
+compatibility jobs and signing compatibility passed. Both native candidate
+jobs successfully verified the base index, both manifests and both signed
+SBOMs. Production and candidate fresh builds then failed downloading the
+official qURL 4.4.4 archive: HTTP 404 on both architectures. The repository and
+release API also returned 404; an unauthenticated release-asset HEAD request
+confirmed it. LayerV's official installation page still points to that GitHub
+repository. No replacement official location was established. This may be an
+availability/access change; there is no evidence here explaining its cause.
+The attempted GHCR 4.4.4 reference returned 403 and is not a verified fallback.
+
+Therefore native final-image tests, including AppArmor, did not run. Their
+absence is a blocker, not a pass. The release dry run and protected Container
+image check correctly failed; no release ran. Local tests used the previously
+verified archive cached before the source became unavailable. The local image
+also predates the final build-script path cleanup and explicit builder digest
+pin; its measurements must not be represented as final-head native evidence.
+
+Preserved local raw evidence: artifacts/minimal-runtime-20261119/ contains
+full Trivy, OSV queries, original publisher records, immutable image evidence,
+packaged/live logs, native CI logs and SHA256SUMS. CI retains base-verification
+artifacts for 90 days. Restore official source availability or establish a
+publisher-verifiable replacement before rerunning fresh native builds.
