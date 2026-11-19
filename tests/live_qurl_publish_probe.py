@@ -67,7 +67,8 @@ def probe():
             for isolation in ("page", "guest"):
                 identifier = "ha-" + isolation + "-" + secrets.token_hex(20)
                 resources[identifier] = None
-                published = run(["publish", "http://127.0.0.2:8080", "--id", identifier, "--public"])
+                published = run(["publish", "http://127.0.0.2:8080", "--id", identifier,
+                                 "--name", "Access Pages disposable probe", "--public"])
                 crid = resources[identifier] = published["crid"]
                 check(published.get("private") is False, "Publication did not confirm public privacy")
                 check(published.get("found_existing") is False, "Fresh publication reused an existing resource")
@@ -79,7 +80,8 @@ def probe():
             publisher._stop_daemon()
             publisher._start()
             for identifier, crid in resources.items():
-                repeated = run(["publish", "http://127.0.0.2:8080", "--id", identifier, "--public"])
+                repeated = run(["publish", "http://127.0.0.2:8080", "--id", identifier,
+                                "--name", "Access Pages disposable probe", "--public"])
                 check(repeated["crid"] == crid, "Restart changed the resource identity")
                 check(repeated.get("private") is False, "Restart did not confirm public privacy")
                 output = Path(temp) / (identifier + ".txt")

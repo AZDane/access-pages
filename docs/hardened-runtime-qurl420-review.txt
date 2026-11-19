@@ -50,4 +50,92 @@ threshold reduction, scanner suppression or assessment renewal is introduced.
 Successful functional tests alone cannot authorize promotion. A real HAOS
 install/upgrade and live confined tunnel are additional acceptance evidence.
 
-Results will be recorded after the exact candidate completes its checks.
+Initial exact-candidate results (c1bddf3)
+
+Local amd64 build and copied qURL hash verification passed. The packaged runtime,
+TLS, startup, real-UID isolation, permission repair, scheduling and qURL lock/
+restart probes passed. All 559 application tests passed with three Node-only
+skips in the minimal container. Local AppArmor is unavailable, so the runner
+correctly refused to mark the full local script successful; native CI supplies
+that enforcement evidence. Hosted Node browser journeys separately passed.
+
+Native arm64 CI built and tested the final image, verified both publishers and
+both architecture maps, and retained complete identity-bound evidence. The
+image is 169,274,074 bytes. Its promotion gate failed as required: 32 vendor/source
+records remain unresolved, and the preserved qURL x/net HIGH appears in three
+targets (one binary plus the two unmodified SBOMs). Trivy reports no OS findings.
+The full local scan also retains CVE-2026-97045 (MEDIUM) and GO-2026-5932 (UNKNOWN)
+in qURL's embedded dependencies; neither is hidden by the HIGH-only summary.
+
+The hardened amd64 image and the signed published production image both passed
+anonymous enrollment, fresh publication and share creation in a disposable live
+test, then failed qURL get with exit 11. Both synthetic resources were deleted
+successfully. No credentials or raw native error text were logged. This failure
+is reproducible in the production control and cannot be attributed to the base
+image from this evidence. Live tunneled-content/restart acceptance remains open.
+The live test was corrected to provide the public resource name required by
+qURL 4.2.0; it is still manual and does not use customer endpoints or credentials.
+
+Independent advisory review
+
+Official CVE records for all 16 IDs were retrieved on November 19 from the
+CVEProject/cvelistV5 repository, alongside the original publisher records.
+This review does not add any waiver or change the promotion gate.
+
+Python (six IDs):
+- CVE-2026-103995 affects HTTP response/chunk framing. A bounded in-memory probe
+  shows that both candidate and production accept +1 and 0x1 chunk sizes, which
+  are not valid HTTP hexadecimal chunk-size syntax. Access Pages uses this
+  library in ha.py, policy.py, layerv.py, guest_resources.py, guest_service.py
+  and ingress_proxy.py. Some calls are protected local broker connections;
+  others contact configured upstreams over TLS. Application exploitation has
+  not been demonstrated, but this cannot be dismissed as an unused module.
+- CVE-2026-115559 affects imaplib STARTTLS. The actual installed starttls/readline
+  methods preserve buffered plaintext after a mocked handshake in both images.
+  Application source has no imaplib consumer. This is installed-library behavior,
+  not a claim of an application-level exploit.
+- CVE-2026-124249 affects shared CookieJar handling; no application CookieJar or
+  HTTPCookieProcessor consumer was found. CVE-2026-19552 concerns
+  ssl.get_server_certificate; no application call was found. These still need
+  evidence-bound dispositions or vendor fixes before promotion.
+- CVE-2026-16052 concerns attacker-controlled cookie attributes. Access Pages
+  imports SimpleCookie, so input provenance needs specific review; do not infer
+  safety from an import search alone.
+- CVE-2026-115791 concerns the archive extraction CLI. No application invocation
+  was found. The build extracts only the checksum-pinned timezone wheel using
+  validated member names, and removes the preparation script afterwards.
+
+OpenSSL (CVE-2026-88822, -88823, -95691, -95692, -107496):
+The vendor's November 10 advisory rates these LOW and schedules releases with
+fixes for December 1. The installed 4.0.3 libraries precede the cited 4.0.4 fix.
+Affected paths are OpenSSL QUIC, AES-GCM-SIV and CMS encryption; Python TLS does
+not itself establish their reachability, and qURL uses a separate static Go
+TLS implementation. Configuration, symbol and call-path review are still needed.
+https://openssl-library.org/news/secadv/20261110.txt
+
+glibc (CVE-2026-100290, -115819):
+The installed 2.44 is in the official affected ranges. These concern regex
+allocation-error cleanup and wide scanf conversions. Their callers through
+native libraries have not been exhaustively established; remain unresolved.
+
+Expat (CVE-2026-124317, -128241):
+The first concerns application-registered unknown encodings and requires native
+consumer review. The second affects the xmlwf command-line program, which the
+candidate does not contain. Preserve the source match while documenting the
+component distinction; do not suppress the whole Expat package.
+
+SQLite (CVE-2026-119586):
+The described attack requires the sqlite3 CLI .recover output being piped into
+the shell. The candidate has the shared library but neither sqlite3 CLI nor an
+OS shell. This source-package match is a candidate for an absent-component
+assessment, not evidence that all SQLite issues are absent.
+
+The public Chainguard Python latest tag was checked again during this evaluation
+and still resolves to the pinned index. No newer patched image was available
+through that tag. Do not replace these stable libraries with unreleased source
+builds or mix distribution libraries to make the scanner count disappear.
+
+Reproducible observations are in tests/packaged_advisory_observations.py. CI runs
+them offline and read-only on both native architectures and retains their JSON.
+The diagnostic does not approve or waive findings; the independent gate remains
+the authority for promotion. Production code, qURL and review dates are unchanged.

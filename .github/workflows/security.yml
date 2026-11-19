@@ -308,6 +308,12 @@ jobs:
           --tag access-pages-minimal:${{ matrix.arch }} .
       - name: Check candidate runtime, application and confinement
         run: bash tests/check_packaged_image.sh access-pages-minimal:${{ matrix.arch }} ${{ matrix.arch }} minimal > minimal-runtime.log 2>&1
+      - name: Record installed-library advisory observations without networking
+        if: ${{ !cancelled() }}
+        run: >-
+          docker run --rm --pull=never --network none --read-only --user 2103:2103
+          --entrypoint python --volume "$PWD/tests/packaged_advisory_observations.py:/tmp/probe.py:ro"
+          access-pages-minimal:${{ matrix.arch }} /tmp/probe.py > minimal-advisory-observations.json
       - name: Prepare empty vulnerability ignore file
         if: ${{ !cancelled() }}
         run: ': > "$RUNNER_TEMP/minimal-no-ignores"'
@@ -352,6 +358,7 @@ jobs:
             minimal-verification/
             minimal-runtime.log
             minimal-trivy.json
+            minimal-advisory-observations.json
             minimal-evidence/
           if-no-files-found: error
           retention-days: 90
