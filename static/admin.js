@@ -1734,6 +1734,10 @@ async function finishSharing(pageId, grant, button) {
       const status = document.createElement("p");
       status.textContent = sharedInvitationStatus;
       qurlResult.replaceChildren(status);
+      if (userDialog.open && !qurlResult.classList.contains("hidden")) {
+        guestSaved(userDialog);
+        userDialog.close();
+      }
     }
     if (userDialog.open) setUserDialogStatus(sharedInvitationStatus, "success");
     else setStatus(sharedInvitationStatus, "success");
