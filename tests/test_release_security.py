@@ -22,8 +22,19 @@ from security.verify_unreachable import (
 class UnreachablePolicyTests(unittest.TestCase):
     def setUp(self):
         self.baseline = json.loads(Path('security/vulnerability-baseline.json').read_text())
-        self.entry = deepcopy(next(e for e in self.baseline['dispositions']
-                                  if e['id'] == 'CVE-2026-116587'))
+        # Keep exercising Go disposition enforcement after the shipped module
+        # is patched and its production exception is removed.
+        self.entry = {
+            'id': 'CVE-2026-116587', 'type': 'gobinary', 'severity': 'HIGH',
+            'disposition': 'unreachable', 'justification': 'Synthetic parser exclusion',
+            'evidence': 'Synthetic image-bound fixture', 'owner': 'test owner',
+            'reviewed_on': '2026-11-14', 'review_due': '2026-11-26',
+            'advisory': 'https://github.com/go-jose/go-jose/security/advisories/GHSA-mgcc-cww5-fp2q',
+            'packages': [{'name': 'github.com/go-jose/go-jose/v4', 'version': 'v4.1.4'}],
+            'binary': 'qurl_sha256',
+            'artifacts': {'amd64': 'd' * 64, 'arm64': 'e' * 64},
+            'invalidated_by': ['Changed evidence or expired review'],
+        }
         self.baseline['dispositions'] = [self.entry]
         self.finding = dict(VulnerabilityID=self.entry['id'], PkgName=self.entry['packages'][0]['name'],
                             InstalledVersion='v4.1.4', Severity='HIGH', FixedVersion='4.1.6',

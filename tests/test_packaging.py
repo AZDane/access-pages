@@ -11,9 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 class PackagingTests(unittest.TestCase):
     def test_ha_image_pins_official_qurl_archives(self):
         dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
-        self.assertIn("qurl_4.2.0_linux_${TARGETARCH}.tar.gz", dockerfile)
-        self.assertIn("a698c52f7d17e4ed98d2bc9273671eb7f4e6475e7e120bc90a69f5b11839328a", dockerfile)
-        self.assertIn("4a9b1fa1fe7a04a5096ac413ce5d25470a1ac869fa9af284ae6140b0b6c24fc2", dockerfile)
+        self.assertIn("qurl_4.4.4_linux_${TARGETARCH}.tar.gz", dockerfile)
+        self.assertIn("c99cdcb3b489ab2d00fa6d835dcd124d50d9ef7b1b1fe901c143af7a07ef1180", dockerfile)
+        self.assertIn("c37f249bd6e16eea819c1832aa5a9d483e6ff71714665bfb60aa3fa4dee7390b", dockerfile)
         self.assertNotIn("packaging/qurl", dockerfile)
         self.assertNotIn("LEGACY_PUBLIC_PUBLISH", (ROOT / "guest_resources.py").read_text())
 
@@ -32,14 +32,14 @@ class PackagingTests(unittest.TestCase):
         go_license = (directory / "Go-1.26.11-and-1.27.3-LICENSE").read_text(encoding="utf-8")
         self.assertIn("Copyright 2009 The Go Authors", go_license)
         self.assertIn("Redistributions in binary form must reproduce", go_license)
-        self.assertIn("LayerV", (directory / "qurl-4.2.0-LICENSE").read_text(encoding="utf-8"))
+        self.assertIn("LayerV", (directory / "qurl-4.4.4-LICENSE").read_text(encoding="utf-8"))
         self.assertIn("PYTHON SOFTWARE FOUNDATION", (directory / "Python-3.15.2-LICENSE").read_text(encoding="utf-8"))
         self.assertTrue((directory / "yamux-source" / "session.go").is_file())
         for arch in ("amd64", "arm64"):
-            packages = json.loads((directory / f"qurl-4.2.0-linux-{arch}.spdx.json").read_text())["packages"]
+            packages = json.loads((directory / f"qurl-4.4.4-linux-{arch}.spdx.json").read_text())["packages"]
             for package in packages:
                 name = package["name"]
-                if name == "stdlib" or name.startswith("qurl_4.2.0_"):
+                if name == "stdlib" or name.startswith("qurl_4.4.4_"):
                     continue
                 module = directory / "qurl-modules" / f"{name}@{package['versionInfo']}"
                 self.assertTrue(module.is_dir(), name)

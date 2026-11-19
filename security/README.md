@@ -5,6 +5,15 @@ days. `check_vulnerabilities.py` is the only vulnerability policy decision.
 Image secret/configuration checks and repository/history checks remain separate.
 No finding is deleted, hidden, or assigned a lower severity by this policy.
 
+## November 19 assessment review
+
+See [the current upstream and architecture review](upstream-review-2026-11-19.md).
+Official qURL 4.4.4 supplies patched go-jose and x/net modules on both
+architectures, so their two production dispositions are removed. The exact
+CLI version check and packaged compatibility checks advance with the binary;
+no confinement rule or scanner policy changes. Remaining Debian dispositions
+require fresh native image evidence before their dates are renewed.
+
 ## Scanner metadata review (2026-11-17)
 
 CI [run 44170631266](https://github.com/AZDane/access-pages/actions/runs/44170631266)

@@ -2,11 +2,11 @@ FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS qurl
 ARG TARGETARCH
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
     && case "${TARGETARCH}" in \
-        amd64) QURL_CHECKSUM=a698c52f7d17e4ed98d2bc9273671eb7f4e6475e7e120bc90a69f5b11839328a ;; \
-        arm64) QURL_CHECKSUM=4a9b1fa1fe7a04a5096ac413ce5d25470a1ac869fa9af284ae6140b0b6c24fc2 ;; \
+        amd64) QURL_CHECKSUM=c99cdcb3b489ab2d00fa6d835dcd124d50d9ef7b1b1fe901c143af7a07ef1180 ;; \
+        arm64) QURL_CHECKSUM=c37f249bd6e16eea819c1832aa5a9d483e6ff71714665bfb60aa3fa4dee7390b ;; \
         *) exit 1 ;; \
        esac \
-    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v4.2.0/qurl_4.2.0_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
+    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v4.4.4/qurl_4.4.4_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
     && printf '%s  /tmp/qurl.tar.gz\n' "${QURL_CHECKSUM}" | sha256sum -c - \
     && mkdir /out \
     && tar -xzf /tmp/qurl.tar.gz -C /out qurl \

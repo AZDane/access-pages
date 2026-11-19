@@ -50,10 +50,10 @@ notices = Path("/app/third_party_licenses")
 assert Path("/app/THIRD_PARTY_NOTICES.md").is_file()
 assert Path("/app/LICENSE").is_file()
 for license_file in (
-    notices / "qurl-4.2.0-LICENSE",
+    notices / "qurl-4.4.4-LICENSE",
     notices / "Go-1.26.11-and-1.27.3-LICENSE",
     notices / "Python-3.15.2-LICENSE",
-    notices / "qurl-modules/github.com/layervai/qurl-connector@v0.14.5/LICENSE",
+    notices / "qurl-modules/github.com/layervai/qurl-connector@v0.14.6/LICENSE",
     notices / "qurl-modules/github.com/fatedier/yamux@v0.2.0/LICENSE",
 ):
     assert license_file.is_file() and license_file.stat().st_size > 0, license_file
