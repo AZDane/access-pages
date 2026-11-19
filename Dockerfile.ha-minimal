@@ -1,0 +1,63 @@
+# Evaluation candidate; production continues to use Dockerfile.ha-app.
+# Reuse only the unchanged official qURL binary from our signed public release.
+# packaging/minimal/verify-base.sh verifies its signature and architecture map.
+FROM ghcr.io/azdane/access-pages-app:0.1.163@sha256:99259c306ff6b918249d5304202e7a64acd0e0c4a9a01eb7dba93cab9a9bd2cd AS qurl
+
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS guest-endpoint
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/guest-endpoint ./cmd/guest-endpoint
+ARG TARGETOS
+ARG TARGETARCH
+RUN go test ./cmd/guest-endpoint \
+    && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/access-pages-guest-endpoint ./cmd/guest-endpoint
+
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS timezone
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && mkdir /out \
+    && curl -fsSL https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl -o /out/tzdata.whl \
+    && printf '%s  /out/tzdata.whl\n' 0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec | sha256sum -c -
+
+FROM cgr.dev/chainguard/python:latest@sha256:d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2
+# The supervisor needs root only to create stores and drop each service UID.
+USER 0:0
+ENTRYPOINT []
+COPY --from=timezone /out/tzdata.whl /opt/build/tzdata.whl
+COPY packaging/minimal/prepare.py /opt/build/prepare.py
+RUN ["/usr/bin/python", "/opt/build/prepare.py"]
+
+ARG BUILD_ARCH
+ARG BUILD_VERSION=0.1.163
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    GATEWAY_VERSION=${BUILD_VERSION}
+
+LABEL \
+    io.hass.arch="${BUILD_ARCH}" \
+    io.hass.type="app" \
+    io.hass.version="${BUILD_VERSION}" \
+    org.opencontainers.image.source="https://github.com/AZDane/access-pages" \
+    org.opencontainers.image.version="${BUILD_VERSION}"
+
+WORKDIR /app
+
+COPY server.py actions.py admin.py access.py upstream_cleanup.py guest_resources.py guest_service.py guest_diagnostics.py guest_request.py internal.py config.py ha.py ha_broker.py pages.py layerv.py layerv_broker.py policy.py policy_store.py audit.py activity.py rate_limit.py email_delivery.py verification.py ./
+COPY schedules.py schedule_routes.py invitations.py ./
+COPY static ./static
+COPY themes.py ./
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
+COPY third_party_licenses ./third_party_licenses
+COPY homeassistant-app/app_runner.py /usr/local/bin/app_runner.py
+COPY homeassistant-app/ingress_proxy.py /usr/local/bin/ingress_proxy.py
+COPY homeassistant-app/onboarding.py /usr/local/bin/onboarding.py
+COPY --from=qurl /usr/local/bin/qurl /usr/local/bin/qurl
+ARG TARGETARCH
+RUN ["python", "-c", "import hashlib, os, pathlib; expected = {'amd64': '07e53ea1301531b4f873776f08cd02bcbe36ae728a71049a8b7f74b8840c84d9', 'arm64': '78eb88774f2b05bfab0f3afa7963e6fa70ea5e82a64d5032e9ee0a37b34f45e7'}; actual = hashlib.sha256(pathlib.Path('/usr/local/bin/qurl').read_bytes()).hexdigest(); assert actual == expected[os.environ['TARGETARCH']], 'qURL binary differs from reviewed 4.2.0 release'"]
+COPY --from=guest-endpoint /out/access-pages-guest-endpoint /usr/local/bin/access-pages-guest-endpoint
+
+EXPOSE 8080 8099
+STOPSIGNAL SIGTERM
+CMD ["python", "/usr/local/bin/app_runner.py"]

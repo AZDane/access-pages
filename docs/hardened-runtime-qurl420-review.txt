@@ -1,0 +1,53 @@
+Hardened runtime evaluation with qURL 4.2.0 — 2026-11-19 UTC
+
+Scope: independently evaluate the minimal Chainguard runtime while retaining
+production application code, qURL 4.2.0, licenses, vulnerability baseline and
+assessment deadlines. This branch starts from production ac55d0f, not PR #98.
+It does not depend on the unavailable qURL 4.4.4 archive or approve a release.
+
+Supply chain
+
+The Python base is the official digest-pinned Chainguard Python image. Before
+building, verify-base.sh verifies its publisher signature, architecture mapping
+and both signed SBOMs. Its APK package metadata remains visible to scanners.
+
+Only /usr/local/bin/qurl is copied from our already-published Access Pages
+0.1.163 image, pinned to index 99259c306ff6b918249d5304202e7a64acd0e0c4a9a01eb7dba93cab9a9bd2cd.
+The release's keyless signature must match our exact release workflow and tag,
+with the GitHub OIDC issuer and transparency verification. The script verifies
+its architecture manifests. Each build also checks the copied executable's
+SHA-256 against the previously reviewed official 4.2.0 binary for that platform.
+No Debian libraries, account files or runtime tools are copied from that image.
+This is reuse of our signed released artifact, not a new LayerV download or a
+locally rebuilt qURL. The original licenses and both qURL SBOMs are retained.
+
+The timezone wheel comes from official PyPI with its pinned archive checksum.
+The guest endpoint is built from unchanged application source in the existing
+pinned official Go builder. The final image has no shell or package installer.
+Eight service accounts retain their production IDs and use locked credentials
+and nologin shells. The candidate AppArmor profile adjusts only Python paths
+and its profile name. Existing UID separation and directory permissions apply.
+
+Evaluation requirements
+
+Run the native amd64 and arm64 packaged runtime, application, permissions,
+TLS, startup, scheduling and qURL lifecycle probes. Run the application unit
+suite and enforce AppArmor on the native amd64 CI runner, including executable
+negative fixtures so absent commands cannot masquerade as policy denials.
+Collect full Trivy inventories with every severity and no vulnerability ignores.
+Bind image identities, provenance, SBOMs and actual APK inventories to the
+independent OSV and original publisher-advisory evidence.
+
+The 43 HIGH Debian package/advisory records in each production architecture
+are separate from the qURL x/net finding. That finding appears three times in
+the full report (the binary and two retained architecture SBOMs). qURL 4.2.0
+still embeds x/net 0.61.0; its original bounded assessment is unchanged.
+
+Earlier analysis of this base found 32 vendor/source advisory records covering
+16 CVE IDs even though Trivy reported zero. The independent gate still rejects
+unresolved records and all HIGH/CRITICAL scanner findings. No candidate waiver,
+threshold reduction, scanner suppression or assessment renewal is introduced.
+Successful functional tests alone cannot authorize promotion. A real HAOS
+install/upgrade and live confined tunnel are additional acceptance evidence.
+
+Results will be recorded after the exact candidate completes its checks.
