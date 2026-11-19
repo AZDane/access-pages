@@ -1,0 +1,150 @@
+Hardened runtime applicability review — 2026-11-19 UTC
+
+Scope and adoption
+
+These are proposed, owner-controlled application applicability assessments, not
+patch claims or independent human approval. The owner adopts them by reviewing
+and merging the feature PR under the existing rules. They expire exclusively
+at 2026-11-26 00:00 UTC. No production baseline dates are extended.
+
+Evidence: Security run 44582158696, PR source 50a2cac, CI merge b05fbf56.
+https://github.com/AZDane/access-pages/actions/runs/44582158696
+Both native architectures inventory 143 ELF files and the entire packaged Python
+application. applicability.json pins the complete runtime/native observations,
+collector implementations, base/build recipe, confinement, backport controls,
+this review and every complete publisher record, separately for each architecture.
+Every build must reproduce those properties in its own immutable image, with
+evidence less than 24 hours old. Missing, changed or expired evidence blocks.
+All original package inventories, severities and advisories remain in artifacts.
+
+Threat model: remote application inputs through the existing fixed application
+entry points. No arbitrary Python execution, attacker-provided extension module,
+privileged container access, hostile replacement of application files or native
+code, or untrusted custom image is covered. New source/imports, dependencies,
+CLI operations, cipher/provider selection or changed advisory scope invalidates
+the byte-pinned assessment. A successful exploit of another flaw allowing code
+execution is not covered by an unreachable disposition.
+
+Component absent (2)
+
+CVE-2026-119586 — SQLite command-line .recover workflow.
+The affected command-line shell and a shell to execute its emitted commands are
+absent. Python's sqlite3 binding does not implement the CLI's dot-commands. The
+native library remains inventoried; this does not label it patched.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/119xxx/CVE-2026-119586.json
+
+CVE-2026-128241 — Expat xmlwf output mode.
+The xmlwf executable is absent from both the executable inventory and PATH.
+The application never invokes it; the shipped Expat shared library is retained.
+https://github.com/libexpat/libexpat/pull/1502
+
+Unreachable through reviewed application paths (12)
+
+CVE-2026-115791 — Python archive CLI module shadowing.
+The application does not execute gzip/tarfile/zipfile as a CLI, extract guest
+archives, or launch a caller-selected Python module. All subprocess call sites
+use the reviewed fixed qURL/guest-service/runner entry points. Arbitrary use of
+the Python interpreter against an untrusted working directory is outside scope.
+https://github.com/python/cpython/issues/161705
+
+CVE-2026-124249 — cross-domain CookieJar deletion.
+No packaged application code constructs CookieJar or HTTPCookieProcessor.
+urllib's ordinary default opener does not add a cookie jar. Browser cookies are
+not Python client-side CookieJar state. Adding cookie-persisting HTTP clients
+requires reassessment, even if the Python package version stays unchanged.
+https://github.com/python/cpython/issues/161569
+
+CVE-2026-16052 — Morsel output attribute injection.
+guest_service.py uses SimpleCookie only to parse an inbound cookie and reads its
+value, constrained to the session-token alphabet. It does not serialize a Morsel
+or accept its attributes as outgoing policy. The outgoing Set-Cookie header is
+constructed separately from broker-issued session data and the validated page
+prefix, with fixed Secure/HttpOnly/SameSite attributes. This does not assert that
+Python's vulnerable Morsel output routine has been fixed.
+https://github.com/python/cpython/issues/161707
+
+CVE-2026-19552 — ssl.get_server_certificate identity verification.
+The application does not call this helper. HTTPS and mail TLS use normal Python
+TLS client contexts; email_delivery.py explicitly creates a default context.
+This assessment does not excuse disabled certificate/hostname verification.
+https://github.com/python/cpython/issues/161503
+
+CVE-2026-124317 — Expat custom multibyte conversion callback.
+The only ELF importer of the relevant Expat parser/handler APIs is pyexpat.
+CPython's exact source revision 64b5cfdf7548a21741398ce0826728818327aea7 sets
+PyUnknownEncodingHandler's convert callback to NULL and supplies single-byte
+mappings. _elementtree uses the same DefaultUnknownEncodingHandler via Expat's
+Python capsule. On both architectures the installed pyexpat binding accepts the windows-1252
+positive control and rejects shift_jis, big5 and gbk at the explicit multibyte restriction.
+No packaged application uses a native bridge or supplies a custom Expat callback.
+The vulnerable native library remains; custom extension/callback use is excluded.
+https://github.com/python/cpython/blob/64b5cfdf7548a21741398ce0826728818327aea7/Modules/pyexpat.c
+https://github.com/python/cpython/blob/64b5cfdf7548a21741398ce0826728818327aea7/Modules/_elementtree.c
+https://github.com/libexpat/libexpat/pull/1492
+
+OpenSSL assessments (five separate CVEs)
+
+CVE-2026-88822 and CVE-2026-95691 require OpenSSL QUIC. Python's binding selects
+TLS methods and exposes no QUIC API. qURL and the guest endpoint are static Go
+binaries, not OpenSSL consumers.
+CVE-2026-88823 and CVE-2026-95692 require AES-GCM-SIV operations. Python's actual
+TLS suites exclude GCM-SIV; _hashlib exposes hashes/MACs, not this cipher API.
+No application native bridge or custom provider/cipher selection was found.
+CVE-2026-107496 requires CMS encryption to a supplied EC certificate. No shipped
+application consumer calls CMS_encrypt or CMS_encrypt_ex; ordinary TLS does not
+use this path. The openssl CLI is absent.
+These are application-path exclusions, not claims about build-time removal of
+OpenSSL features. All original severity scores remain unchanged. Prefer stable
+vendor-fixed packages; no cross-distribution cryptographic library transplant.
+https://openssl-library.org/news/secadv/20261110.txt
+
+glibc source and native call-path review (two of the twelve above)
+
+Reviewed the exact publisher-attested glibc source revision
+625054f30f0e7a961519f045f2364aa3ca6c1c6b from the GNU project's GitLab archive.
+Downloaded archive SHA256:
+1d92971a5b55fcd7ecbbadb3a78805c42955d6134c3f8f578063b3dc20581525
+https://gitlab.com/gnutools/glibc/-/tree/625054f30f0e7a961519f045f2364aa3ca6c1c6b
+
+CVE-2026-100290 — glibc regex allocation-failure cleanup.
+Only libform/libformw import regcomp/regexec, and no inventoried ELF has a
+DT_NEEDED dependency on those libraries. No packaged application imports curses
+or a native bridge or dynamically loads form libraries. Python uses its own
+regex engine. Source review of posix/regex.c, regcomp.c and regexec.c follows the
+GNU re_compile_pattern/re_search/re_match families and legacy re_comp/re_exec.
+Additional internal callers in stdlib/rpmatch.c and misc/regexp.c are reached
+through rpmatch, step and advance; no inventoried consumer imports these either.
+locale/programs/ld-messages.c is a localedef build-tool caller, not an application
+entry point. The gate checks the expanded imported-symbol set and rejects new
+form dependencies. This conclusion includes source/internal callers; it is not
+based solely on the absence of regcomp/regexec in the application executable.
+https://sourceware.org/bugzilla/show_bug.cgi?id=34991
+
+CVE-2026-115819 — wide scanf narrow-buffer terminator overflow.
+No inventoried ELF imports a wide scanf symbol, including ISO C99/C23 and long
+double compatibility aliases. Source review follows the libio and wcsmbs entry
+points, stdio-common/vfwscanf.c, and the long-double compatibility wrappers into
+__vfwscanf_internal. stdio-common/vfscanf-internal.c builds separate narrow and
+wide implementations under COMPILE_WSCANF; ordinary narrow scanf does not enter
+the affected wide conversion. The other source references are declarations,
+tests and compatibility entry points. No application native bridge or arbitrary
+symbol lookup is permitted by the reviewed source. All ELF bytes and imports are
+pinned; adding a wide-scanf consumer or changing a provider invalidates the review.
+https://sourceware.org/bugzilla/show_bug.cgi?id=34989
+
+Dynamic-loading boundary for both glibc decisions: the packaged application
+does not import ctypes/cffi, enable SQLite extensions, supply native modules,
+select external OpenSSL providers, or set attacker-controlled loader options.
+Python's extension loader and the native libraries retain dynamic-loading
+capability, so arbitrary code execution or hostile replacement configuration is
+explicitly outside this application-input assessment. These are unreachable
+dispositions, not removal or patching of glibc code.
+
+LayerV is separate
+
+None of these fourteen dispositions depends on a new qURL release. qURL's raw Go
+findings remain separate and unmodified. Its HIGH finding still blocks the
+candidate gate. The live tunnel failure remains
+an end-to-end acceptance problem, not a reason to defer our runtime remediation.
+The Python HTTP/IMAP backports are actual tested fixes and remain governed by
+their separate exact-source manifest and behavioral gate.

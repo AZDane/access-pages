@@ -357,3 +357,31 @@ returned exit 11 after all attempts. Enrollment, publication and share creation
 succeeded; both resources were deleted successfully. This does not identify the
 root cause, and the tunnel acceptance requirement remains unsatisfied. The
 official qURL release API was rechecked and still returned HTTP 404.
+
+Completed runtime applicability review — November 19 follow-up
+
+The fourteen remaining runtime CVEs now have proposed, bounded applicability
+decisions in security/minimal-applicability-review.txt. Two concern absent CLI
+components; twelve concern unreachable paths in this exact packaged application.
+The glibc review includes internal callers, GNU/legacy regex interfaces and wide
+scanf compatibility aliases. These are not patches: vulnerable library code
+remains installed. The two Python HTTP/IMAP backports remain actual tested fixes.
+
+The new verifier passes against the retained native evidence for both amd64 and
+arm64, covering all thirty remaining runtime publisher records. It requires
+exact application/native observations, collector/build/control hashes, complete
+unchanged advisory records, same-image evidence less than 24 hours old, and an
+exclusive November 26 00:00 UTC deadline. New or changed evidence fails closed.
+No production baseline deadline, scanner severity or threshold changes.
+
+This completes the runtime assessment proposal independently of LayerV. qURL's
+two CVEs and one Go advisory remain separate; its HIGH finding still blocks the
+candidate gate. Fresh native CI must reproduce the reviewed evidence before
+these decisions can be considered validated for the updated PR. The existing
+live tunnel acceptance failure also remains unresolved.
+
+The owner subsequently reported a failed SMTP test in the Green evaluation app.
+The current UI and audit event collapse SMTP connection, TLS, authentication and
+delivery errors into a generic failure. The screenshot does not establish the
+cause. Investigate this as an additional release acceptance failure; do not
+certify email delivery from the earlier onboarding-only check.
