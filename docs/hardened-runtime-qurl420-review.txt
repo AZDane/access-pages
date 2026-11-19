@@ -137,5 +137,40 @@ builds or mix distribution libraries to make the scanner count disappear.
 
 Reproducible observations are in tests/packaged_advisory_observations.py. CI runs
 them offline and read-only on both native architectures and retains their JSON.
-The diagnostic does not approve or waive findings; the independent gate remains
-the authority for promotion. Production code, qURL and review dates are unchanged.
+The diagnostic does not approve or waive findings. Both the independent advisory
+gate and the runtime behavior gate below must pass for promotion. Production code, qURL and review dates are unchanged.
+
+Blocking runtime advisory checks (November 19 follow-up)
+
+Previously the Python observations were retained only for manual review. The
+security/check_runtime_advisories.py gate now rejects either reproduced defect
+regardless of scanner output, severity or vulnerability-baseline entries. It runs
+inside the actual immutable image, offline, read-only and without capabilities,
+and records image identity, architecture, probe hash and installed-library hashes.
+Missing/malformed results, wrong architecture, failed valid-input controls and
+probe execution errors all block. Raw observations and the decision are retained.
+
+Coverage includes invalid signs, prefixes, underscores and leading whitespace in
+HTTP chunk sizes; invalid Content-Length syntax; valid chunk extensions and
+optional Content-Length whitespace; and IMAP buffering across STARTTLS. The IMAP
+probe accepts the official fix's abort before TLS when plaintext remains buffered.
+These are library regression checks, not proof of application exploitability.
+
+Both native CI architectures run this gate for standalone, production App and
+hardened images. The release workflow checks both retained release images before
+registry login or publication. The existing protected Container image aggregate
+still requires successful package and candidate jobs. Scheduled security checks
+now run daily; schedules take effect only once this branch is merged. Existing
+scanner settings, 16-CVE independent candidate advisory gate, baseline review
+dates and evidence requirements are unchanged. This does not detect every unknown
+library defect or add the Chainguard-specific advisory inventory to Debian.
+
+Local validation rejected both the signed production v0.1.163 image and the
+hardened candidate for the known defects. An isolated positive-control run with
+unaltered official CPython modules passed all 15 behavior checks:
+- HTTP: Python 3.15 backport 5b9e3d044764cf59329fb8147177f54a88d1fb49
+  https://github.com/python/cpython/pull/159021
+- IMAP: 2f0e294d85c905691e360586ebd1d1f7e7a1f5df
+  https://github.com/python/cpython/pull/160370
+These modules were used only in a disposable offline test, not installed in any
+application image. The runtime fixes themselves remain separate work.

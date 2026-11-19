@@ -15,6 +15,7 @@ on:
       - Dockerfile.ha-app
       - security/**
       - tests/check_packaged_image.sh
+      - tests/packaged_advisory_observations.py
       - tests/check_cosign.sh
       - homeassistant-app/config.yaml
 
@@ -153,6 +154,15 @@ jobs:
           ignore-unfixed: false
           exit-code: '0'
 
+      - name: Gate installed Python behavior in BOTH release images
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          for arch in amd64 arm64; do
+            python3 security/check_runtime_advisories.py "access-pages-release:$arch" --architecture "$arch" --output "runtime-$arch" || status=1
+          done
+          exit "$status"
+
       - name: Validate BOTH retained release images
         env:
           VERSION: ${{ steps.version.outputs.value }}
@@ -177,6 +187,8 @@ jobs:
             vulnerability-*.json
             evidence-*.json
             tested-*.json
+            runtime-amd64/
+            runtime-arm64/
           if-no-files-found: error
           retention-days: 90
 
