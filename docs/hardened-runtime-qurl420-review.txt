@@ -339,8 +339,13 @@ real-account enrollment, authenticated browser journeys, configured-page
 persistence or live device actions on Green. The existing disposable container
 upgrade/rollback tests cover synthetic settings/pages/admin authority and SQLite
 integrity separately. Automatic approval review rejected copying the test backup
-and exporting an options-file hash; neither operation ran. Backups remain on
-Green, and no byte-level persistence claim is made for this HAOS test.
+and exporting an options-file hash; neither operation ran. A safer subsequent
+comparison extracted only the disposable app options from the two test backups
+into a private temporary directory on Green, checked both were nonempty and
+compared them byte for byte. It returned only PASS/FAIL and removed its temporary
+files. That comparison passed, verifying options persistence across the upgrade.
+Backups remain on Green. This does not establish configured-page or credential
+persistence on Green; the test app was never enrolled.
 
 Live tunnel follow-up used a temporary copy of the existing anonymous synthetic
 probe with six idempotent get attempts, five-second waits and a bounded command
