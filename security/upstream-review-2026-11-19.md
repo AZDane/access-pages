@@ -58,7 +58,10 @@ either. No locally rebuilt qURL is used.
 
 Complete ELF Go inventories contain 48,073 amd64 and 47,507 arm64 functions,
 14 JOSE/OIDC initialization/JSON helper symbols each, and no x/net/html symbols.
-The existing reachability probe remains unchanged even though these two module
+All 89 effective Go modules match the upstream SBOMs on both architectures,
+including the FRP replacement module. The 25 changed dependency archives
+match the h1 checksums embedded in the binaries; the main qURL module is
+identified by the release commit. The existing reachability probe remains unchanged even though these two module
 dispositions are removed. Exact pinned module license/notice files are replaced
 from the corresponding upstream module archives. The MPL yamux source is
 unchanged. Both upstream SBOMs remain in the image and in the unfiltered scan.
@@ -89,10 +92,50 @@ their packaged tests; amd64 additionally enforced AppArmor and denied shell,
 nsenter and infocmp execution. ARM64 native UID/socket/runtime tests complement
 that amd64 enforcement test; ARM64 AppArmor enforcement is not claimed.
 
-Fresh candidate scans and packaged validation on both native architectures are
-required before renewing the remaining dates. Historical evidence is an
-investigation input, never substituted for the candidate's own evidence.
-Until that validation is recorded, remaining assessments retain November 26
-expiry. Scanner versions, thresholds, unfiltered reports, artifact retention,
+Fresh candidate evidence: [Security run 44482861746](https://github.com/AZDane/access-pages/actions/runs/44482861746),
+head `7bbac8b704b98d5a204918219c9707bf521b089d`, tested merge
+`cd3c5a74c53182c57bb90b10f112a543edf6ac4a`. Both native package jobs passed,
+including lifecycle/lock/signal checks, real-UID permission repair, isolation,
+startup, TLS, scheduling and component absence. AMD64 additionally passed all
+544 Python tests inside the image and enforced AppArmor denial of shell,
+nsenter and infocmp. The release dry run separately validates both retained
+release images without publication.
+
+| Candidate evidence | amd64 | arm64 |
+| --- | --- | --- |
+| Artifact ID | 14508044881 | 14509431723 |
+| Image ID (SHA-256) | `588f10c83e0a024a5cd8100c29b78d28d7d042bcf737760ff897a95ab0066530` | `5b851d04d60db2e133cf7a82f402c806ff85a78d9ba82df3c1f27153022e2356` |
+| Report file SHA-256 | `56165f72a4b1970467d32ea6bfb901f49fb15157b31723ab4d00e424922bde79` | `0c7192327705b5b6da58480f8be7f7e9963b58b1e1a3fa932ea2d44b2d8bdbdf` |
+| Evidence file SHA-256 | `f2b9f5e78f0c5d34102afe0ca81c74b9bc03d96a8825108532e7097de01d1cbd` | `fc0c3052e9182553fe646a3d7e3a852955ebde86291a6feb11a4dcfd9aab63e3` |
+
+Each fresh report passes the unchanged policy with its own image-bound evidence.
+All 87 Debian package entries and all 43 remaining HIGH advisory fingerprints
+are identical to main on both architectures. Both probes differ from main only
+in the independently verified qURL executable hash and the reviewed
+`guest_resources.py` source hash. SQLite binary hashes, 187 constant SQL calls,
+schemas, empty session bindings and linked function inventories are unchanged.
+
+Full candidate counts on each architecture: **43 HIGH, zero CRITICAL,
+102 MEDIUM, 66 LOW and 10 UNKNOWN**. These are different database snapshots,
+not a same-database before/after benchmark. The x/net HIGH and MEDIUM records
+and the x/crypto UNKNOWN record disappear from all three Go/SBOM targets.
+Existing Debian records were rescored: CVE-2026-115819, CVE-2026-107493,
+CVE-2026-124709 and CVE-2026-35190 to MEDIUM; CVE-2026-100290 to LOW.
+New UNKNOWN records are CVE-2026-121757, CVE-2026-121758, CVE-2026-124024
+(glibc) and CVE-2026-95690 (OpenSSL). Their installed package versions are
+unchanged and no fixed version is reported. All lower-severity findings remain
+visible, without implicit approval by this HIGH/CRITICAL assessment.
+
+After this fresh upstream, source, binary, confinement and native-image review,
+record November 19 as the technical review date for the eleven remaining
+Debian dispositions and **December 19, 2026 at 00:00 UTC** as their exclusive
+expiry, exactly 30 days later. Before renewal the candidate reports reject all
+43 HIGH records on November 26; after renewal they must reject all 43 at the
+new expiry. Changed findings or evidence still block immediately. The owner
+adopts these decisions through review and merge of PR #98; the alert remains
+open until that baseline is adopted on main.
+
+Scanner versions, thresholds, unfiltered reports, artifact retention,
 advisory/property/binary pins, expiry rejection and required checks are unchanged.
-No application release or App Store publication is performed by this review.
+Historical evidence is never substituted for a candidate's own evidence. No
+application release or App Store publication is performed by this review.

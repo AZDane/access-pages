@@ -11,8 +11,9 @@ See [the current upstream and architecture review](upstream-review-2026-11-19.md
 Official qURL 4.4.4 supplies patched go-jose and x/net modules on both
 architectures, so their two production dispositions are removed. The exact
 CLI version check and packaged compatibility checks advance with the binary;
-no confinement rule or scanner policy changes. Remaining Debian dispositions
-require fresh native image evidence before their dates are renewed.
+no confinement rule or scanner policy changes. The eleven remaining Debian
+dispositions were reassessed against fresh native amd64 and arm64 scans and packaged tests on November 19. Their new exclusive
+expiry is December 19, 2026 UTC, subject to owner adoption through the PR.
 
 ## Scanner metadata review (2026-11-17)
 
