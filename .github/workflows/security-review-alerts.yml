@@ -14,6 +14,9 @@ on:
       - .github/workflows/security-review-alerts.yml
       - security/review_alerts.py
       - security/vulnerability-baseline.json
+      - packaging/minimal/applicability.json
+      - packaging/minimal/patches/manifest.json
+      - packaging/standalone/manifest.json
       - tests/test_review_alerts.py
 
 permissions:

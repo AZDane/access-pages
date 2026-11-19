@@ -1,0 +1,454 @@
+Hardened runtime evaluation with qURL 4.2.0 — 2026-11-19 UTC
+
+Scope: independently evaluate the minimal Chainguard runtime while retaining
+production application code, qURL 4.2.0, licenses, vulnerability baseline and
+assessment deadlines. This branch starts from production ac55d0f, not PR #98.
+It does not depend on the unavailable qURL 4.4.4 archive or approve a release.
+
+Supply chain
+
+The Python base is the official digest-pinned Chainguard Python image. Before
+building, verify-base.sh verifies its publisher signature, architecture mapping
+and both signed SBOMs. Its APK package metadata remains visible to scanners.
+
+Only /usr/local/bin/qurl is copied from our already-published Access Pages
+0.1.163 image, pinned to index 99259c306ff6b918249d5304202e7a64acd0e0c4a9a01eb7dba93cab9a9bd2cd.
+The release's keyless signature must match our exact release workflow and tag,
+with the GitHub OIDC issuer and transparency verification. The script verifies
+its architecture manifests. Each build also checks the copied executable's
+SHA-256 against the previously reviewed official 4.2.0 binary for that platform.
+No Debian libraries, account files or runtime tools are copied from that image.
+This is reuse of our signed released artifact, not a new LayerV download or a
+locally rebuilt qURL. The original licenses and both qURL SBOMs are retained.
+
+The timezone wheel comes from official PyPI with its pinned archive checksum.
+The guest endpoint is built from unchanged application source in the existing
+pinned official Go builder. The final image has no shell or package installer.
+Eight service accounts retain their production IDs and use locked credentials
+and nologin shells. The candidate AppArmor profile adjusts only Python paths
+and its profile name. Existing UID separation and directory permissions apply.
+
+Evaluation requirements
+
+Run the native amd64 and arm64 packaged runtime, application, permissions,
+TLS, startup, scheduling and qURL lifecycle probes. Run the application unit
+suite and enforce AppArmor on the native amd64 CI runner, including executable
+negative fixtures so absent commands cannot masquerade as policy denials.
+Collect full Trivy inventories with every severity and no vulnerability ignores.
+Bind image identities, provenance, SBOMs and actual APK inventories to the
+independent OSV and original publisher-advisory evidence.
+
+The 43 HIGH Debian package/advisory records in each production architecture
+are separate from the qURL x/net finding. That finding appears three times in
+the full report (the binary and two retained architecture SBOMs). qURL 4.2.0
+still embeds x/net 0.61.0; its original bounded assessment is unchanged.
+
+Earlier analysis of this base found 32 vendor/source advisory records covering
+16 CVE IDs even though Trivy reported zero. The independent gate still rejects
+unresolved records and all HIGH/CRITICAL scanner findings. No candidate waiver,
+threshold reduction, scanner suppression or assessment renewal is introduced.
+Successful functional tests alone cannot authorize promotion. A real HAOS
+install/upgrade and live confined tunnel are additional acceptance evidence.
+
+Initial exact-candidate results (c1bddf3)
+
+Local amd64 build and copied qURL hash verification passed. The packaged runtime,
+TLS, startup, real-UID isolation, permission repair, scheduling and qURL lock/
+restart probes passed. All 559 application tests passed with three Node-only
+skips in the minimal container. Local AppArmor is unavailable, so the runner
+correctly refused to mark the full local script successful; native CI supplies
+that enforcement evidence. Hosted Node browser journeys separately passed.
+
+Native arm64 CI built and tested the final image, verified both publishers and
+both architecture maps, and retained complete identity-bound evidence. The
+image is 169,274,074 bytes. Its promotion gate failed as required: 32 vendor/source
+records remain unresolved, and the preserved qURL x/net HIGH appears in three
+targets (one binary plus the two unmodified SBOMs). Trivy reports no OS findings.
+The full local scan also retains CVE-2026-97045 (MEDIUM) and GO-2026-5932 (UNKNOWN)
+in qURL's embedded dependencies; neither is hidden by the HIGH-only summary.
+
+The hardened amd64 image and the signed published production image both passed
+anonymous enrollment, fresh publication and share creation in a disposable live
+test, then failed qURL get with exit 11. Both synthetic resources were deleted
+successfully. No credentials or raw native error text were logged. This failure
+is reproducible in the production control and cannot be attributed to the base
+image from this evidence. Live tunneled-content/restart acceptance remains open.
+The live test was corrected to provide the public resource name required by
+qURL 4.2.0; it is still manual and does not use customer endpoints or credentials.
+
+Independent advisory review
+
+Official CVE records for all 16 IDs were retrieved on November 19 from the
+CVEProject/cvelistV5 repository, alongside the original publisher records.
+This review does not add any waiver or change the promotion gate.
+
+Python (six IDs):
+- CVE-2026-103995 affects HTTP response/chunk framing. A bounded in-memory probe
+  shows that both candidate and production accept +1 and 0x1 chunk sizes, which
+  are not valid HTTP hexadecimal chunk-size syntax. Access Pages uses this
+  library in ha.py, policy.py, layerv.py, guest_resources.py, guest_service.py
+  and ingress_proxy.py. Some calls are protected local broker connections;
+  others contact configured upstreams over TLS. Application exploitation has
+  not been demonstrated, but this cannot be dismissed as an unused module.
+- CVE-2026-115559 affects imaplib STARTTLS. The actual installed starttls/readline
+  methods preserve buffered plaintext after a mocked handshake in both images.
+  Application source has no imaplib consumer. This is installed-library behavior,
+  not a claim of an application-level exploit.
+- CVE-2026-124249 affects shared CookieJar handling; no application CookieJar or
+  HTTPCookieProcessor consumer was found. CVE-2026-19552 concerns
+  ssl.get_server_certificate; no application call was found. These still need
+  evidence-bound dispositions or vendor fixes before promotion.
+- CVE-2026-16052 concerns attacker-controlled cookie attributes. Access Pages
+  imports SimpleCookie, so input provenance needs specific review; do not infer
+  safety from an import search alone.
+- CVE-2026-115791 concerns the archive extraction CLI. No application invocation
+  was found. The build extracts only the checksum-pinned timezone wheel using
+  validated member names, and removes the preparation script afterwards.
+
+OpenSSL (CVE-2026-88822, -88823, -95691, -95692, -107496):
+The vendor's November 10 advisory rates these LOW and schedules releases with
+fixes for December 1. The installed 4.0.3 libraries precede the cited 4.0.4 fix.
+Affected paths are OpenSSL QUIC, AES-GCM-SIV and CMS encryption; Python TLS does
+not itself establish their reachability, and qURL uses a separate static Go
+TLS implementation. Configuration, symbol and call-path review are still needed.
+https://openssl-library.org/news/secadv/20261110.txt
+
+glibc (CVE-2026-100290, -115819):
+The installed 2.44 is in the official affected ranges. These concern regex
+allocation-error cleanup and wide scanf conversions. Their callers through
+native libraries have not been exhaustively established; remain unresolved.
+
+Expat (CVE-2026-124317, -128241):
+The first concerns application-registered unknown encodings and requires native
+consumer review. The second affects the xmlwf command-line program, which the
+candidate does not contain. Preserve the source match while documenting the
+component distinction; do not suppress the whole Expat package.
+
+SQLite (CVE-2026-119586):
+The described attack requires the sqlite3 CLI .recover output being piped into
+the shell. The candidate has the shared library but neither sqlite3 CLI nor an
+OS shell. This source-package match is a candidate for an absent-component
+assessment, not evidence that all SQLite issues are absent.
+
+The public Chainguard Python latest tag was checked again during this evaluation
+and still resolves to the pinned index. No newer patched image was available
+through that tag. Do not replace these stable libraries with unreleased source
+builds or mix distribution libraries to make the scanner count disappear.
+
+Reproducible observations are in tests/packaged_advisory_observations.py. CI runs
+them offline and read-only on both native architectures and retains their JSON.
+The diagnostic does not approve or waive findings. Both the independent advisory
+gate and the runtime behavior gate below must pass for promotion. Production code, qURL and review dates are unchanged.
+
+Blocking runtime advisory checks (November 19 follow-up)
+
+Previously the Python observations were retained only for manual review. The
+security/check_runtime_advisories.py gate now rejects either reproduced defect
+regardless of scanner output, severity or vulnerability-baseline entries. It runs
+inside the actual immutable image, offline, read-only and without capabilities,
+and records image identity, architecture, probe hash and installed-library hashes.
+Missing/malformed results, wrong architecture, failed valid-input controls and
+probe execution errors all block. Raw observations and the decision are retained.
+
+Coverage includes invalid signs, prefixes, underscores and leading whitespace in
+HTTP chunk sizes; invalid Content-Length syntax; valid chunk extensions and
+optional Content-Length whitespace; and IMAP buffering across STARTTLS. The IMAP
+probe accepts the official fix's abort before TLS when plaintext remains buffered.
+These are library regression checks, not proof of application exploitability.
+
+Both native CI architectures run this gate for standalone, production App and
+hardened images. The release workflow checks both retained release images before
+registry login or publication. The existing protected Container image aggregate
+still requires successful package and candidate jobs. Scheduled security checks
+now run daily; schedules take effect only once this branch is merged. Existing
+scanner settings, 16-CVE independent candidate advisory gate, baseline review
+dates and evidence requirements are unchanged. This does not detect every unknown
+library defect or add the Chainguard-specific advisory inventory to Debian.
+
+Local validation rejected both the signed production v0.1.163 image and the
+hardened candidate for the known defects. An isolated positive-control run with
+unaltered official CPython modules passed all 15 behavior checks:
+- HTTP: Python 3.15 backport 5b9e3d044764cf59329fb8147177f54a88d1fb49
+  https://github.com/python/cpython/pull/159021
+- IMAP: 2f0e294d85c905691e360586ebd1d1f7e7a1f5df
+  https://github.com/python/cpython/pull/160370
+These modules were used only in a disposable offline test, not installed in any
+application image. The runtime fixes themselves remain separate work.
+
+Temporary patch evaluation (November 19, PR #100)
+
+PR #99 was closed as superseded at the owner's request. PR #98 remains open and
+has not been merged. The public vendor Python tag was checked again and remains
+at d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2.
+
+The candidate now applies the exact official HTTP and IMAP library patch hunks
+in packaging/minimal/patches at build time. Both before/after module hashes and
+patch hashes are pinned; base drift, malformed/ambiguous hunks and expired review
+stop the build. Review expires exclusively at November 26 00:00 UTC. Production
+code, images, qURL and baseline dates remain unchanged. The local derivative is
+explicitly distinguished from the signed vendor base; APK versions and scanner
+inventories are not rewritten to claim a vendor fix.
+
+The independent gate retains all publisher records. It recognizes the two local
+remediations only with exact installed hashes and manifest, passing behavioral
+controls bound to the same image/architecture, current probe hash, fresh runtime
+evidence, matching publisher scope and an unexpired backport review. All other
+advisories remain blocking. No broad Python exception is introduced.
+
+Local amd64: the built patched image passes all 15 runtime regression checks and
+the packaged application suite. Full official Python 3.15 HTTP/IMAP compatibility
+suites passed 396 tests (five upstream skips), using checksum-pinned sources. A first
+trial using development-branch IMAP tests was incompatible with Python 3.15; its
+results are not treated as application regressions or as passing validation. The
+CI runner uses the compatible 3.15 test fixtures and never replaces the installed
+stdlib with the downloaded source. Native CI is required for both architectures
+and enforced AppArmor. Host-side local AppArmor remains unavailable.
+
+Remaining advisory triage and patch choices:
+- http.cookies.Morsel output injection (CVE-2026-16052): application SimpleCookie
+  use parses the inbound cookie and reads token.value; it does not emit Morsel
+  output. The outgoing Set-Cookie header is constructed separately from validated
+  server-issued values. This supports further bounded applicability review, not
+  a blanket exception based on a SimpleCookie import.
+- CookieJar (CVE-2026-124249), ssl.get_server_certificate (CVE-2026-19552), archive
+  extraction CLI (CVE-2026-115791): no application consumer found in current source.
+  Source changes and indirect library consumers must remain part of the review.
+- SQLite CLI .recover (CVE-2026-119586), xmlwf (CVE-2026-128241): the affected CLI
+  components are absent from the candidate. Shared libraries remain inventoried.
+- OpenSSL five IDs: the affected QUIC, CMS and AES-GCM-SIV paths are distinct from
+  Python's ordinary TLS use. qURL uses its static Go TLS implementation. Native
+  call/configuration review remains necessary. Prefer a vendor package backport;
+  do not transplant libraries from another distribution or rebuild cryptography
+  merely to improve scanner output.
+- glibc two IDs and Expat unknown-encoding callback (CVE-2026-124317): native
+  consumer evidence remains incomplete. Prefer vendor-supported package fixes;
+  local compiled-library replacements would require ABI and upstream-suite work
+  well beyond these small, verifiable Python changes.
+
+Live tunnel acceptance and real HAOS install/upgrade/rollback remain required.
+The qURL 4.2.0 built-in get help defines exit 11 as temporary link unavailability;
+this explains the category, not its underlying service cause. Existing control
+failure in the published image remains evidence against attributing it solely to
+the hardened base. No LayerV account credentials or real HA data are used in the
+anonymous synthetic live probe.
+
+Release-readiness follow-up (November 19)
+
+The execution prompt is recorded in docs/release-readiness-prompt.txt. It stops
+at a concrete release approval decision, without publication or production merge.
+
+A newer signed Chainguard index became available during the follow-up:
+4b2cec05cea94a58e635f21ca5d7c642d24ec58258008bf9341a0c062de5d99d.
+Both architecture signatures and signed SBOMs were verified. It replaces glibc
+2.44-r23 with r24; Python/OpenSSL/Expat/SQLite versions and the two vulnerable
+Python module hashes are unchanged. The public glibc recipe describes a compiler
+rebuild. Signed SBOMs show source revisions 625054f30f0e7a961519f045f2364aa3ca6c1c6b
+and 049ee6efc26ad8919ff497ef1906878d02c2ff80; comparison in the vendor-linked GNU
+GitLab mirror shows one commit changing NEWS only ("Add a few BZ entries to NEWS").
+No security resolution is claimed and the candidate pin is not changed merely
+because the tag moved. The original vendor
+advisory still lists the glibc finding without a fixed version.
+
+The official qURL release API returns 404 and its 4.4.4 GHCR image returns 403.
+Cached copies from earlier investigation are not substituted for a currently
+verifiable, reproducible release source. qURL remains 4.2.0 from our signed image.
+
+security/collect_applicability.py now retains an offline observation from the
+actual immutable image, complete application hashes/import/call inventory, actual
+TLS ciphers, Expat binding controls, qURL's Go function table matches and all ELF
+files' hashes, imported native symbols and dependencies. It never runs exported
+executables and never extracts archive-selected paths. The collector runs on
+both native CI architectures and fails if collection is incomplete. Its evidence
+is observation-only: it changes no vulnerability disposition or gate decision.
+
+Initial amd64 observations: neither golang.org/x/net/html nor x/crypto/openpgp
+is linked into the original qURL binary; sqlite3/xmlwf/shell/OpenSSL CLIs are
+absent; Python exposes no QUIC API and its default TLS ciphers exclude GCM-SIV.
+The exact CPython source at 64b5cfdf7548a21741398ce0826728818327aea7 sets the Expat
+unknown-encoding convert callback to NULL and rejects multibyte encodings. The
+installed binding accepts a valid windows-1252 document and rejects shift_jis,
+big5 and gbk at that binding restriction. This supports an applicability review
+for CVE-2026-124317, not a claim that the Expat library is patched.
+
+Native symbol inspection found glibc regcomp/regexec consumers in libform and
+libformw. No wide scanf imports were found. Those observations require dependency
+and source-path review; an import search alone is not a completed assessment.
+All 14 runtime CVEs and all three qURL findings remain visible and unresolved
+until an explicit evidence-bound decision has been reviewed.
+
+Native follow-up and HA Green acceptance (November 19)
+
+Security run 44582158696 tested PR head 50a2cac900dfce3d9c38df29aced872a29447ea0
+through GitHub's b05fbf56e40a033e7b349622e0ffdf5bc771f845 merge revision. Both native
+architectures passed publisher verification, build, packaged runtime/application
+checks, upstream Python compatibility, all 15 defect regressions, secret scanning
+and the new applicability collector. Each collector inventoried 143 ELF files.
+Both show no x/net/html or x/crypto/openpgp functions in qURL, no sqlite3/xmlwf
+CLI, no wide scanf imports, and regcomp/regexec consumers only in libform/libformw.
+Both Expat binding probes accept windows-1252 and reject the three multibyte
+encodings tested. These observations are not additional approved exceptions.
+
+CI image identities and sizes:
+- amd64: sha256:31f9e51c0b7ec1968f59afe78b78e11e2548a8a6a7cca5ad1669271edb956933
+  175232981 bytes.
+- arm64: sha256:62ebb14d24c3d6ad33607d6778f363c1853dc80cc5bc1890ade5ca4185a0babb
+  169551655 bytes.
+Both promotion gates remain blocked: 14 runtime CVEs plus two qURL CVEs and
+one Go advisory remain unresolved (17 distinct findings; 16 distinct CVEs).
+No assessment dates or scanner rules changed.
+
+HAOS acceptance now uses authenticated SSH with an independently confirmed,
+pinned host key. The Green runs HAOS 18.4 and Core/Supervisor 2026.11.0. All test
+mutations target a newly created local_access_pages app, displayed as Access
+Pages Security Evaluation. The existing repository-installed Access Pages
+0.1.150 remained started throughout the observed checkpoints. The test app uses
+manual boot, the original access_pages slug, a separate Supervisor-managed data
+directory, and the relevant unchanged AppArmor profile; protection remains on.
+
+The baseline is a local wrapper around the exact signed 0.1.163 image index
+already verified for the qURL source. The evaluation update uses the committed
+Dockerfile.ha-minimal and source at 50a2cac, built natively by Supervisor as
+0.1.164-eval.1. Only local test metadata (name, version, manual boot, local build
+selection and explicit architecture build arguments) differs. The nested source
+config.yaml is renamed config.yaml.source in the staging directory to avoid
+Supervisor discovering a second app with the same slug. This is a separate
+native test build, not a claim that the retained CI image was deployed byte for
+byte. No production release or App Store version was changed.
+
+Verified HAOS steps:
+- Install and start isolated signed baseline 0.1.163.
+- Create and inspect a completed app-only baseline backup.
+- Native build and upgrade to hardened 0.1.164-eval.1; app reports started,
+  protected=true and apparmor=profile.
+- Direct ingress and forged X-Ingress-Path requests both return HTTP 403.
+- Restart candidate successfully; ingress still returns HTTP 403.
+- Create a completed candidate-only backup (44.12 MB versus baseline 66.28 MB).
+- Restore only the test app from the baseline backup with Home Assistant Core
+  restoration explicitly disabled. Supervisor reports the restore done without
+  errors; 0.1.163 restarts and again rejects direct ingress with HTTP 403.
+- Uninstall only the disposable app, then freshly install/start the hardened
+  candidate into empty app data. Both direct and forged ingress requests return
+  HTTP 403. The candidate remains started, protected and manually booted, with
+  diagnostic logging off. Supervisor remains healthy and supported.
+
+The fresh candidate is left running. On November 19 the owner confirmed that
+its setup page loads through Open Web UI in the authenticated Green browser.
+This is an owner-observed ingress/setup rendering pass, not an automated or
+configured-account browser journey.
+Both test backups and the isolated local build directory remain on Green.
+
+The app remained in unregistered onboarding state. These checks do not certify
+real-account enrollment, authenticated browser journeys, configured-page
+persistence or live device actions on Green. The existing disposable container
+upgrade/rollback tests cover synthetic settings/pages/admin authority and SQLite
+integrity separately. Automatic approval review rejected copying the test backup
+and exporting an options-file hash; neither operation ran. A safer subsequent
+comparison extracted only the disposable app options from the two test backups
+into a private temporary directory on Green, checked both were nonempty and
+compared them byte for byte. It returned only PASS/FAIL and removed its temporary
+files. That comparison passed, verifying options persistence across the upgrade.
+Backups remain on Green. This does not establish configured-page or credential
+persistence on Green; the test app was never enrolled.
+
+Live tunnel follow-up used a temporary copy of the existing anonymous synthetic
+probe with six idempotent get attempts, five-second waits and a bounded command
+timeout. Both the patched candidate and the signed production control still
+returned exit 11 after all attempts. Enrollment, publication and share creation
+succeeded; both resources were deleted successfully. This does not identify the
+root cause, and the tunnel acceptance requirement remains unsatisfied. The
+official qURL release API was rechecked and still returned HTTP 404.
+
+Completed runtime applicability review — November 19 follow-up
+
+The fourteen remaining runtime CVEs now have proposed, bounded applicability
+decisions in security/minimal-applicability-review.txt. Two concern absent CLI
+components; twelve concern unreachable paths in this exact packaged application.
+The glibc review includes internal callers, GNU/legacy regex interfaces and wide
+scanf compatibility aliases. These are not patches: vulnerable library code
+remains installed. The two Python HTTP/IMAP backports remain actual tested fixes.
+
+The new verifier passes against the retained native evidence for both amd64 and
+arm64, covering all thirty remaining runtime publisher records. It requires
+exact application/native observations, collector/build/control hashes, complete
+unchanged advisory records, same-image evidence less than 24 hours old, and an
+exclusive November 26 00:00 UTC deadline. New or changed evidence fails closed.
+No production baseline deadline, scanner severity or threshold changes.
+
+This completes the runtime assessment proposal independently of LayerV. qURL's
+two CVEs and one Go advisory remain separate; its HIGH finding still blocks the
+candidate gate. Fresh native CI must reproduce the reviewed evidence before
+these decisions can be considered validated for the updated PR. The existing
+live tunnel acceptance failure also remains unresolved.
+
+The owner subsequently reported a failed SMTP test in the Green evaluation app.
+The current UI and audit event collapse SMTP connection, TLS, authentication and
+delivery errors into a generic failure. The screenshot does not establish the
+cause. Investigate this as an additional release acceptance failure; do not
+certify email delivery from the earlier onboarding-only check.
+
+The SMTP follow-up confirmed successful unauthenticated, certificate-verified
+Gmail STARTTLS from Green's SSH app and TLS 1.3 from the hardened amd64 Python
+runtime. These were transport tests only; no credentials or email were sent by
+the agent. The owner then replaced the normal Google sign-in password with a
+Google app password in the evaluation app and confirmed that sending works.
+Record this as owner-confirmed SMTP acceptance on Green, not an automated
+in-container authentication test. No password was requested or read by the agent.
+
+The separate qURL review is also now complete as a proposal. Official Go records
+restrict its three findings to x/net/html and x/crypto/openpgp; both exact signed
+binaries contain neither package's functions. The candidate gate verifies the
+full official advisory records, exact scanner fingerprints and all nine target
+records (three findings across the executable and two original license SBOMs).
+It retains all raw findings and severities and rejects changed/missing/duplicate
+records or newly linked affected functions. The same source/image/architecture,
+freshness and exclusive November 26 deadline apply. No new qURL release is
+required for this bounded assessment. Fresh native CI is still required.
+
+Release integration and live acceptance — 2026-11-19
+
+Native CI run 44593528367, commit f4f683baf329a1d5e15c181ebfc5f95cc8e8cad4,
+passed both minimal candidate jobs including the independent advisory gate.
+The old production package jobs failed; their failures were not waived.
+
+A real Playwright browser loaded exact synthetic content over the live LayerV
+share URL for two disposable resources, then again after restarting the connector
+(four successful browser stages). Both resources were deleted afterwards. The
+CLI get --file diagnostic still returned exit 11; its cause is not established.
+That diagnostic no longer establishes a browser tunnel failure. This local live
+check did not enforce AppArmor; CI and Green provide separate confinement checks.
+Scripts and redacted logs are retained in artifacts/release-integration-20261119.
+
+The owner confirmed SMTP delivery after using a Google app password, then
+confirmed a guest link in a private browser window could control a demo entity
+in the Green evaluation app. These are owner-confirmed acceptance observations,
+not automated evidence from a browser session controlled by the agent. Existing
+production Access Pages remains untouched.
+
+The production HA Dockerfile now uses the evaluated hardened recipe and profile;
+its runtime instructions must remain identical to the evaluation Dockerfile.
+The profile differs only in its production name. The same signed inputs, native
+inventory, exact backports, independent advisories and expiry policy gate the
+production and release paths. Release publication recollects inventory and
+current advisories for both retained immutable images before any registry write.
+The existing protected checks remain required; no findings are filtered.
+
+The standalone pinned official Alpine image receives the same two upstream
+hunks, using a separate exact manifest and /usr/local/lib layout. Its HTTP module
+has different vendor bytes; its reviewed before/after hashes are retained in
+packaging/standalone/manifest.json. Hardened verification cannot accept this
+manifest or its alternate paths. Both architecture jobs run the installed defect
+probes and the pinned upstream HTTP/IMAP compatibility suites for both images.
+Neither manifest's November 26 exclusive expiry was extended.
+
+Version 0.1.164 is a proposed release only. Integrated native and read-only release
+CI must pass before an approval request; no merge or publication is authorized.
+
+The standalone upstream suite exposed three Unicode tunnel-host subcase errors
+within 396 tests. Comparison showed the hardened base already contains the
+CPython gh-161104 fix, but the official Alpine module does not. The exact merged
+CPython commit 7ac989f86503b6c7707c698ecb77eee93e861897 supplies that one additional
+standalone hunk. It validates the IDNA-encoded host before sending CONNECT. The
+standalone manifest pins its intermediate input and final output; the installer
+preflights the complete sequential patch chain before writing either module.
+No upstream tests were skipped to accommodate this defect. This is tracked as
+GH-161104 rather than inventing a CVE assignment. Its review also expires Nov26.

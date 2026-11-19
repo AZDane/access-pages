@@ -1,5 +1,11 @@
 FROM python:3.15.2-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 
+COPY security/runtime_backports.py /opt/build/backports.py
+COPY packaging/minimal/patches/ /usr/share/access-pages/backports/
+COPY packaging/standalone/ /usr/share/access-pages/backports/
+RUN python /opt/build/backports.py --base sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd \
+    && rm /opt/build/backports.py
+
 WORKDIR /app
 
 COPY server.py .

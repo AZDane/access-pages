@@ -1,0 +1,43 @@
+{
+  "base_index": "sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd",
+  "owner": "Access Pages maintainer",
+  "patches": [
+    {
+      "after_sha256": "6eefd4ea00dd23d6e984046fbfa56b248f6a3cfa3db87ba64c6833c8e8fe058f",
+      "before_sha256": "f4506633b5fe4fe06add63d9e32ab5e6e7cda84ec1df365da7faa5c1315fdbc5",
+      "cve": "CVE-2026-103995",
+      "installed_path": "/usr/local/lib/python3.15/http/client.py",
+      "patch_file": "CVE-2026-103995.patch",
+      "patch_sha256": "2213ff6a868be29528f6e1e5863dad074f74e9be72770275b021bff3b8c2822f",
+      "source_file": "Lib/http/client.py",
+      "upstream_commit": "5b9e3d044764cf59329fb8147177f54a88d1fb49",
+      "upstream_url": "https://github.com/python/cpython/commit/5b9e3d044764cf59329fb8147177f54a88d1fb49"
+    },
+    {
+      "after_sha256": "18b47ca17656420e36eeaddcfb172751a6b88478d5761a7b4d733c590a274de9",
+      "before_sha256": "ebb09bab21dbabf7414aca19d8334aea67fa1c21b1cefa83149ad3ae14957570",
+      "cve": "CVE-2026-115559",
+      "installed_path": "/usr/local/lib/python3.15/imaplib.py",
+      "patch_file": "CVE-2026-115559.patch",
+      "patch_sha256": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
+      "source_file": "Lib/imaplib.py",
+      "upstream_commit": "2f0e294d85c905691e360586ebd1d1f7e7a1f5df",
+      "upstream_url": "https://github.com/python/cpython/commit/2f0e294d85c905691e360586ebd1d1f7e7a1f5df"
+    },
+    {
+      "after_sha256": "c83a8f3c0dcc873c1b22dcb83ff376df7a520e23b40533a276387fd7a2063246",
+      "before_sha256": "6eefd4ea00dd23d6e984046fbfa56b248f6a3cfa3db87ba64c6833c8e8fe058f",
+      "cve": "GH-161104",
+      "installed_path": "/usr/local/lib/python3.15/http/client.py",
+      "patch_file": "GH-161104.patch",
+      "patch_sha256": "97cc0b39b2dc737f60fffda86d5896056933abec79d67ef799e48a2c03b992f9",
+      "source_file": "Lib/http/client.py",
+      "upstream_commit": "7ac989f86503b6c7707c698ecb77eee93e861897",
+      "upstream_url": "https://github.com/python/cpython/commit/7ac989f86503b6c7707c698ecb77eee93e861897"
+    }
+  ],
+  "replacement": "Remove backports when an official vendor image passes the same regression tests; do not extend the review without new evidence.",
+  "review_before": "2026-11-26T00:00:00+00:00",
+  "reviewed_at": "2026-11-19T00:00:00+00:00",
+  "schema": 1
+}

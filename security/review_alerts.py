@@ -12,6 +12,33 @@ import subprocess  # nosec B404 - fixed gh executable, argument arrays, no shell
 MARKER = "<!-- access-pages-security-review:"
 
 
+def hardened_reviews(directory):
+    """Include every bounded runtime and backport review without renewing it."""
+    policy = json.loads((directory / 'minimal/applicability.json').read_text())
+    entries = []
+
+    def entry(identifier, kind, review, package, version):
+        reviewed = datetime.fromisoformat(review['reviewed_at'])
+        deadline = datetime.fromisoformat(review['review_before'])
+        if reviewed.utcoffset() != timedelta(0) or deadline.utcoffset() != timedelta(0):
+            raise ValueError('Review timestamps must be UTC')
+        return {'id': identifier, 'type': kind, 'owner': review['owner'],
+                'reviewed_on': reviewed.date().isoformat(), 'review_due': deadline.date().isoformat(),
+                'packages': [{'name': package, 'version': version}]}
+
+    for cve in sorted(policy['decisions']):
+        entries.append(entry(cve, 'hardened-runtime', policy, 'hardened runtime', 'pinned inventory'))
+    for finding in sorted(policy['qurl']['findings']):
+        entries.append(entry(finding, 'qurl', policy, 'qURL', '4.2.0'))
+    for variant, path in (('hardened', 'minimal/patches/manifest.json'),
+                          ('standalone', 'standalone/manifest.json')):
+        manifest = json.loads((directory / path).read_text())
+        for patch in manifest['patches']:
+            entries.append(entry(patch['cve'], variant + '-backport', manifest,
+                                 variant + ' Python backport', '3.15.2'))
+    return entries
+
+
 def alerts(baseline, today):
     groups = {}
     for entry in baseline["dispositions"]:
@@ -32,6 +59,8 @@ def alerts(baseline, today):
             packages = ", ".join(f"{p['name']} {p['version']}" for p in entry["packages"])
             lines.append(f"| {entry['id']} | {packages} | {entry['owner']} | {entry['reviewed_on']} |")
         lines.extend(["", "Source: [vulnerability baseline](https://github.com/AZDane/access-pages/blob/main/security/vulnerability-baseline.json)",
+                      "[hardened assessments](https://github.com/AZDane/access-pages/blob/main/packaging/minimal/applicability.json),",
+                      "[backports](https://github.com/AZDane/access-pages/tree/main/packaging),",
                       "and [review policy](https://github.com/AZDane/access-pages/blob/main/security/README.md).", "",
                       "The vulnerability gate continues to reject expired assessments. This alert does",
                       "not renew or approve them. The scheduled check reopens this issue while these",
@@ -98,7 +127,9 @@ def main():
     parser.add_argument("--repository", default="AZDane/access-pages")
     parser.add_argument("--write-issues", action="store_true", help="Create/update alerts; otherwise print only")
     args = parser.parse_args()
-    planned = alerts(json.loads(args.baseline.read_text()), datetime.now(timezone.utc).date())
+    baseline = json.loads(args.baseline.read_text())
+    baseline['dispositions'].extend(hardened_reviews(Path('packaging')))
+    planned = alerts(baseline, datetime.now(timezone.utc).date())
     print(json.dumps(list(planned.values()), indent=2))
     if args.write_issues:
         synchronize(planned, GitHub(args.repository))

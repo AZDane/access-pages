@@ -1,0 +1,53 @@
+Release-readiness execution prompt — authorized 2026-11-19
+
+Objective
+Prepare a concrete Access Pages release candidate for the owner's approval,
+continuing PR #100 and the hardened runtime evaluation. Execute the work, not
+just a plan. Keep #99 retired and assess which work from #98 is still needed.
+
+Constraints
+Use a feature branch and preserve protected-main rules. Do not merge, publish
+or deploy a production release before the owner's final approval. Do not weaken
+scanners, severity thresholds, evidence requirements, confinement or expiry.
+Never extend an assessment date without a fresh documented review. Preserve
+the access_pages slug, published image path, genuine LayerV identifiers and
+existing data compatibility. Do not expose or request passwords/tokens in chat.
+Use official binaries and stable vendor packages wherever possible; verify
+provenance, integrity, licenses and both native architectures. Keep temporary
+patches exact, bounded, tested and removable when vendor fixes become available.
+
+Execution
+1. Recheck the candidate, current production, official upstream releases and
+   every unresolved advisory. Distinguish package matches from affected shipped
+   components, and severity from demonstrated application reachability.
+2. Resolve findings with official fixes or narrowly scoped applicability
+   evidence. Bind every conclusion to exact image, architecture, source/binary
+   hashes, advisory scope and review deadline. Retain original scanner and
+   publisher records. Missing or changed evidence must fail closed.
+3. Keep and validate the two upstream Python backports. Evaluate an independent
+   production HTTP remediation if the migration cannot yet be completed.
+4. Resolve qURL supply-chain/release availability and the live get failure using
+   official information and disposable synthetic resources. Do not claim a
+   successful tunnel from enrollment/publication alone.
+5. Exercise native amd64/arm64 behavior, upstream regressions, application and
+   browser tests, secrets, full inventories, independent advisories, AppArmor,
+   persistence, upgrade and rollback. Test the exact release artifacts and
+   prevent publication of different or insufficiently validated images.
+6. Use the owner's authenticated HA Green browser if accessible. First establish
+   installed versions, current state and a restorable backup. Perform isolated,
+   reversible HAOS install/upgrade/rollback acceptance only with a recovery path.
+   If browser access is unavailable, explain the specific connection gap and
+   complete independent work; do not extract credentials from browser storage.
+7. Prepare reviewed source changes, version/changelog and PRs as justified by
+   the completed evidence. Preserve local pre-commit/pre-push credential checks.
+8. Present an approval packet with exact commit/image identities, test results,
+   findings and dispositions, temporary-patch expiry/removal conditions, Green
+   acceptance/recovery evidence, and the two-repository publication steps.
+   If any requirement remains blocked, mark the candidate not release-ready;
+   do not ask the owner to approve an incomplete or falsely green release.
+
+Completion
+Stop at a reviewable release approval decision. Publication, when explicitly
+approved later, must complete both the signed multi-architecture container
+release and byte-identical App Store metadata synchronization required by
+AGENTS.md. Record any remaining external blocker precisely.

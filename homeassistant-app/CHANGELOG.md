@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.164 — Smaller runtime and stronger security checks
+
+- Move to a smaller, hardened runtime image with verified sources.
+- Fix Python HTTP response parsing and IMAP STARTTLS handling using official upstream patches.
+- Strengthen security checks to catch defects that vulnerability scanners can miss.
+- Validate both amd64 and arm64 images before publication, including application behavior, permissions, TLS and AppArmor confinement.
+- Retain qURL 4.2.0 and existing settings, pages and connections. No connection reset or settings migration is required.
+
+**Validation:** Automated tests passed on both architectures. Installation, upgrade and rollback were tested on Home Assistant Green; email delivery and guest control were also confirmed.
+
+**Security review:** Some dependency vulnerabilities remain unpatched. Their affected components are absent or assessed as unreachable in this application, with supporting evidence retained. These assessments require fresh review by **November 26, 2026 UTC**.
+
 ## 0.1.163
 
 - Update the pinned Python 3.15.2 base images and build the guest endpoint with Go 1.27.4, including its security and reliability fixes.

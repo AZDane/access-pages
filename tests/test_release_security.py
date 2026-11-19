@@ -237,7 +237,7 @@ class ArtifactTests(unittest.TestCase):
 
 class PublicationTests(unittest.TestCase):
     def test_arm_failure_prevents_even_amd64_publication(self):
-        for failure in ('unreviewed', 'missing_test', 'wrong_test_image', 'changed_scan'):
+        for failure in ('unreviewed', 'missing_test', 'wrong_test_image', 'changed_scan', 'changed_recheck', 'none'):
             with self.subTest(failure=failure), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 for arch in ('amd64', 'arm64'):
@@ -264,9 +264,28 @@ class PublicationTests(unittest.TestCase):
                         if arch == 'arm64' and failure == 'wrong_test_image':
                             marker['index_digest'] = 'sha256:' + 'f' * 64
                         (root / f'tested-{arch}.json').write_text(json.dumps(marker))
-                with patch('security.publish_validated.run', return_value=json.dumps([{'Id': 'sha256:' + 'a' * 64}])) as command:
-                    with self.assertRaises((ValueError, FileNotFoundError)):
-                        publish(root, '0.1.147', latest=True)
+                def recheck(image, report_path, arch, output, runtime, applicability, *, version):
+                    self.assertEqual(image, 'sha256:' + 'a' * 64)
+                    self.assertEqual(version, '0.1.147')
+                    self.assertEqual(runtime, root / f'runtime-{arch}')
+                    self.assertEqual(applicability, root / f'applicability-{arch}')
+                    if arch == 'arm64' and failure == 'unreviewed':
+                        return 1
+                    verified = json.loads((root / f'evidence-{arch}.json').read_text())
+                    if arch == 'arm64' and failure == 'changed_recheck':
+                        verified['identity']['index_digest'] = 'sha256:' + 'f' * 64
+                    output.mkdir()
+                    (output / 'evidence.json').write_text(json.dumps(verified))
+                    return 0
+
+                with patch('security.publish_validated.collect_advisories', side_effect=recheck), \
+                        patch('security.publish_validated.run', return_value=json.dumps([{'Id': 'sha256:' + 'a' * 64}])) as command:
+                    if failure == 'none':
+                        accepted = candidates(root, '0.1.147')
+                        self.assertEqual([suffix for suffix, _ in accepted], ['amd64', 'aarch64'])
+                    else:
+                        with self.assertRaises((ValueError, FileNotFoundError)):
+                            publish(root, '0.1.147', latest=True)
                     self.assertTrue(all(call.args[:3] == ('docker', 'image', 'inspect')
                                         for call in command.call_args_list))
 

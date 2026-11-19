@@ -14,7 +14,12 @@ on:
       - .github/workflows/publish-ha-app.yml
       - Dockerfile.ha-app
       - security/**
+      - packaging/**
+      - Dockerfile.ha-minimal
+      - tests/check_upstream_python.sh
+      - homeassistant-app/apparmor.txt
       - tests/check_packaged_image.sh
+      - tests/packaged_advisory_observations.py
       - tests/check_cosign.sh
       - homeassistant-app/config.yaml
 
@@ -90,6 +95,13 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
+      - name: Install provenance verification tool
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+      - name: Verify signed base, both architectures and original qURL source
+        run: bash packaging/minimal/verify-base.sh base-verification
+
       - name: Build final amd64 image locally
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
@@ -124,6 +136,8 @@ jobs:
         run: ': > "$RUNNER_TEMP/no-vulnerability-ignores"'
 
       - name: Report every amd64 vulnerability
+        env:
+          TRIVY_LIST_ALL_PKGS: 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           version: v0.76.1
@@ -141,6 +155,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_PLATFORM: linux/arm64
+          TRIVY_LIST_ALL_PKGS: 'true'
         with:
           version: v0.76.1
           image-ref: access-pages-release:arm64
@@ -153,6 +168,15 @@ jobs:
           ignore-unfixed: false
           exit-code: '0'
 
+      - name: Gate installed Python behavior in BOTH release images
+        if: ${{ !cancelled() }}
+        run: |
+          status=0
+          for arch in amd64 arm64; do
+            python3 security/check_runtime_advisories.py "access-pages-release:$arch" --architecture "$arch" --output "runtime-$arch" || status=1
+          done
+          exit "$status"
+
       - name: Validate BOTH retained release images
         env:
           VERSION: ${{ steps.version.outputs.value }}
@@ -160,25 +184,20 @@ jobs:
           for arch in amd64 arm64; do
             image="access-pages-release:$arch"
             trivy image --platform "linux/$arch" --scanners misconfig,secret --severity HIGH,CRITICAL --ignorefile .trivyignore.yaml --exit-code 1 "$image"
-            python3 security/image_evidence.py "$image" "vulnerability-$arch.json" --architecture "$arch" --version "$VERSION" --require-attestations > "evidence-$arch.json"
-            python3 security/check_vulnerabilities.py "vulnerability-$arch.json" --architecture "$arch" --evidence "evidence-$arch.json"
+            bash tests/check_upstream_python.sh "$image" "$arch" "upstream-$arch"
+            python3 security/collect_applicability.py "$image" --architecture "$arch" --output "applicability-$arch"
+            python3 security/minimal_advisories.py "$image" "vulnerability-$arch.json" --architecture "$arch" --version "$VERSION" --output "advisory-$arch" --runtime-evidence "runtime-$arch" --applicability-evidence "applicability-$arch"
+            cp "advisory-$arch/evidence.json" "evidence-$arch.json"
             # Use the verified immutable index for every runtime check.
             digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["identity"]["index_digest"])' "evidence-$arch.json")
             bash tests/check_packaged_image.sh "$digest" "$arch"
             python3 -c 'import json,sys; print(json.dumps({"index_digest":sys.argv[1]}))' "$digest" > "tested-$arch.json"
           done
 
-      - name: Retain complete reports and artifact evidence
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: release-security-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            vulnerability-*.json
-            evidence-*.json
-            tested-*.json
-          if-no-files-found: error
-          retention-days: 90
+      - name: Exercise publication policy without registry writes
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: python3 security/publish_validated.py "$VERSION" --validate-only
 
       - name: Log in for validated publication
         if: github.event_name != 'pull_request'
@@ -201,6 +220,29 @@ jobs:
           options=()
           if [[ "$UPDATE_LATEST" == true ]]; then options+=(--latest); fi
           python3 security/publish_validated.py "$VERSION" "${options[@]}"
+
+      - name: Retain complete reports and artifact evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            vulnerability-*.json
+            evidence-*.json
+            tested-*.json
+            base-verification/
+            advisory-amd64/
+            advisory-arm64/
+            applicability-amd64/
+            applicability-arm64/
+            upstream-amd64/
+            upstream-arm64/
+            runtime-amd64/
+            runtime-arm64/
+            publication-recheck-*/
+          if-no-files-found: error
+          retention-days: 90
+
 
   validate-release:
     name: Release image validation (no publication)

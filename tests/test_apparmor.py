@@ -1,3 +1,4 @@
+import json
 import unittest
 import re
 from pathlib import Path
@@ -24,21 +25,14 @@ class AppArmorProfileTests(unittest.TestCase):
 
     def test_final_python_runtime_is_allowlisted(self):
         dockerfile = (ROOT / "Dockerfile.ha-app").read_text(encoding="utf-8")
-        stages = re.findall(r"^FROM\s+(.+)$", dockerfile, re.MULTILINE)
-        runtime = re.fullmatch(
-            r"python:(\d+\.\d+)[^\s]*(?:\s+AS\s+\S+)?", stages[-1], re.IGNORECASE
-        )
-        self.assertIsNotNone(runtime, "Final image must identify its Python version")
-        executable = f"/usr/local/bin/python{runtime.group(1)}"
-        self.assertRegex(
-            self.profile,
-            rf"(?m)^\s*{re.escape(executable)}\s+rix,\s*$",
-            f"AppArmor must permit the final runtime executable {executable}",
-        )
-        python_rules = re.findall(
-            r"(?m)^\s*(/usr/local/bin/python\S*)\s+rix,\s*$", self.profile
-        )
+        self.assertIn('FROM cgr.dev/chainguard/python:latest@sha256:', dockerfile)
+        manifest = json.loads((ROOT / 'packaging/minimal/patches/manifest.json').read_text())
+        version = re.search(r'/python(\d+\.\d+)/', manifest['patches'][0]['installed_path']).group(1)
+        executable = f"/usr/bin/python{version}"
+        python_rules = re.findall(r"(?m)^\s*(/usr/(?:local/)?bin/python\S*)\s+rix,\s*$", self.profile)
         self.assertEqual(python_rules, [executable])
+        evaluated = (ROOT / 'packaging/minimal/apparmor.txt').read_text()
+        self.assertEqual(self.profile, evaluated.replace('profile access_pages_minimal ', 'profile access_pages '))
 
     def test_qurl_system_trust_and_lifetime_lock_remain_confined(self):
         self.assertIn("/etc/ssl/certs/{,**} r,", self.profile)
