@@ -269,15 +269,15 @@
   },
   "controls_sha256": {
     ".dockerignore": "0d263ae8a9e03d59745c88a6713e0aea3925955235102b2283cdd38a0b8bbc6d",
-    "Dockerfile.ha-app": "28522d462390211f5198dc759769fb1a673795844560effa3efc8f2ab40b01dd",
-    "Dockerfile.ha-minimal": "aa9a180964617df203485fbe3309a1e9d5757a6ed181ba9b05a70630882d6795",
+    "Dockerfile.ha-app": "adb8ec508ee83c96c59201346adf1214e18c02f318cb7068aab6e9c44f20c89e",
+    "Dockerfile.ha-minimal": "77e00dd4be5beca54b3290757ddf2285aa8fcf8fca4a963377f353584f2f8ace",
     "homeassistant-app/apparmor.txt": "d179d275ba2e74dd4cafe2e44bac473c16f75fc8c8601fd57c84fde48231d7a6",
     "packaging/minimal/apparmor.txt": "2c496156d5294e63385e0ee1a397e1ca6a9f31b77254907c1c849b56635fbdaa",
     "packaging/minimal/patches/CVE-2026-103995.patch": "2213ff6a868be29528f6e1e5863dad074f74e9be72770275b021bff3b8c2822f",
     "packaging/minimal/patches/CVE-2026-115559.patch": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
     "packaging/minimal/patches/manifest.json": "149184b4e3a531e4b464c0896fd0fa2072cd4ed60f34d6aa0062d798ffbb8180",
     "packaging/minimal/prepare.py": "0b11b8a3b6a4e1f7305a45a090febf0f155fbd440f8427ec508cb5e7083e5aec",
-    "security/minimal-applicability-review.txt": "fd74be41042f482e48bb458559fb45e74c3028d86b3226b36f91c3105b033fce",
+    "security/minimal-applicability-review.txt": "cb1a5cf8fa26ce68676b521934ef4eb2a74e89fe42431585f7497a1e74e73420",
     "security/runtime_backports.py": "3220422a7e9439f676774ca3938dc6d4c10004f546f77715f920d87cd65e84f9",
     "tests/check_packaged_image.sh": "2fa23119f8e722e21d3534d200a28b669fcaf276a116db8c33606affef86b3c1"
   },

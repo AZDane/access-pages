@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.165 — Close the popup after sharing a guest link
+
+- Close the guest creation popup after confirming Finished Sharing, instead of leaving a blank form that can incorrectly warn about unsaved changes.
+- Keep the popup open if removing the saved link fails, so you can retry. Cancelling the confirmation also leaves sharing open.
+- Guest invitations continue to work after finishing sharing. Existing settings, pages and connections are preserved; no reset or migration is required.
+
 ## 0.1.164 — Smaller runtime and stronger security checks
 
 - Move to a smaller, hardened runtime image with verified sources.

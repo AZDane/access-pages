@@ -17,6 +17,25 @@ Every build must reproduce those properties in its own immutable image, with
 evidence less than 24 hours old. Missing, changed or expired evidence blocks.
 All original package inventories, severities and advisories remain in artifacts.
 
+0.1.165 incremental review — 2026-11-19 UTC
+
+Reviewed the changes from released source 4969eac to PR #101 source dd4182e.
+Both HA Dockerfiles change only the BUILD_VERSION default from 0.1.164 to
+0.1.165. The application change closes an already-completed browser sharing
+dialog; it adds no backend input, import, native consumer or executable path.
+Config/changelog metadata and the frontend regression tests are the other changes.
+
+Fresh native evidence from Security run 44608259428 (CI merge cfbb08a8)
+reproduces the existing runtime.json and native.json hashes on amd64 and arm64,
+for both HA packaging and the minimal candidate: all 143 ELF files, packaged
+Python source/import/call observations, qURL linkage and collector hashes are
+unchanged. The freshly fetched reviewed publisher advisory fingerprints also
+match on both architectures. The gate correctly rejected the version-only
+Dockerfile hash changes; update only those control hashes and this review hash.
+All runtime/native/advisory pins, decisions, scanner thresholds and the exclusive
+2026-11-26 expiry remain unchanged. Full checks must pass again before release.
+https://github.com/AZDane/access-pages/actions/runs/44608259428
+
 Threat model: remote application inputs through the existing fixed application
 entry points. No arbitrary Python execution, attacker-provided extension module,
 privileged container access, hostile replacement of application files or native

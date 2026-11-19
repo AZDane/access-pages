@@ -891,7 +891,10 @@ async function testScheduledGuestWorkflow() {
 }
 
 async function testExplicitFinishedSharing() {
-  for (const smtpSent of [false, true]) {
+  for (const {smtpSent, fromCreation} of [
+    {smtpSent: false, fromCreation: false}, {smtpSent: true, fromCreation: false},
+    {smtpSent: false, fromCreation: true}, {smtpSent: true, fromCreation: true},
+  ]) {
     const link = "https://qurl.invalid/#retained-invitation";
     const grant = {id: "grant_aaaaaaaaaaaaaaaa", label: "Guest", qurl_link: link,
       access_url: link, expires_at: "2099-01-01T00:00:00Z", verification_required: true};
@@ -917,6 +920,10 @@ async function testExplicitFinishedSharing() {
       return jsonResponse(200, structuredClone(persisted));
     }});
     fixture.document.createElementNS = () => new Element();
+    fixture.document.querySelectorAll = selector => selector === "#user-dialog input, #user-dialog select"
+      ? [fixture.elements.get("qurl-label"), ...descendants(fixture.elements.get("qurl-result"))
+        .filter(element => element.type === "email" || element.type === "tel")]
+      : [];
     fixture.context.window.requestAnimationFrame = callback => callback();
     vm.runInContext(fs.readFileSync(path.join(root, "static/vendor/qrcodegen.js"), "utf8"), fixture.context);
     vm.runInContext("window.qrcodegen = qrcodegen", fixture.context);
@@ -967,8 +974,11 @@ async function testExplicitFinishedSharing() {
     assert.match(fixture.elements.get("confirm-message").textContent, /invitation will continue to work normally/);
     fixture.elements.get("cancel-confirm").listeners.get("click")();
     await cancelled;
-    fixture.elements.get("close-user-dialog").listeners.get("click")();
-    await vm.runInContext("manageUsers('fixture')", fixture.context);
+    assert.equal(fixture.elements.get("user-dialog").open, true, "Cancelling keeps sharing open");
+    if (!fromCreation) {
+      await fixture.elements.get("close-user-dialog").listeners.get("click")();
+      await vm.runInContext("manageUsers('fixture')", fixture.context);
+    }
     let buttons = descendants(fixture.elements.get("grant-list"));
     assert.ok(buttons.some(element => element.textContent === "Copy guest link"));
     assert.ok(buttons.some(element => element.textContent === "Finished Sharing"));
@@ -976,16 +986,28 @@ async function testExplicitFinishedSharing() {
     assert.equal(requests.filter(([route]) => route.endsWith("/finish-sharing")).length, 0);
 
     failRemoval = true;
-    const failed = buttons.find(element => element.textContent === "Finished Sharing").listeners.get("click")();
+    const finishButton = fromCreation ? findResult("Finished Sharing")
+      : buttons.find(element => element.textContent === "Finished Sharing");
+    const failed = finishButton.listeners.get("click")();
     fixture.elements.get("accept-confirm").listeners.get("click")();
     await failed;
     assert.equal(persisted.access_grants[0].qurl_link, link);
-    assert.match(fixture.elements.get("status").textContent, /Could not save/);
+    assert.match(fixture.elements.get(fromCreation ? "user-dialog-status" : "status").textContent, /Could not save/);
+    assert.equal(fixture.elements.get("user-dialog").open, fromCreation, "Failure keeps the sharing popup available for retry");
     failRemoval = false;
-    // Finalize an existing guest after reopening, also clearing its hidden result.
-    const finished = buttons.find(element => element.textContent === "Finished Sharing").listeners.get("click")();
+    // Finish from the creation popup or the saved guest list.
+    const finished = finishButton.listeners.get("click")();
     fixture.elements.get("accept-confirm").listeners.get("click")();
     await finished;
+    assert.equal(fixture.elements.get("user-dialog").open, false, "Finished sharing closes the creation popup");
+    assert.equal(fixture.elements.get("confirm-dialog").open, false, "No unsaved-changes prompt after finishing");
+    assert.equal(fixture.elements.get("status").textContent, "Invitation shared — link no longer stored");
+    if (fromCreation) {
+      vm.runInContext("openUserDialog()", fixture.context);
+      await fixture.elements.get("close-user-dialog").listeners.get("click")();
+      assert.equal(fixture.elements.get("user-dialog").open, false, "A fresh untouched guest form closes silently");
+      assert.equal(fixture.elements.get("confirm-dialog").open, false);
+    }
     assert.equal(persisted.access_grants[0].qurl_link, "");
     assert.equal(vm.runInContext("currentPage.access_grants[0].qurl_link", fixture.context), "");
     assert.equal(vm.runInContext("'access_url' in currentPage.access_grants[0]", fixture.context), false);
