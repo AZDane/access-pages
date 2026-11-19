@@ -1,0 +1,117 @@
+Minimal runtime evaluation — 2026-11-19 UTC
+
+Decision: candidate implementation only; do not promote or release yet.
+The production Dockerfile, vulnerability baseline and assessment dates are
+unchanged by this work. The feature branch includes the earlier qURL and
+Debian review commits from PR #98 and should be rebased after that PR merges.
+
+Sources and verification
+
+The runtime is Chainguard's official cgr.dev/chainguard/python image, pinned
+to index d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2.
+packaging/minimal/verify-base.sh verifies its index, both architecture
+manifests and signed SPDX attestations against the exact publisher workflow
+identity and GitHub OIDC issuer. It does not disable transparency verification.
+https://images.chainguard.dev/directory/image/python/overview
+
+qURL remains the checksum-pinned official LayerV 4.4.4 release, unchanged from
+PR #98. The endpoint remains our existing static Go build. Download/compiler
+stages use digest-pinned official Debian and Go images; they do not contribute
+their system libraries or tools to the final runtime.
+
+Timezone data is the Python-maintained tzdata 2026.6 wheel from PyPI, fetched
+over HTTPS from files.pythonhosted.org and checked against the SHA256 from
+PyPI's version-specific release metadata. This is checksum verification, not
+an independently verified publisher signature. The wheel's package metadata,
+RECORD and licenses remain available to scanners. No pip is installed.
+https://pypi.org/project/tzdata/2026.6/
+https://github.com/python/tzdata
+
+The candidate preserves all APK metadata and vendor SBOMs. It records hashes
+of removed ensurepip files, pip wheels and infocmp in runtime-preparation.json.
+This intentionally keeps package attribution visible even where files have
+been removed. Accounts, service IDs, directory modes and persisted data paths
+match production. The candidate AppArmor profile changes only the profile
+name and actual Python executable/library paths. The existing root-supervisor
+configuration exception also names this candidate Dockerfile, with the same
+reason and expiry; no vulnerability ignore or threshold change is introduced.
+
+Evidence and findings
+
+The first complete amd64 candidate was 174,946,515 bytes versus 255,018,887
+bytes for the reviewed production image: approximately 31% smaller using
+Docker's complete-image size metric, not compressed registry transfer size.
+Exact later CI image identities and sizes are in retained evidence.json files.
+
+Local packaged probes passed: runtime inventory, trust roots and licenses;
+real-UID service isolation; application operation; TLS; supervisor startup;
+permissions; timezone scheduling; qURL lifecycle. All 544 existing application
+tests passed, with the same three skips requiring Node (which remains covered
+by the hosted test job). The local host lacks AppArmor support; the native
+amd64 CI job must enforce the candidate profile. Executable fixtures at the
+forbidden shell/nsenter/infocmp paths prevent absence being mistaken for denial.
+
+The live anonymous qURL test passed fresh page and guest publication, five-
+minute shares, tunneled synthetic content, restart and stable resource reuse.
+Both disposable resources were deleted successfully. No account key or real
+Home Assistant endpoint was used. This local test did not run under AppArmor;
+it is not evidence of a live HAOS installation or upgrade.
+
+The full amd64 Trivy report returned zero vulnerabilities. Independent OSV
+queries of every installed package and its source-package name returned 32
+architecture-relevant vendor advisory records, covering 16 unique CVE IDs:
+
+  Python: CVE-2026-103995, -115559, -115791, -124249, -16052, -19552
+  OpenSSL: CVE-2026-107496, -88822, -88823, -95691, -95692
+  glibc: CVE-2026-100290, -115819
+  Expat: CVE-2026-124317, -128241
+  SQLite source: CVE-2026-119586
+
+These are conservative vendor/source matches requiring applicability review,
+not 16 demonstrated application exploits or a count of HIGH findings. Source
+queries deliberately include components that might be absent from a shipped
+subpackage. No false-positive disposition has been invented for them.
+
+security/minimal_advisories.py binds the scan to the retained immutable OCI
+image, verifies SBOM/provenance subjects and layers, compares the actual APK
+inventory with the scanner's inventory, and requires scans for both shipped
+Go binaries and the timezone wheel. It retains every OSV response and fetches
+the original Chainguard v3 publisher record for each matching CGA ID. Explicit
+architecture-specific Python/OpenSSL watch records fail if those known records
+disappear from OSV. Missing feeds, malformed records and pagination loops fail.
+
+This is a deliberately strict candidate promotion check: every unresolved
+vendor match requires review, irrespective of its severity, while the existing
+production HIGH/CRITICAL gate remains intact. There are no candidate waivers.
+The protected Container image check depends on both native candidate jobs, so
+this draft cannot merge merely because production still passes.
+
+Coverage limits: OSV can lag publisher feeds. Directly fetching returned and
+watched records does not prove every new publisher record has been imported;
+Chainguard's complete index contains over a million records. This collector is
+not a claim of complete upstream advisory coverage. A general upstream Python
+and OpenSSL intake, unknown-severity review, exact component applicability and
+fresh architecture-bound assessments remain promotion requirements.
+https://www.chainguard.dev/docs/chainguard/containers/security-and-compliance/security-advisories/how-chainguard-issues
+
+Maintenance and acceptance
+
+The repository's weekly Docker Dependabot configuration discovers the pinned
+candidate Dockerfile. Every runtime update also needs the verified architecture
+mapping, version assertions, advisory watch review and fresh native evidence.
+An automated digest PR is a review trigger, never approval or date renewal.
+
+The public latest tag currently tracks Python 3.15. Fixed-version tags and
+the OpenSSL 3.5 variant are not public starter images. Confirm access to a
+supported fixed-version track before production selection, or explicitly plan
+and test each public latest minor-version transition. Pinning freezes bytes;
+it does not provide future patches or a maintenance contract.
+https://images.chainguard.dev/directory/image/python/versions
+
+Before promotion: resolve or freshly assess all vendor/source matches;
+complete native amd64 and arm64 runtime/advisory evidence and amd64 AppArmor
+enforcement; validate a real HAOS install/upgrade and live tunnel under its
+profile; establish broader upstream intake and the supported update track.
+Then replace the production base, update its evidence-bound baseline through
+review, remove superseded candidate scaffolding, and repeat all required
+checks. Never declare zero vulnerabilities from the current Trivy zero.

@@ -1,0 +1,69 @@
+# Evaluation candidate; production continues to use Dockerfile.ha-app.
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc AS qurl
+ARG TARGETARCH
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl \
+    && case "${TARGETARCH}" in \
+        amd64) QURL_CHECKSUM=c99cdcb3b489ab2d00fa6d835dcd124d50d9ef7b1b1fe901c143af7a07ef1180 ;; \
+        arm64) QURL_CHECKSUM=c37f249bd6e16eea819c1832aa5a9d483e6ff71714665bfb60aa3fa4dee7390b ;; \
+        *) exit 1 ;; \
+       esac \
+    && curl -fsSL "https://github.com/layervai/qurl-integrations/releases/download/v4.4.4/qurl_4.4.4_linux_${TARGETARCH}.tar.gz" -o /tmp/qurl.tar.gz \
+    && printf '%s  /tmp/qurl.tar.gz\n' "${QURL_CHECKSUM}" | sha256sum -c - \
+    && mkdir /out \
+    && tar -xzf /tmp/qurl.tar.gz -C /out qurl \
+    && chmod 0755 /out/qurl
+
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS guest-endpoint
+WORKDIR /src
+COPY go.mod ./
+COPY cmd/guest-endpoint ./cmd/guest-endpoint
+ARG TARGETOS
+ARG TARGETARCH
+RUN go test ./cmd/guest-endpoint \
+    && CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/access-pages-guest-endpoint ./cmd/guest-endpoint
+
+FROM qurl AS timezone
+RUN curl -fsSL https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl -o /out/tzdata.whl \
+    && printf '%s  /out/tzdata.whl\n' 0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec | sha256sum -c -
+
+FROM cgr.dev/chainguard/python:latest@sha256:d2711a21a494fa5c2efbfcf4226268395bad5d03406083ed0f3e7bed5199cfb2
+# The supervisor needs root only to create stores and drop each service UID.
+USER 0:0
+ENTRYPOINT []
+COPY --from=timezone /out/tzdata.whl /opt/build/tzdata.whl
+COPY packaging/minimal/prepare.py /opt/build/prepare.py
+RUN ["/usr/bin/python", "/opt/build/prepare.py"]
+
+ARG BUILD_ARCH
+ARG BUILD_VERSION=0.1.163
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    GATEWAY_VERSION=${BUILD_VERSION}
+
+LABEL \
+    io.hass.arch="${BUILD_ARCH}" \
+    io.hass.type="app" \
+    io.hass.version="${BUILD_VERSION}" \
+    org.opencontainers.image.source="https://github.com/AZDane/access-pages" \
+    org.opencontainers.image.version="${BUILD_VERSION}"
+
+WORKDIR /app
+
+COPY server.py actions.py admin.py access.py upstream_cleanup.py guest_resources.py guest_service.py guest_diagnostics.py guest_request.py internal.py config.py ha.py ha_broker.py pages.py layerv.py layerv_broker.py policy.py policy_store.py audit.py activity.py rate_limit.py email_delivery.py verification.py ./
+COPY schedules.py schedule_routes.py invitations.py ./
+COPY static ./static
+COPY themes.py ./
+COPY LICENSE THIRD_PARTY_NOTICES.md ./
+COPY third_party_licenses ./third_party_licenses
+COPY homeassistant-app/app_runner.py /usr/local/bin/app_runner.py
+COPY homeassistant-app/ingress_proxy.py /usr/local/bin/ingress_proxy.py
+COPY homeassistant-app/onboarding.py /usr/local/bin/onboarding.py
+COPY --from=qurl /out/qurl /usr/local/bin/qurl
+COPY --from=guest-endpoint /out/access-pages-guest-endpoint /usr/local/bin/access-pages-guest-endpoint
+
+EXPOSE 8080 8099
+STOPSIGNAL SIGTERM
+CMD ["python", "/usr/local/bin/app_runner.py"]

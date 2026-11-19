@@ -1,0 +1,39 @@
+Implement and evaluate a minimal Home Assistant runtime for Access Pages.
+
+Work on a feature branch and open a pull request targeting main. Preserve the
+existing release, branch protection, vulnerability and evidence requirements.
+Do not publish a release or change the Home Assistant image identity or slug.
+
+Use the publisher-signed, digest-pinned Chainguard Python runtime as the
+candidate. Add only the application, verified official qURL release binaries,
+the existing static Go endpoint, timezone data and the required accounts and
+writable directories. Preserve service isolation, CA distrust, TLS validation,
+licenses, AppArmor confinement and persistent data compatibility. Do not build
+a private qURL fork, mix distribution libraries, or conceal package metadata.
+
+Verify the base publisher signature and both architecture manifests. Pin and
+verify additional artifacts from recognized upstream publishers. Explain each
+source, its verification and its maintenance implications in the PR.
+
+Keep complete Trivy reports for both native architectures. Add an independent
+vendor advisory check covering the installed package inventory, including the
+known Python and OpenSSL blind spots. Retain fetched advisory records and bind
+results to the exact image. Missing feeds, unknown classifications and known
+unresolved findings must not be interpreted as a clean scan. Do not lower
+severity, ignore unfixed vulnerabilities, extend review dates without a fresh
+assessment, or weaken any existing gate to make the candidate pass.
+
+Run application and packaged startup, permissions, TLS, scheduling, qURL
+lifecycle and confinement tests. Obtain native amd64 and arm64 evidence from
+CI. Exercise live qURL with disposable synthetic data where safely possible.
+Measure complete final image sizes against the current complete image.
+
+Document a repeatable digest update and advisory review process, including
+the public latest tag's potential Python minor-version changes and the access
+requirements for a supported fixed-version track. Do not assume paid access.
+
+Promote the candidate to the production Dockerfile only when all acceptance
+conditions are supported by evidence. If vendor patches, source coverage,
+native testing or support access leave a material blocker, retain production
+unchanged, deliver the tested candidate in a draft PR, and state the exact
+remaining blocker. A scanner zero alone is never acceptance evidence.

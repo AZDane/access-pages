@@ -1,0 +1,28 @@
+{
+  "amd64": [
+    "CGA-4h9f-w358-p4fc",
+    "CGA-6m25-8vv5-42jx",
+    "CGA-8fcw-58f5-fpfm",
+    "CGA-9749-2274-vpwj",
+    "CGA-9qj6-c49m-7922",
+    "CGA-cmff-4q6c-5gmp",
+    "CGA-fg25-xqx2-4xhv",
+    "CGA-j5v7-j7m3-2xvf",
+    "CGA-m8px-jh69-pj3g",
+    "CGA-mj98-xvc8-76m8",
+    "CGA-vvvc-xhr5-m5m7"
+  ],
+  "arm64": [
+    "CGA-22hq-55rj-m24q",
+    "CGA-2qh6-r99g-mcx2",
+    "CGA-352q-vm49-745q",
+    "CGA-5mrj-3pqq-qc9m",
+    "CGA-68rr-3r45-gjxp",
+    "CGA-6xgj-68hx-crr2",
+    "CGA-74hh-3h7m-hwp2",
+    "CGA-8wj9-w5gq-m726",
+    "CGA-9m3c-7g25-798x",
+    "CGA-r7q3-x8v4-9pjg",
+    "CGA-rpr5-c47j-c8x6"
+  ]
+}
