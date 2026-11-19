@@ -23,11 +23,11 @@ from urllib.request import Request, urlopen
 try:
     from .image_evidence import bind_report, fingerprint, inspect_archive
     from .backport_evidence import verify as verify_backports
-    from .applicability_decisions import verify as verify_applicability
+    from .applicability_decisions import QURL_ADVISORIES, verify as verify_applicability, verify_qurl
 except ImportError:
     from image_evidence import bind_report, fingerprint, inspect_archive
     from backport_evidence import verify as verify_backports
-    from applicability_decisions import verify as verify_applicability
+    from applicability_decisions import QURL_ADVISORIES, verify as verify_applicability, verify_qurl
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = 'https://advisories.cgr.dev/chainguard/v3/osv/'
@@ -35,7 +35,7 @@ BASE = 'https://advisories.cgr.dev/chainguard/v3/osv/'
 
 def fetch(url, payload=None):
     if urlparse(url).scheme != 'https' or urlparse(url).hostname not in (
-        'api.osv.dev', 'advisories.cgr.dev',
+        'api.osv.dev', 'advisories.cgr.dev', 'vuln.go.dev',
     ):
         raise ValueError('Unrecognized advisory source')
     request = Request(url, data=None if payload is None else json.dumps(payload).encode(),
@@ -159,21 +159,34 @@ def collect(image, report_path, architecture, output, runtime_evidence, applicab
                   if v['Severity'] in ('HIGH', 'CRITICAL')]
     backports = verify_backports(inventory, image_id, architecture, runtime_evidence, publisher)
     applicability = verify_applicability(image_id, architecture, applicability_evidence, publisher)
+    go_advisories = {key: fetch('https://vuln.go.dev/ID/' + key + '.json') for key in sorted(QURL_ADVISORIES)}
+    (output / 'go-advisories.json').write_text(json.dumps(go_advisories, indent=2, sort_keys=True))
+    qurl = verify_qurl(report, json.loads((applicability_evidence / 'runtime.json').read_text()),
+                       applicability.pop('qurl_policy'), go_advisories)
+    assessed_qurl = {tuple(row) for row in qurl['finding_targets']}
+    unresolved_high = [v for result in report['Results'] for v in result.get('Vulnerabilities', [])
+                       if v['Severity'] in ('HIGH', 'CRITICAL') and
+                       (result.get('Type') != 'gobinary' or
+                        (result['Target'], v['VulnerabilityID']) not in assessed_qurl)]
     for filename in ('evidence.json', 'observations.json'):
         (output / ('runtime-' + filename)).write_bytes((runtime_evidence / filename).read_bytes())
     unresolved = sorted(set(records) - set(backports['advisory_ids']) - set(applicability['advisory_ids']))
     evidence.update({'verified_backports': backports, 'verified_applicability': applicability,
+                     'verified_qurl_applicability': qurl,
                      'unresolved_vendor_advisory_ids': unresolved})
     evidence.update({'complete': True, 'query_count': len(queries),
                      'vendor_advisory_ids': sorted(records), 'watch_missing_from_osv': missing_watch,
                      'trivy_high_critical_records': len(trivy_high),
-                     'promotion_allowed': not (unresolved or missing_watch or trivy_high)})
+                     'unresolved_trivy_high_critical_records': len(unresolved_high),
+                     'promotion_allowed': not (unresolved or missing_watch or unresolved_high)})
     evidence['inputs_sha256'] = {p.name: sha256(p.read_bytes()).hexdigest()
                                 for p in output.iterdir() if p.name != 'evidence.json'}
     (output / 'evidence.json').write_text(json.dumps(evidence, indent=2, sort_keys=True))
     print(json.dumps({key: evidence[key] for key in ('image_id', 'size_bytes', 'query_count',
                      'vendor_advisory_ids', 'unresolved_vendor_advisory_ids', 'verified_backports',
-                     'verified_applicability', 'watch_missing_from_osv', 'promotion_allowed')}, indent=2))
+                     'verified_applicability', 'verified_qurl_applicability',
+                     'trivy_high_critical_records', 'unresolved_trivy_high_critical_records',
+                     'watch_missing_from_osv', 'promotion_allowed')}, indent=2))
     return 0 if evidence['promotion_allowed'] else 1
 
 

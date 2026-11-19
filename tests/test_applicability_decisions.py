@@ -7,7 +7,10 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from security.applicability_decisions import REVIEWED_CVES, digest, fingerprint, verify, verify_glibc_consumers
+from security.applicability_decisions import (
+    QURL_ADVISORIES, REVIEWED_CVES, digest, fingerprint, verify, verify_glibc_consumers, verify_qurl,
+)
+from security.check_vulnerabilities import finding_fingerprint
 
 
 class ApplicabilityDecisionTests(unittest.TestCase):
@@ -146,6 +149,63 @@ class ApplicabilityDecisionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             verify_glibc_consumers([{'path': '/new/consumer', 'undefined': [],
                                     'needed': ['libform.so.6']}])
+
+
+class QurlApplicabilityTests(unittest.TestCase):
+    def setUp(self):
+        self.runtime = {'qurl': {'html_functions': [], 'openpgp_functions': [], 'function_count': 2000}}
+        self.advisories = {key: {'id': key, 'aliases': [value]} for key, value in QURL_ADVISORIES.items()}
+        findings = [{'VulnerabilityID': value, 'Severity': 'HIGH', 'PkgName': 'reviewed-fixture'}
+                    for value in QURL_ADVISORIES.values()]
+        self.policy = {'advisories': {key: fingerprint(value) for key, value in self.advisories.items()},
+                       'findings': {v['VulnerabilityID']: finding_fingerprint(v) for v in findings}}
+        targets = ['usr/local/bin/qurl', 'app/third_party_licenses/qurl-4.2.0-linux-amd64.spdx.json',
+                   'app/third_party_licenses/qurl-4.2.0-linux-arm64.spdx.json']
+        self.report = {'Results': [{'Type': 'gobinary', 'Target': target,
+                                   'Vulnerabilities': deepcopy(findings)} for target in targets]}
+
+    def check(self):
+        return verify_qurl(self.report, self.runtime, self.policy, self.advisories)
+
+    def test_only_exact_reviewed_target_findings_are_assessed(self):
+        self.report['Results'].append({'Type': 'gobinary', 'Target': 'new-binary',
+                                      'Vulnerabilities': deepcopy(self.report['Results'][0]['Vulnerabilities'])})
+        result = self.check()
+        self.assertEqual(len(result['finding_targets']), 9)
+        self.assertNotIn('new-binary', {row[0] for row in result['finding_targets']})
+
+    def test_changed_linkage_or_incomplete_function_table_fails(self):
+        for field, value in [('html_functions', ['golang.org/x/net/html.Render']),
+                             ('openpgp_functions', ['golang.org/x/crypto/openpgp.ReadMessage']),
+                             ('function_count', 2)]:
+            with self.subTest(field=field):
+                original = self.runtime['qurl'][field]
+                self.runtime['qurl'][field] = value
+                with self.assertRaises(ValueError):
+                    self.check()
+                self.runtime['qurl'][field] = original
+
+    def test_changed_official_scope_fails_even_when_scanner_is_unchanged(self):
+        self.advisories['GO-2026-6860']['new_scope'] = 'expanded'
+        with self.assertRaises(ValueError):
+            self.check()
+
+    def test_missing_duplicate_and_changed_findings_fail(self):
+        original = deepcopy(self.report)
+        for operation in ('missing', 'duplicate', 'changed', 'changed_duplicate'):
+            with self.subTest(operation=operation):
+                self.report = deepcopy(original)
+                findings = self.report['Results'][0]['Vulnerabilities']
+                if operation == 'missing':
+                    findings.pop()
+                elif operation == 'duplicate':
+                    findings.append(deepcopy(findings[0]))
+                elif operation == 'changed':
+                    findings[0]['Severity'] = 'CRITICAL'
+                else:
+                    findings.append({**findings[0], 'Severity': 'CRITICAL'})
+                with self.assertRaises(ValueError):
+                    self.check()
 
 
 if __name__ == '__main__':

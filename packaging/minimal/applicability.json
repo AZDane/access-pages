@@ -275,7 +275,7 @@
     "packaging/minimal/patches/CVE-2026-115559.patch": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
     "packaging/minimal/patches/manifest.json": "149184b4e3a531e4b464c0896fd0fa2072cd4ed60f34d6aa0062d798ffbb8180",
     "packaging/minimal/prepare.py": "0b11b8a3b6a4e1f7305a45a090febf0f155fbd440f8427ec508cb5e7083e5aec",
-    "security/minimal-applicability-review.txt": "265d6973e4f75ad32e9de72c6e301056f3ba0cead2657c01be0a93d1f97795c3",
+    "security/minimal-applicability-review.txt": "fd74be41042f482e48bb458559fb45e74c3028d86b3226b36f91c3105b033fce",
     "security/runtime_backports.py": "a3c8a5a57317a5d9815d6e992735100757c7b465fc57f5b15b339c90c2afd268",
     "tests/check_packaged_image.sh": "5dda065e92828b3cbdf85c88988901581cbe043e26efef7bab422db85ec1315b"
   },
@@ -338,6 +338,18 @@
     }
   },
   "owner": "Access Pages maintainer",
+  "qurl": {
+    "advisories": {
+      "GO-2026-5932": "825258c0f40cf04f470330488d282311d182956a628099e6bc687c2532e4714e",
+      "GO-2026-6860": "49eb07e3d8b760a44442810bfed3d0a794f383b025669449e14f42a339ea8310",
+      "GO-2026-6866": "58d074a78852283ac4c018a7042983e9be7f1450a131da5de937148e938a6423"
+    },
+    "findings": {
+      "CVE-2026-78661": "43c78aae7977dec1b3a533e0a44136ffc6a92b766066aaf506df090e090afeb7",
+      "CVE-2026-97045": "7ceb9efeccdb927bdef5d5dffadd78403903487552174d6884b75c801b39c0a2",
+      "GO-2026-5932": "37f132b04089a1286b648c1678f9bd22c5a52b69dc4067496f8e13544e96f0bb"
+    }
+  },
   "review_before": "2026-11-26T00:00:00+00:00",
   "reviewed_at": "2026-11-19T00:00:00+00:00",
   "schema": 1

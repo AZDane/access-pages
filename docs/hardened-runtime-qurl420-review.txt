@@ -385,3 +385,21 @@ The current UI and audit event collapse SMTP connection, TLS, authentication and
 delivery errors into a generic failure. The screenshot does not establish the
 cause. Investigate this as an additional release acceptance failure; do not
 certify email delivery from the earlier onboarding-only check.
+
+The SMTP follow-up confirmed successful unauthenticated, certificate-verified
+Gmail STARTTLS from Green's SSH app and TLS 1.3 from the hardened amd64 Python
+runtime. These were transport tests only; no credentials or email were sent by
+the agent. The owner then replaced the normal Google sign-in password with a
+Google app password in the evaluation app and confirmed that sending works.
+Record this as owner-confirmed SMTP acceptance on Green, not an automated
+in-container authentication test. No password was requested or read by the agent.
+
+The separate qURL review is also now complete as a proposal. Official Go records
+restrict its three findings to x/net/html and x/crypto/openpgp; both exact signed
+binaries contain neither package's functions. The candidate gate verifies the
+full official advisory records, exact scanner fingerprints and all nine target
+records (three findings across the executable and two original license SBOMs).
+It retains all raw findings and severities and rejects changed/missing/duplicate
+records or newly linked affected functions. The same source/image/architecture,
+freshness and exclusive November 26 deadline apply. No new qURL release is
+required for this bounded assessment. Fresh native CI is still required.

@@ -140,11 +140,32 @@ capability, so arbitrary code execution or hostile replacement configuration is
 explicitly outside this application-input assessment. These are unreachable
 dispositions, not removal or patching of glibc code.
 
-LayerV is separate
+Separate qURL 4.2.0 review
 
-None of these fourteen dispositions depends on a new qURL release. qURL's raw Go
-findings remain separate and unmodified. Its HIGH finding still blocks the
-candidate gate. The live tunnel failure remains
-an end-to-end acceptance problem, not a reason to defer our runtime remediation.
+The current official Go records restrict CVE-2026-78661 (GO-2026-6860) to the
+x/net/html parser, CVE-2026-97045 (GO-2026-6866) to x/net/html rendering, and
+GO-2026-5932 to the unmaintained x/crypto/openpgp package and its subpackages.
+The exact signed official qURL 4.2.0 binaries on both architectures have complete
+Go function tables with no x/net/html or x/crypto/openpgp functions, including
+wrappers/type symbols. The application cannot load these absent Go packages
+into a static binary. The containing Go modules remain reported at their
+original versions; this is a component-absent assessment, not a qURL patch.
+
+The review pins all three complete official Go advisory records and every
+scanner finding's scope, package/version, severity and CVSS fingerprint. Every
+build fetches the official records again; changed scope or missing records fail.
+The same three findings must remain in all three reviewed targets: the qURL
+executable and both unmodified license SBOMs. Missing, duplicated, altered or
+reclassified records require reassessment. A matching CVE in a different binary
+does not inherit this disposition. The exact runtime/native observations and
+all freshness, architecture, expiry and source controls above also apply.
+Raw HIGH records remain visible; only verified application applicability changes
+their gate disposition. No global ignores, severity reductions or scanner edits.
+https://vuln.go.dev/ID/GO-2026-6860.json
+https://vuln.go.dev/ID/GO-2026-6866.json
+https://vuln.go.dev/ID/GO-2026-5932.json
+
+None of these dispositions depends on a new qURL release. The live tunnel failure
+remains an end-to-end acceptance problem, not a reason to defer our remediation.
 The Python HTTP/IMAP backports are actual tested fixes and remain governed by
 their separate exact-source manifest and behavioral gate.

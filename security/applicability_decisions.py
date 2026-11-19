@@ -12,8 +12,10 @@ import re
 
 try:
     from .collect_applicability import validate_runtime
+    from .check_vulnerabilities import finding_fingerprint
 except ImportError:
     from collect_applicability import validate_runtime
+    from check_vulnerabilities import finding_fingerprint
 
 ROOT = Path(__file__).resolve().parents[1]
 REVIEWED_CVES = {
@@ -23,6 +25,8 @@ REVIEWED_CVES = {
     'CVE-2026-16052', 'CVE-2026-19552', 'CVE-2026-88822',
     'CVE-2026-88823', 'CVE-2026-95691', 'CVE-2026-95692',
 }
+QURL_ADVISORIES = {'GO-2026-6860': 'CVE-2026-78661', 'GO-2026-6866': 'CVE-2026-97045',
+                   'GO-2026-5932': 'GO-2026-5932'}
 
 
 def digest(data):
@@ -47,6 +51,40 @@ def verify_glibc_consumers(native):
                     raise ValueError('glibc regex consumer requires reassessment')
         if any('libform' in library for library in entry['needed']):
             raise ValueError('Loaded form library requires reassessment')
+
+
+def verify_qurl(report, runtime, policy, advisories):
+    """Called only after verify binds this runtime/policy to fresh image evidence."""
+    if set(advisories) != set(QURL_ADVISORIES) or set(policy['advisories']) != set(QURL_ADVISORIES):
+        raise ValueError('Incomplete official qURL advisory review')
+    for key, finding in QURL_ADVISORIES.items():
+        record = advisories[key]
+        if (record['id'] != key or fingerprint(record) != policy['advisories'][key]
+                or (finding != key and finding not in record.get('aliases', []))):
+            raise ValueError('Official qURL advisory changed; reassess')
+    if (runtime['qurl']['html_functions'] != [] or runtime['qurl']['openpgp_functions'] != []
+            or runtime['qurl']['function_count'] < 1000):
+        raise ValueError('Affected qURL functions are linked or evidence is incomplete')
+    expected_targets = {'usr/local/bin/qurl',
+                        'app/third_party_licenses/qurl-4.2.0-linux-amd64.spdx.json',
+                        'app/third_party_licenses/qurl-4.2.0-linux-arm64.spdx.json'}
+    if set(policy['findings']) != set(QURL_ADVISORIES.values()):
+        raise ValueError('Unreviewed qURL finding set')
+    matches = []
+    for result in report['Results']:
+        for row in result.get('Vulnerabilities', []):
+            key = row['VulnerabilityID']
+            if (key in policy['findings'] and result['Type'] == 'gobinary'
+                    and result['Target'] in expected_targets):
+                if finding_fingerprint(row) != policy['findings'][key]:
+                    raise ValueError('qURL finding scope or severity changed; reassess')
+                matches.append((result['Target'], key))
+    expected = {(target, key) for target in expected_targets for key in QURL_ADVISORIES.values()}
+    if len(matches) != len(expected) or set(matches) != expected:
+        raise ValueError('Reviewed qURL findings changed or disappeared; reassess')
+    return {'disposition': 'component_absent', 'finding_targets': sorted(matches),
+            'official_advisory_ids': sorted(advisories),
+            'reason': 'Affected HTML/OpenPGP packages are not linked in the exact verified qURL binary'}
 
 
 def verify(image_id, architecture, directory, publisher, *, now=None, root=ROOT):
@@ -112,5 +150,6 @@ def verify(image_id, architecture, directory, publisher, *, now=None, root=ROOT)
     if cves != REVIEWED_CVES:
         raise ValueError('Incomplete reviewed advisory set')
     return {'advisory_ids': sorted(covered), 'cves': sorted(cves), 'decisions': decisions,
+            'qurl_policy': policy['qurl'],
             'policy_sha256': digest(raw_policy), 'review_before': policy['review_before'],
             'evidence_sha256': digest((directory / 'evidence.json').read_bytes())}
