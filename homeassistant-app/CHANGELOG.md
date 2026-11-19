@@ -1,12 +1,16 @@
 # Changelog
 
-## 0.1.164
+## 0.1.164 — Smaller runtime and stronger security checks
 
-- Replace the Debian App runtime with the verified, digest-pinned Chainguard Python image. Keep qURL 4.2.0, service isolation, persistent data and the existing App identity.
-- Backport the upstream Python HTTP parsing and IMAP STARTTLS fixes into both supported images, with exact file checks and a November 26 UTC review deadline.
-- Include the additional upstream Unicode tunnel-host validation fix in the standalone image; the hardened App base already contains it.
-- Require complete native inventories, independent publisher advisories, tested applicability assessments and runtime defect probes in addition to the full vulnerability scans. Findings remain visible; an applicability assessment is not a library patch.
-- Validate the retained release images before publication and recheck official advisories immediately before publishing. No connection reset or settings migration is required.
+- Move to a smaller, hardened runtime image with verified sources.
+- Fix Python HTTP response parsing and IMAP STARTTLS handling using official upstream patches.
+- Strengthen security checks to catch defects that vulnerability scanners can miss.
+- Validate both amd64 and arm64 images before publication, including application behavior, permissions, TLS and AppArmor confinement.
+- Retain qURL 4.2.0 and existing settings, pages and connections. No connection reset or settings migration is required.
+
+**Validation:** Automated tests passed on both architectures. Installation, upgrade and rollback were tested on Home Assistant Green; email delivery and guest control were also confirmed.
+
+**Security review:** Some dependency vulnerabilities remain unpatched. Their affected components are absent or assessed as unreachable in this application, with supporting evidence retained. These assessments require fresh review by **November 26, 2026 UTC**.
 
 ## 0.1.163
 
