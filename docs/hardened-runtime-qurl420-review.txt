@@ -331,7 +331,10 @@ Verified HAOS steps:
   HTTP 403. The candidate remains started, protected and manually booted, with
   diagnostic logging off. Supervisor remains healthy and supported.
 
-The fresh candidate is left running for the pending authenticated browser check.
+The fresh candidate is left running. On November 19 the owner confirmed that
+its setup page loads through Open Web UI in the authenticated Green browser.
+This is an owner-observed ingress/setup rendering pass, not an automated or
+configured-account browser journey.
 Both test backups and the isolated local build directory remain on Green.
 
 The app remained in unregistered onboarding state. These checks do not certify
