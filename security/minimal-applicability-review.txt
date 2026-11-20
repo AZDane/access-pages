@@ -36,6 +36,47 @@ All runtime/native/advisory pins, decisions, scanner thresholds and the exclusiv
 2026-11-26 expiry remain unchanged. Full checks must pass again before release.
 https://github.com/AZDane/access-pages/actions/runs/44608259428
 
+Publisher metadata reassessment — 2026-11-20 UTC
+
+Scheduled Security run 44779404537 stopped at the exact publisher-record check.
+Compared its retained production evidence with passing main run 44610651432,
+both for source a7070ae, and with both failing minimal-candidate artifacts:
+https://github.com/AZDane/access-pages/actions/runs/44779404537
+https://github.com/AZDane/access-pages/actions/runs/44610651432
+
+Nine publisher records per architecture changed: three glibc records each for
+CVE-2026-100290 and CVE-2026-115819, two Expat records for CVE-2026-128241,
+and one Python record for CVE-2026-16052. Only references and severity changed,
+from null to populated lists. All other fields, including affected packages,
+version ranges, upstream identities, descriptions and timestamps, are identical.
+The added severity vectors are retained verbatim in the publisher evidence:
+
+CVE-2026-100290: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L
+CVE-2026-115819: CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:L/A:L
+CVE-2026-128241: CVSS:4.0/AV:L/AC:H/AT:P/PR:L/UI:P/VC:N/VI:H/VA:N/SC:N/SI:N/SA:N
+CVE-2026-16052: CVSS:4.0/AV:N/AC:L/AT:P/PR:N/UI:P/VC:N/VI:L/VA:N/SC:N/SI:N/SA:N
+
+Checked the linked upstream CVE descriptions and Expat/Python reports against
+the existing assessments below. The glibc records still concern regex
+allocation-failure cleanup and wide scanf conversions into narrow buffers.
+The regex issue does not require an attacker-crafted pattern; the assessment
+depends on absent application call paths, not on pattern validation. The Expat
+issue still requires xmlwf's output-directory mode; the Python issue still
+requires serialization of attacker-controlled Morsel attributes. These scopes
+do not introduce a path in the reviewed application or alter its threat model.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/100xxx/CVE-2026-100290.json
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/115xxx/CVE-2026-115819.json
+https://github.com/libexpat/libexpat/pull/1502
+https://github.com/python/cpython/issues/161707
+
+Both production runtime.json/native.json pairs are byte-for-byte identical to
+the passing run and the corresponding minimal-candidate observations. The full
+publisher advisory sets are unchanged; all nine Trivy finding fingerprints per
+architecture also match. Update only the eighteen complete publisher-record
+hashes and this review's control hash. Keep the runtime/native/collector pins,
+decisions, full-record comparisons, scanner policy, original review date and
+exclusive 2026-11-26 expiry. Fresh native CI evidence remains required.
+
 Threat model: remote application inputs through the existing fixed application
 entry points. No arbitrary Python execution, attacker-provided extension module,
 privileged container access, hostile replacement of application files or native
