@@ -24,7 +24,7 @@
         },
         "CGA-58w2-4q2m-5rmr": {
           "cve": "CVE-2026-100290",
-          "sha256": "11ca384cba868d4ca361abab5963c25d0c7976c266b1803bf8b31a403a817d91"
+          "sha256": "d344416b2f986125a97ad07436e2180a731362f5f496b93fdf17d3aed48ecb85"
         },
         "CGA-6m25-8vv5-42jx": {
           "cve": "CVE-2026-88822",
@@ -32,11 +32,11 @@
         },
         "CGA-6pcx-3733-66mc": {
           "cve": "CVE-2026-115819",
-          "sha256": "5a8b9ca9bf8b32929e227d44ce615e5aac085bab05ad82bed8814d131b75b428"
+          "sha256": "56747c31b9345bfdfb7e246f2f60c7975b7031706751cf95d4ae20632978bfa8"
         },
         "CGA-79r4-jrxq-vv95": {
           "cve": "CVE-2026-100290",
-          "sha256": "26bfc3313f5fc3f05fa6ce74021a9764becebbc1c330998b733af08a54088ed6"
+          "sha256": "1cd453dc8ea7d7472713d6752aa0715588cf7508bcec6aa8c970345ff5215b02"
         },
         "CGA-87v5-m4pf-3q6m": {
           "cve": "CVE-2026-88823",
@@ -48,7 +48,7 @@
         },
         "CGA-9m3m-x4ph-54xr": {
           "cve": "CVE-2026-100290",
-          "sha256": "b251b5f9d9138ac2bdffe4b01dbfca83d735eec328302a8d0e67af03510dcbbf"
+          "sha256": "91bfa5b143478bad47177c3cdf77b61a2ef09e9f6bc3cf76a04e483c9f550792"
         },
         "CGA-9qj6-c49m-7922": {
           "cve": "CVE-2026-107496",
@@ -68,7 +68,7 @@
         },
         "CGA-ggv7-4fpg-6g3f": {
           "cve": "CVE-2026-128241",
-          "sha256": "b74e1a38385faf716fd5326ed66faac680fb33d57cf9fd1b79be236ca45bf161"
+          "sha256": "1d8418177789a8684b31586cee392a44be76ecc4e0cc4c401ba9c83ea2d3d059"
         },
         "CGA-gxwq-x4cp-4w68": {
           "cve": "CVE-2026-124317",
@@ -84,7 +84,7 @@
         },
         "CGA-mj98-xvc8-76m8": {
           "cve": "CVE-2026-16052",
-          "sha256": "7f937251184fe4838197188b7de54e9eafaf53a927351f8c1e004cc7ff3409c7"
+          "sha256": "6fda0c55bb4bf480f84bdd74c3d36b685e605932516b2f49f76589e6add86504"
         },
         "CGA-q2h6-6pc6-7wr3": {
           "cve": "CVE-2026-88823",
@@ -96,11 +96,11 @@
         },
         "CGA-qpg4-8ffr-mxpj": {
           "cve": "CVE-2026-128241",
-          "sha256": "d9a32239f77bd436c2f80eb66124878a263f8f065c228e32d44b7e177135cce4"
+          "sha256": "e4f87d0d67c014e7f0b8784323e2ba350fa6eaa73493308598981200e602a098"
         },
         "CGA-qrf5-p9h6-7x4g": {
           "cve": "CVE-2026-115819",
-          "sha256": "e4ce05e93c9b6317d31cd52514d80c4843107b809fc40bcb52bafe356fabcc2d"
+          "sha256": "ac4508ce398626c306a562b2d23d702010dbe5e4a9b684bb41ca84bce6d3fe11"
         },
         "CGA-v2p9-42jf-xm26": {
           "cve": "CVE-2026-95692",
@@ -120,7 +120,7 @@
         },
         "CGA-xv5h-55w4-h4p4": {
           "cve": "CVE-2026-115819",
-          "sha256": "a91f8d30c1e32fee026c47a2e3febf84ee93ebd5d359c0449870aafe38c7e224"
+          "sha256": "78614edfdada33497fc044c60c7590ec9cae02af653461d2468ac26703b03f23"
         }
       },
       "collector_sha256": {
@@ -145,7 +145,7 @@
         },
         "CGA-36qr-8rv5-838h": {
           "cve": "CVE-2026-128241",
-          "sha256": "e416737a471ecfee9f20767029e9971362270be0bafd06746fbc0a66d7bb9bf5"
+          "sha256": "ec443dfb23adb3307c70a0f79ca6f1e119803e6d4f89be11b981e5bffb6d66f8"
         },
         "CGA-4w47-h44q-wq93": {
           "cve": "CVE-2026-95692",
@@ -173,7 +173,7 @@
         },
         "CGA-855x-633p-r3x6": {
           "cve": "CVE-2026-115819",
-          "sha256": "d2c8f9912e1829e75a2b9fe102a3abeb139fb1e74c8318c64a91c911041bc28e"
+          "sha256": "4035a7eea11b925319ca4efe77be67df3117f1f267bf88c7f6ecabdfa229e0d3"
         },
         "CGA-8mxj-f8c7-wf7f": {
           "cve": "CVE-2026-95692",
@@ -189,23 +189,23 @@
         },
         "CGA-9m3c-7g25-798x": {
           "cve": "CVE-2026-16052",
-          "sha256": "bed365d28bb58ff0dd181bb5751b7b84a8a4370d98525b0dd6f4faec079a7e32"
+          "sha256": "ccbc6abd6be2d1c65e9d7f2ec1811b8f39f9897223ed5fb2d7ef4112d7c077b3"
         },
         "CGA-f4h8-fp92-73pq": {
           "cve": "CVE-2026-100290",
-          "sha256": "7f3c7af69b5b322b772ee06f87ff16d73739be5c586c03ab7321cfc920c1f500"
+          "sha256": "c3f9bcbd94b13a0b741ecaa7bab9880f194e2613941378f82edeb8c09c3ea2d8"
         },
         "CGA-fm3p-38p4-mcr7": {
           "cve": "CVE-2026-100290",
-          "sha256": "5ffd9e20f42f5a4c2eed02494e3c26e59ec648e655a861d032aad71f4870101c"
+          "sha256": "0c47fdc37dc11a1a4b5fc7be1e644829be934fbf22914e82e3e2249a976b2281"
         },
         "CGA-ghp2-jf5c-qg3m": {
           "cve": "CVE-2026-128241",
-          "sha256": "2aaf1bebc9f9e0d54b89bdd5adf5394fc41f723ae0fa538f2a55ef98664ea4ef"
+          "sha256": "aa4d51a47686c3e355dee095349521c605a103918a55eed827ff7bd7f6bfca59"
         },
         "CGA-h842-3cf7-39vg": {
           "cve": "CVE-2026-100290",
-          "sha256": "cbe7118cfacb55fce1256ee1c21d8377a7a04de3a583f4e7a87fc420078737be"
+          "sha256": "21cb3bdd2aca069ddee5cf86be748420c3657d9038eab64df416c08a01c464fc"
         },
         "CGA-hxq9-grqp-hj7r": {
           "cve": "CVE-2026-88822",
@@ -221,7 +221,7 @@
         },
         "CGA-pghq-g7rp-gj86": {
           "cve": "CVE-2026-115819",
-          "sha256": "cf2d7a9db0e9be120bc127fe946e6fd3d40a37687b950a8741615bb3002a932e"
+          "sha256": "ce686a24d01ab9ea5aa338d4302084b22a0c2455cf9f9f26b8e7e1190f5474f2"
         },
         "CGA-qjhh-2cc3-rjv8": {
           "cve": "CVE-2026-95691",
@@ -237,7 +237,7 @@
         },
         "CGA-rprw-3fgw-2rg5": {
           "cve": "CVE-2026-115819",
-          "sha256": "b408c10e375db448329a1ff746e441e33ee3452f26e761b7e09d10726538ec1a"
+          "sha256": "011655b8df6340031331601eca34a3c32ab9730adfa1e2e935a61fa43dd01b8d"
         },
         "CGA-w779-7h9j-9wfg": {
           "cve": "CVE-2026-124317",
@@ -277,7 +277,7 @@
     "packaging/minimal/patches/CVE-2026-115559.patch": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
     "packaging/minimal/patches/manifest.json": "149184b4e3a531e4b464c0896fd0fa2072cd4ed60f34d6aa0062d798ffbb8180",
     "packaging/minimal/prepare.py": "0b11b8a3b6a4e1f7305a45a090febf0f155fbd440f8427ec508cb5e7083e5aec",
-    "security/minimal-applicability-review.txt": "cb1a5cf8fa26ce68676b521934ef4eb2a74e89fe42431585f7497a1e74e73420",
+    "security/minimal-applicability-review.txt": "886e69a56c0e361a6e71cfdbc065187d2aa0210ec2854d60ca74d8c83ceef978",
     "security/runtime_backports.py": "3220422a7e9439f676774ca3938dc6d4c10004f546f77715f920d87cd65e84f9",
     "tests/check_packaged_image.sh": "2fa23119f8e722e21d3534d200a28b669fcaf276a116db8c33606affef86b3c1"
   },
