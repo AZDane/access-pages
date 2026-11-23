@@ -6,6 +6,7 @@ from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
+from security.applicability_decisions import REVIEWED_CVES
 from security.review_alerts import alerts, GitHub, synchronize, hardened_reviews
 
 
@@ -28,7 +29,9 @@ class ReviewAlertTests(unittest.TestCase):
 
     def test_hardened_and_both_backport_reviews_are_included_without_renewal(self):
         entries = hardened_reviews(Path('packaging'))
-        self.assertEqual(len(entries), 22)
+        self.assertEqual(len(entries), 30)
+        self.assertEqual({e['id'] for e in entries if e['type'] == 'hardened-runtime'},
+                         REVIEWED_CVES)
         self.assertEqual({e['review_due'] for e in entries}, {'2026-11-26'})
         self.assertEqual(sum(e['type'].endswith('-backport') for e in entries), 5)
         planned = alerts({'dispositions': entries}, date(2026, 11, 26))

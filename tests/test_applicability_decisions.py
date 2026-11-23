@@ -109,13 +109,16 @@ class ApplicabilityDecisionTests(unittest.TestCase):
                 self.observed['inputs_sha256'][name] = digest(original)
 
     def test_changed_or_missing_advisory_is_not_silently_accepted(self):
-        key = next(iter(self.publisher))
-        self.publisher[key]['new_scope'] = 'expanded'
-        with self.assertRaises(ValueError):
-            self.check()
-        del self.publisher[key]
-        with self.assertRaises(ValueError):
-            self.check()
+        for key in list(self.publisher):
+            with self.subTest(advisory=key):
+                original = deepcopy(self.publisher[key])
+                self.publisher[key]['new_scope'] = 'expanded'
+                with self.assertRaises(ValueError):
+                    self.check()
+                del self.publisher[key]
+                with self.assertRaises(ValueError):
+                    self.check()
+                self.publisher[key] = original
 
     def test_changed_control_and_collector_fail(self):
         control = self.root / 'Dockerfile.ha-minimal'

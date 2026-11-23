@@ -77,6 +77,126 @@ hashes and this review's control hash. Keep the runtime/native/collector pins,
 decisions, full-record comparisons, scanner policy, original review date and
 exclusive 2026-11-26 expiry. Fresh native CI evidence remains required.
 
+OpenSSL advisory reassessment — 2026-11-22 UTC
+
+Scheduled Security run 45044003394 failed on unchanged main e80ecc9 at the
+publisher-record gate. Compare with passing main run 44790155929:
+https://github.com/AZDane/access-pages/actions/runs/45044003394
+https://github.com/AZDane/access-pages/actions/runs/44790155929
+
+On each architecture, fifteen existing OpenSSL records and one Expat xmlwf
+record changed only their publisher event status from detection to
+pending_upstream_fix, the event timestamps and the top-level modified timestamp.
+All other fields, including severity, references, affected ranges and upstream
+identities, are identical. This is not a vendor fix and does not change the
+existing application-path assessments. Update these 32 complete-record hashes.
+
+Fresh PR run 45103482929 then detected the same status/timestamp-only transition
+in the remaining expat source record on each architecture, CGA-ggv7-4fpg-6g3f
+and CGA-ghp2-jf5c-qg3m (both CVE-2026-128241). A fresh fetch of all 56 publisher
+records per architecture confirmed these are the only further differences
+from run 45044003394. Reviewed their complete diffs: the component status moves
+from detection to pending_upstream_fix and timestamps advance; affected ranges,
+severity, references and upstream scope are unchanged. The xmlwf executable
+remains absent. Update these two exact hashes as well, for 34 existing-record
+updates in total; keep the full-record rejection behavior.
+https://github.com/AZDane/access-pages/actions/runs/45103482929
+
+There are also 24 NEW OpenSSL records per architecture: three package/source
+records for each of eight CVEs below. The complete publisher set grows from
+32 to 56 records per architecture. These require new assessments, not a metadata
+refresh. Retain and pin every new record, including null severity/reference
+fields where the publisher has not populated them; null does not mean safe.
+Add all 48 new IDs to the watch list so feed disappearance also blocks builds.
+
+Both production images and both minimal candidates reproduce the previously
+reviewed runtime.json/native.json bytes, including all 143 ELF files, imports,
+application source, configuration and collector hashes. All nine Trivy finding
+fingerprints per architecture remain unchanged. The new publisher findings
+therefore demonstrate why a passing scanner alone is insufficient.
+
+Reviewed the publisher-attested OpenSSL 4.0.3 source revision
+af1775b60dfa141a4ad762585052cabeb9f37e9e (archive SHA256
+219c0a389f3c76e58f2d9e2b216101887f94747e669bb79c43225d7b6ac1253a)
+and CPython revision 64b5cfdf7548a21741398ce0826728818327aea7:
+Modules/_ssl.c SHA256
+47655d522885db938c79c61e388c59d121d084e0d4a0305a0f9dac6bd9e1b033
+Modules/binascii.c SHA256
+6a87f282b9bb1501cbd17ef652d9c003e047402a6a7916d7cc3f8863c58c610e
+https://github.com/openssl/openssl/tree/af1775b60dfa141a4ad762585052cabeb9f37e9e
+https://github.com/python/cpython/tree/64b5cfdf7548a21741398ce0826728818327aea7/Modules
+
+The following eight decisions are unreachable through the pinned application,
+not patched or component-absent claims. The installed OpenSSL remains affected.
+They bring the application review to 22 CVEs (two component-absent and twenty
+unreachable); the two tested Python backports remain separate. No original
+review date or exclusive 2026-11-26 00:00 UTC expiry is extended. Full-record
+matching, native/source pins, scanner thresholds and fresh native CI remain
+mandatory. These proposed decisions take effect only through owner PR adoption.
+
+CVE-2026-107494 and CVE-2026-124709 — QUIC resource exhaustion.
+The affected connection-ID retransmission and rejected-stream paths require an
+OpenSSL QUIC endpoint. The exact Python binding selects TLS methods, and the
+application uses Python TLS; its static Go services do not link OpenSSL. No
+inventoried consumer imports a QUIC method. Existing runtime observations also
+show no Python QUIC API. Neither affected protocol path is selected.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/107xxx/CVE-2026-107494.json
+https://openssl-library.org/news/secadv/20261117.txt
+
+CVE-2026-95690 — DTLS fragment reassembly allocation.
+The same method/source review excludes DTLS: _ssl.c selects TLS_method,
+TLS_client_method, TLS_server_method or legacy TLS-version methods, never a
+DTLS method. No inventoried consumer imports DTLS entry points. Ordinary TLS
+does not enter the datagram-handshake fragment reassembly path.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/95xxx/CVE-2026-95690.json
+
+CVE-2026-84786 — DANE certificate/TLSA validation crash.
+The exact Python binding and application do not enable OpenSSL DANE or supply
+TLSA records. No external consumer imports SSL_CTX_dane_enable, SSL_dane_enable
+or SSL_dane_tlsa_add. libssl itself imports X509_STORE_CTX_set0_dane; this
+internal provider call is present, not overlooked, but the application never
+configures the DANE state needed to reach the affected validation combination.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/84xxx/CVE-2026-84786.json
+
+CVE-2026-35190 — Suite B TLS 1.3 key-share processing.
+SSL_CTX_set_cert_flags is a macro through SSL_CTX_ctrl, which Python does import;
+symbol absence alone cannot establish this decision. Reviewed _ssl.c does not
+set Suite B certificate flags. OpenSSL ssl/ssl_ciph.c also sets these flags for
+SUITEB-prefixed cipher strings: the application never calls set_ciphers or
+accepts a cipher-selection input, and the pinned default cipher configuration
+does not select Suite B. Both the macro and cipher-string paths are excluded.
+https://openssl-library.org/news/secadv/20261117.txt
+
+CVE-2026-107493 — caller-supplied PEM X509_INFO stack use-after-free.
+No external consumer imports the PEM_X509_INFO_read family. In the exact
+OpenSSL source, crypto/x509/by_file.c's CA-loading call and crypto/ts/ts_conf.c
+pass NULL as the stack. The wrappers in crypto/pem/pem_info.c forward a caller's
+stack but do not create a non-NULL caller on the application's behalf. Python
+certificate loading does not supply an existing X509_INFO stack. Thus the
+required non-NULL stack reuse after a failed read is absent.
+https://openssl-library.org/news/secadv/20261117.txt
+
+CVE-2026-121481 — EVP_EncodeBlock near-INT_MAX input overflow.
+No external consumer imports EVP_EncodeBlock. Application base64 operations use
+Python's binascii implementation, not OpenSSL's encoder. Internal OpenSSL
+callers in crypto/pem/pem_sign.c, crypto/x509/x509spki.c and
+crypto/http/http_client.c perform PEM signing, SPKI encoding or OpenSSL HTTP
+proxy authentication; the reviewed Python application invokes none of these
+APIs. Python SMTP/HTTP authentication uses Python base64. This decision excludes
+the actual caller paths, rather than assuming OpenSSL's length arithmetic safe.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/121xxx/CVE-2026-121481.json
+
+CVE-2026-121482 — CMS/PKCS#7 SignedData CRL-checking CPU exhaustion.
+No inventoried consumer imports CMS or PKCS7 APIs, and neither the application
+nor its Python TLS binding verifies CMS/PKCS#7 SignedData. Ordinary TLS X.509
+verification is not this signed-message path. The OpenSSL CLI is absent.
+https://github.com/CVEProject/cvelistV5/blob/main/cves/2026/121xxx/CVE-2026-121482.json
+
+The existing dynamic-loading/threat-model boundary below applies to all eight
+decisions. Adding native bridges, custom cipher/protocol choices, a CMS consumer
+or another executable invalidates the pinned review. Prefer vendor-fixed
+packages when available; these assessments do not substitute for such fixes.
+
 Threat model: remote application inputs through the existing fixed application
 entry points. No arbitrary Python execution, attacker-provided extension module,
 privileged container access, hostile replacement of application files or native
