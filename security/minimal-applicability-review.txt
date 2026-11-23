@@ -91,6 +91,17 @@ All other fields, including severity, references, affected ranges and upstream
 identities, are identical. This is not a vendor fix and does not change the
 existing application-path assessments. Update these 32 complete-record hashes.
 
+Fresh PR run 45103482929 then detected the same status/timestamp-only transition
+in the remaining expat source record on each architecture, CGA-ggv7-4fpg-6g3f
+and CGA-ghp2-jf5c-qg3m (both CVE-2026-128241). A fresh fetch of all 56 publisher
+records per architecture confirmed these are the only further differences
+from run 45044003394. Reviewed their complete diffs: the component status moves
+from detection to pending_upstream_fix and timestamps advance; affected ranges,
+severity, references and upstream scope are unchanged. The xmlwf executable
+remains absent. Update these two exact hashes as well, for 34 existing-record
+updates in total; keep the full-record rejection behavior.
+https://github.com/AZDane/access-pages/actions/runs/45103482929
+
 There are also 24 NEW OpenSSL records per architecture: three package/source
 records for each of eight CVEs below. The complete publisher set grows from
 32 to 56 records per architecture. These require new assessments, not a metadata

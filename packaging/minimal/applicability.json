@@ -124,7 +124,7 @@
         },
         "CGA-ggv7-4fpg-6g3f": {
           "cve": "CVE-2026-128241",
-          "sha256": "1d8418177789a8684b31586cee392a44be76ecc4e0cc4c401ba9c83ea2d3d059"
+          "sha256": "8be7c5efe853e596cefc5a6a5654cf41d1f4e987e88eeeb8d6661d381d479f8a"
         },
         "CGA-gxwq-x4cp-4w68": {
           "cve": "CVE-2026-124317",
@@ -337,7 +337,7 @@
         },
         "CGA-ghp2-jf5c-qg3m": {
           "cve": "CVE-2026-128241",
-          "sha256": "aa4d51a47686c3e355dee095349521c605a103918a55eed827ff7bd7f6bfca59"
+          "sha256": "2cc6e9ba3a1b24953930bf1e3e7f5d790b04c9205c6e44978395718a66548f83"
         },
         "CGA-gj8f-3qp7-gch7": {
           "cve": "CVE-2026-124709",
@@ -469,7 +469,7 @@
     "packaging/minimal/patches/CVE-2026-115559.patch": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
     "packaging/minimal/patches/manifest.json": "149184b4e3a531e4b464c0896fd0fa2072cd4ed60f34d6aa0062d798ffbb8180",
     "packaging/minimal/prepare.py": "0b11b8a3b6a4e1f7305a45a090febf0f155fbd440f8427ec508cb5e7083e5aec",
-    "security/minimal-applicability-review.txt": "909a701a97c8bfeffbe43143771837b7284581fc67cd528cddabdbc32cb5231e",
+    "security/minimal-applicability-review.txt": "253a607ef4441b04da775c09af7b72ea35a0dd53bbd62e6cf89034038419e79a",
     "security/runtime_backports.py": "3220422a7e9439f676774ca3938dc6d4c10004f546f77715f920d87cd65e84f9",
     "tests/check_packaged_image.sh": "2fa23119f8e722e21d3534d200a28b669fcaf276a116db8c33606affef86b3c1"
   },
