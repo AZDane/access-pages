@@ -369,6 +369,14 @@ exactly; any further publisher change still blocks promotion.
 https://github.com/AZDane/access-pages/actions/runs/45258799562
 https://github.com/AZDane/access-pages/actions/runs/45106203483
 
+The complete current publisher snapshots on both architectures cover 24 CVEs:
+22 bounded applicability decisions and the two exact Python backports. None
+of their affected ranges reports a fixed version for the installed package.
+The statuses range from detection to pending_upstream_fix, including the two
+changed CVEs. This is evidence about the pinned package inventory, not a claim
+that no newer vendor image exists; every candidate must query the publisher
+again and reject a changed record or package inventory.
+
 Both production and both candidate runtime.json/native.json files are
 byte-for-byte identical between those runs. The nine Trivy vulnerability rows
 per architecture retain the same target, ID, severity, installed version and

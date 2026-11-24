@@ -469,7 +469,7 @@
     "packaging/minimal/patches/CVE-2026-115559.patch": "72131754daebae2c9456ce325bef9f1c455a72519ad4700ffa1cfb03f7f9e3e0",
     "packaging/minimal/patches/manifest.json": "4aaa5850c776ce34fe2c5cfb054c94f4676a9fb279d35cfd9d1bc58c5395bca2",
     "packaging/minimal/prepare.py": "0b11b8a3b6a4e1f7305a45a090febf0f155fbd440f8427ec508cb5e7083e5aec",
-    "security/minimal-applicability-review.txt": "caae64fad66e76705ab010e9667e52aaeb320c501b61da11b42c3921de4d7bcd",
+    "security/minimal-applicability-review.txt": "e03fce63c1ac34a9d2a55830304f12d340ad64c0745d7adaaeb169cfb3963439",
     "security/runtime_backports.py": "3220422a7e9439f676774ca3938dc6d4c10004f546f77715f920d87cd65e84f9",
     "tests/check_packaged_image.sh": "2fa23119f8e722e21d3534d200a28b669fcaf276a116db8c33606affef86b3c1"
   },
