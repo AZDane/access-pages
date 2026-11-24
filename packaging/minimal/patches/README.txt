@@ -9,7 +9,7 @@ vendor signature is not claimed to cover these local changes.
 
 The installer verifies original module bytes, patch bytes and final module bytes,
 then removes affected cached bytecode. A changed base or expired review stops the
-build. Review is due before 2026-11-26 00:00 UTC, independently of the unchanged
+build. Review is due before 2026-12-01 16:57 UTC, independently of the unchanged
 production vulnerability baseline. Remove these backports when a reviewed vendor
 image includes the fixes and passes the same native tests.
 

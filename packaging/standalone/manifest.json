@@ -37,7 +37,7 @@
     }
   ],
   "replacement": "Remove backports when an official vendor image passes the same regression tests; do not extend the review without new evidence.",
-  "review_before": "2026-11-26T00:00:00+00:00",
-  "reviewed_at": "2026-11-19T00:00:00+00:00",
+  "review_before": "2026-12-01T16:57:00+00:00",
+  "reviewed_at": "2026-11-24T16:57:00+00:00",
   "schema": 1
 }

@@ -4,8 +4,10 @@ Scope and adoption
 
 These are proposed, owner-controlled application applicability assessments, not
 patch claims or independent human approval. The owner adopts them by reviewing
-and merging the feature PR under the existing rules. They expire exclusively
-at 2026-11-26 00:00 UTC. No production baseline dates are extended.
+and merging the feature PR under the existing rules. At this original review,
+they expired exclusively at 2026-11-26 00:00 UTC; see the later review below
+for the proposed new active-image deadline. No historical Debian baseline date
+is extended.
 
 Evidence: Security run 44582158696, PR source 50a2cac, CI merge b05fbf56.
 https://github.com/AZDane/access-pages/actions/runs/44582158696
@@ -349,3 +351,48 @@ None of these dispositions depends on a new qURL release. The live tunnel failur
 remains an end-to-end acceptance problem, not a reason to defer our remediation.
 The Python HTTP/IMAP backports are actual tested fixes and remain governed by
 their separate exact-source manifest and behavioral gate.
+
+November 24, 2026 review of the November 26 deadline
+
+The scheduled main Security run 45258799562 failed after both production and
+candidate images built and passed their runtime and scanner steps. Compared
+with the preceding passing main run 45106203483 at the same commit 50b1295,
+the complete publisher set still has 56 records per architecture. Six records
+covering two OpenSSL CVEs changed: amd64 CGA-j7v8-cxpw-6j57 and
+CGA-r4vh-5fjv-9rx2; arm64 CGA-mv84-x55w-vv23, CGA-r47p-6xx2-3c99,
+CGA-7vjf-w4qp-3vp2 and CGA-jm63-fj5g-73xm. Their component event status
+changed from detection to pending_upstream_fix, and their event and top-level
+timestamps advanced. Package names, installed version 4.0.3-r8, affected
+ranges, upstream CVE identities, severity and references did not change.
+These records do not claim an OpenSSL fix. The status transition is pinned
+exactly; any further publisher change still blocks promotion.
+https://github.com/AZDane/access-pages/actions/runs/45258799562
+https://github.com/AZDane/access-pages/actions/runs/45106203483
+
+Both production and both candidate runtime.json/native.json files are
+byte-for-byte identical between those runs. The nine Trivy vulnerability rows
+per architecture retain the same target, ID, severity, installed version and
+fixed version. The earlier source-path assessment remains bounded to these
+exact images and application inputs: CVE-2026-107494 requires an OpenSSL QUIC
+endpoint, and CVE-2026-121481 requires an OpenSSL EVP_EncodeBlock caller with
+near-INT_MAX input. The pinned Python TLS binding and application still select
+neither path; the static Go services do not link OpenSSL. This does not assert
+that the installed library is patched or safe for arbitrary native consumers.
+
+The current Python release list still names 3.15.2 as the latest 3.15 release.
+Its two exact backports remain required in the pinned hardened base and the
+standalone image; the existing HTTP and IMAP behavior gates passed in all four
+images in run 45258799562 before the advisory gate. The pinned runtime has no
+vendor OpenSSL fix for the two changed records. The qURL 4.2.0 binaries and
+their three component-absent findings retain their exact source, binary and
+advisory pins; a newer official qURL must be evaluated separately against the
+current runtime before replacing them.
+https://www.python.org/doc/versions/
+
+This fresh review proposes a seven-day window from November 24 for the active
+hardened applicability and Python backport manifests. It does not renew the
+historical Debian baseline, which is not used by the current hardened image.
+The old baseline remains fail-closed after November 26 if that image is ever
+rebuilt. Fresh native CI and owner adoption through the protected PR are
+required before the proposed dates take effect. No scanner threshold, ignore
+file, provenance check, runtime control or severity is changed.
