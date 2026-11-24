@@ -1,5 +1,8 @@
 # Image vulnerability decisions and beta publication
 
+The [November 24 release gate review](2026-11-24-release-gate-review.md) records
+the new Expat and glibc publisher evidence and the current release hold.
+
 One unfiltered Trivy vulnerability report per architecture is retained for 90
 days. The hardened image uses `minimal_advisories.py` for the combined scanner,
 publisher, backport and applicability decision. `check_vulnerabilities.py` and
