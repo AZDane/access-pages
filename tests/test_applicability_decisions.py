@@ -20,7 +20,7 @@ class ApplicabilityDecisionTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.evidence = self.root / 'evidence'
         self.evidence.mkdir()
-        self.now = datetime(2026, 11, 24, 17, tzinfo=timezone.utc)
+        self.now = datetime(2026, 11, 19, 12, tzinfo=timezone.utc)
         self.image = 'sha256:' + 'a' * 64
         self.policy = json.loads(Path('packaging/minimal/applicability.json').read_text())
         for name in self.policy['controls_sha256']:
@@ -76,8 +76,8 @@ class ApplicabilityDecisionTests(unittest.TestCase):
 
     def test_expiry_is_exclusive_and_cannot_exceed_seven_days(self):
         with self.assertRaises(ValueError):
-            self.check(now=datetime(2026, 12, 1, 16, 57, tzinfo=timezone.utc))
-        self.policy['review_before'] = '2026-12-24T16:57:00+00:00'
+            self.check(now=datetime(2026, 11, 26, tzinfo=timezone.utc))
+        self.policy['review_before'] = '2026-12-01T00:00:00+00:00'
         self.save()
         with self.assertRaises(ValueError):
             self.check()

@@ -32,9 +32,9 @@ class ReviewAlertTests(unittest.TestCase):
         self.assertEqual(len(entries), 30)
         self.assertEqual({e['id'] for e in entries if e['type'] == 'hardened-runtime'},
                          REVIEWED_CVES)
-        self.assertEqual({e['review_due'] for e in entries}, {'2026-12-01'})
+        self.assertEqual({e['review_due'] for e in entries}, {'2026-11-26'})
         self.assertEqual(sum(e['type'].endswith('-backport') for e in entries), 5)
-        planned = alerts({'dispositions': entries}, date(2026, 12, 1))
+        planned = alerts({'dispositions': entries}, date(2026, 11, 26))
         self.assertEqual(len(planned), 1)
         body = next(iter(planned.values()))['body']
         self.assertIn('expired', body)

@@ -1,5 +1,8 @@
 # Image vulnerability decisions and beta publication
 
+The [November 24 release gate review](2026-11-24-release-gate-review.md) records
+the new Expat and glibc publisher evidence and the current release hold.
+
 One unfiltered Trivy vulnerability report per architecture is retained for 90
 days. The hardened image uses `minimal_advisories.py` for the combined scanner,
 publisher, backport and applicability decision. `check_vulnerabilities.py` and
@@ -15,8 +18,7 @@ original publisher records, exact installed-module probes and applicability
 evidence. Two Python defects are patched; fourteen other runtime CVEs have
 bounded component-absent or unreachable assessments, not vendor fixes. qURL's
 three findings have separate exact-binary package-absence evidence. All reviews
-expire at 2026-12-01 16:57 UTC after the November 24 reassessment, and changed
-source, binaries, advisory scope or
+expire at 2026-11-26 00:00 UTC and changed source, binaries, advisory scope or
 missing/stale evidence blocks publication. See `minimal-applicability-review.txt`
 and `../docs/hardened-runtime-qurl420-review.txt` for the evidence and limits.
 
@@ -27,8 +29,7 @@ image uses the same upstream Python hunks with its own exact manifest; both
 architectures must pass the defect and upstream compatibility suites.
 
 The historical Debian assessments below describe the earlier image. They do not
-waive findings in the hardened image and their November 26 deadlines have not
-been extended. They fail closed if the old image is rebuilt after that date.
+waive findings in the hardened image and their deadlines have not been extended.
 
 ## Scanner metadata review (2026-11-17)
 

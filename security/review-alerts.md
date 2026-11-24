@@ -6,10 +6,8 @@ GitHub may delay scheduled runs. It also supports a manual run; the default is
 a preview, and `write_issues: true` enables issue updates from `main` only.
 
 Seven calendar days before `review_due`, it creates one issue per deadline,
-assigned to AZDane, listing every assessment due on that date. The historical
-Debian baseline remains due November 26, 2026. The proposed hardened-runtime
-and Python-backport reviews are due December 1, 2026 after owner adoption.
-Expired entries
+assigned to AZDane, listing every assessment due on that date. The current
+November 26, 2026 deadline first qualifies on November 19 UTC. Expired entries
 also qualify, so a missed run does not silently discard an alert. Notification
 delivery follows the assignee's GitHub notification settings.
 

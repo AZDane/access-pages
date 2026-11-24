@@ -9,7 +9,7 @@ import unittest
 
 from security import runtime_backports as backports
 DIRECTORY = Path(__file__).resolve().parents[1] / 'packaging/minimal/patches'
-NOW = datetime(2026, 11, 24, 17, tzinfo=timezone.utc)
+NOW = datetime(2026, 11, 19, 12, tzinfo=timezone.utc)
 
 
 class RuntimeBackportTests(unittest.TestCase):
@@ -29,8 +29,8 @@ class RuntimeBackportTests(unittest.TestCase):
     def test_review_expiry_is_exclusive_and_cannot_be_silently_extended(self):
         manifest = json.loads((DIRECTORY / 'manifest.json').read_text())
         backports.validate_manifest(manifest, NOW)
-        for when in (datetime(2026, 11, 23, tzinfo=timezone.utc),
-                     datetime(2026, 12, 1, 16, 57, tzinfo=timezone.utc)):
+        for when in (datetime(2026, 11, 18, tzinfo=timezone.utc),
+                     datetime(2026, 11, 26, tzinfo=timezone.utc)):
             with self.assertRaises(ValueError):
                 backports.validate_manifest(manifest, when)
         manifest['review_before'] = '2026-12-26T00:00:00+00:00'
